@@ -1,0 +1,17 @@
+bin/
+*.db
+*.db-shm
+*.db-wal
+.env
+
+# Локальные кэши Go: сборка в песочнице не может писать в %USERPROFILE%\go.
+.gocache/
+.gomodcache/
+.gopath/
+.gotmp/
+
+# Артефакты покрытия
+cover.out
+storage_test.log
+http_cover.out
+http_test.log

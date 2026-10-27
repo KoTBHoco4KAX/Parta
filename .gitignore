@@ -1,0 +1,18 @@
+# Go кэши
+.gocache/
+.gomodcache/
+.gopath/
+.gotmp/
+
+# Node.js
+node_modules/
+dist/
+.npm-cache/
+
+# Базы данных SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# Окружение
+.env

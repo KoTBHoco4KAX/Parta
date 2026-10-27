@@ -1,0 +1,813 @@
+<?php
+require __DIR__ . '/config.php';
+
+$user   = require_login_api();
+$action = $_GET['action'] ?? '';
+$input  = json_decode(file_get_contents('php://input'), true) ?: [];
+
+try {
+    match ($action) {
+        // ---- ОБЩЕЕ ----
+        'list_subjects'      => listSubjects($user),
+        'create_subject'     => createSubject($user, $input),
+        'set_theme'          => setTheme($user, $input),
+
+        // ---- СТУДЕНТ ----
+        'student_board'      => studentBoard($user),
+        'submit_work'        => submitWork($user, $input),
+        'move_submission'    => moveSubmission($user, $input),
+        'list_my_grades'     => listMyGrades($user),
+
+        // ---- ПРЕПОДАВАТЕЛЬ ----
+        'teacher_assignments'=> teacherAssignments($user),
+        'create_assignment'  => createAssignment($user, $input),
+        'update_assignment'  => updateAssignment($user, $input),
+        'delete_assignment'  => deleteAssignment($user, $input),
+        'assignment_detail'  => assignmentDetail($user, $input),
+        'list_submissions'   => listSubmissions($user, $input),
+        'submission_detail'  => submissionDetail($user, $input),
+        'grade_submission'   => gradeSubmission($user, $input),
+
+        // ---- ФАЙЛЫ ----
+        'list_files'         => listFiles($user, $input),
+        'delete_file'        => deleteFile($user, $input),
+
+        // ---- КОММЕНТАРИИ ----
+        'list_comments'      => listComments($user, $input),
+        'add_comment'        => addComment($user, $input),
+
+        // ---- ПРЕПОД / АДМИН ----
+        'teacher_students'   => teacherStudents($user),
+
+        // ---- АДМИН ----
+        'admin_users'        => adminUsers($user),
+        'admin_set_role'     => adminSetRole($user, $input),
+        'admin_block'        => adminBlock($user, $input),
+        'admin_link'         => adminLink($user, $input),
+
+        default              => json_response(['error' => 'Unknown action'], 400),
+    };
+} catch (Throwable $e) {
+    json_response(['error' => $e->getMessage()], 500);
+}
+
+// =====================================================================
+//  ОБЩЕЕ
+// =====================================================================
+function listSubjects(array $user): void {
+    $stmt = db()->prepare('SELECT id, name, color FROM subjects WHERE user_id = ? ORDER BY name');
+    $stmt->execute([$user['id']]);
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+function createSubject(array $user, array $in): void {
+    $name = trim((string)($in['name'] ?? ''));
+    if ($name === '') json_response(['error' => 'Name required'], 422);
+    $color = preg_match('/^#[0-9a-fA-F]{6}$/', $in['color'] ?? '') ? $in['color'] : '#6366f1';
+    $stmt = db()->prepare('INSERT INTO subjects (user_id, name, color) VALUES (?, ?, ?)');
+    $stmt->execute([$user['id'], $name, $color]);
+    json_response(['data' => ['id' => (int)db()->lastInsertId()]]);
+}
+
+function setTheme(array $user, array $in): void {
+    $theme = in_array($in['theme'] ?? '', ['light','dark'], true) ? $in['theme'] : 'light';
+    $stmt = db()->prepare('UPDATE users SET theme = ? WHERE id = ?');
+    $stmt->execute([$theme, $user['id']]);
+    json_response(['data' => ['theme' => $theme]]);
+}
+
+// =====================================================================
+//  СТУДЕНТ
+// =====================================================================
+// Доска студента: все выданные ему задания + его статус/сдача
+function studentBoard(array $user): void {
+    if ($user['role'] !== 'student') json_response(['error' => 'Только для студентов'], 403);
+
+    $stmt = db()->prepare('
+        SELECT
+            s.id              AS submission_id,
+            s.status,
+            s.grade,
+            s.teacher_comment,
+            s.submitted_at,
+            s.graded_at,
+            s.work_text,
+            a.id              AS assignment_id,
+            a.title,
+            a.description,
+            a.deadline_at,
+            a.grade_max,
+            a.allow_resubmit,
+            a.subject_id,
+            u.name            AS teacher_name
+        FROM submissions s
+        JOIN assignments a ON a.id = s.assignment_id
+        JOIN users u       ON u.id = a.teacher_id
+        WHERE s.student_id = ?
+        ORDER BY a.created_at DESC
+    ');
+    $stmt->execute([$user['id']]);
+    $rows = $stmt->fetchAll();
+
+    // Прикрепляем файлы и количество комментов
+    foreach ($rows as &$r) {
+        $r['files'] = filesFor('submission', (int)$r['submission_id']);
+        $r['comments_count'] = countComments((int)$r['submission_id']);
+    }
+    json_response(['data' => $rows]);
+}
+
+// Отправить работу (сдать)
+function submitWork(array $user, array $in): void {
+    if ($user['role'] !== 'student') json_response(['error' => 'Только для студентов'], 403);
+
+    $subId = (int)($in['submission_id'] ?? 0);
+    $text  = trim((string)($in['work_text'] ?? ''));
+    if (!$subId) json_response(['error' => 'submission_id required'], 422);
+
+    $stmt = db()->prepare('SELECT s.*, a.allow_resubmit FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.id = ? AND s.student_id = ?');
+    $stmt->execute([$subId, $user['id']]);
+    $sub = $stmt->fetch();
+    if (!$sub) json_response(['error' => 'Not found'], 404);
+
+    if ($sub['status'] === 'graded' && !$sub['allow_resubmit']) {
+        json_response(['error' => 'Работа уже проверена, повторная сдача запрещена'], 403);
+    }
+
+    $upd = db()->prepare("
+        UPDATE submissions
+        SET work_text = ?, status = 'submitted', submitted_at = NOW(), grade = NULL, teacher_comment = NULL, graded_at = NULL
+        WHERE id = ?
+    ");
+    $upd->execute([$text, $subId]);
+    json_response(['data' => ['id' => $subId, 'status' => 'submitted']]);
+}
+
+// Двигать по колонкам (только между new / in_progress — сдать через submit_work)
+function moveSubmission(array $user, array $in): void {
+    if ($user['role'] !== 'student') json_response(['error' => 'Только для студентов'], 403);
+
+    $subId  = (int)($in['submission_id'] ?? 0);
+    $status = $in['status'] ?? '';
+    if (!in_array($status, ['new','in_progress'], true)) {
+        json_response(['error' => 'Можно двигать только между new/in_progress. Сдача — через "Отправить"'], 422);
+    }
+
+    $stmt = db()->prepare('SELECT id FROM submissions WHERE id = ? AND student_id = ?');
+    $stmt->execute([$subId, $user['id']]);
+    if (!$stmt->fetch()) json_response(['error' => 'Not found'], 404);
+
+    $upd = db()->prepare('UPDATE submissions SET status = ? WHERE id = ?');
+    $upd->execute([$status, $subId]);
+    json_response(['data' => ['id' => $subId, 'status' => $status]]);
+}
+
+// Мои оценки
+function listMyGrades(array $user): void {
+    $stmt = db()->prepare('
+        SELECT s.id, s.grade, s.graded_at, s.teacher_comment, a.title, a.grade_max, u.name AS teacher
+        FROM submissions s
+        JOIN assignments a ON a.id = s.assignment_id
+        JOIN users u ON u.id = a.teacher_id
+        WHERE s.student_id = ? AND s.status = "graded"
+        ORDER BY s.graded_at DESC
+    ');
+    $stmt->execute([$user['id']]);
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+// =====================================================================
+//  ПРЕПОДАВАТЕЛЬ
+// =====================================================================
+function teacherAssignments(array $user): void {
+    require_role('teacher', 'admin');
+
+    if ($user['role'] === 'admin') {
+        $stmt = db()->query('
+            SELECT a.*, u.name AS teacher_name,
+                   (SELECT COUNT(*) FROM assignment_students WHERE assignment_id = a.id) AS students_count,
+                   (SELECT COUNT(*) FROM submissions WHERE assignment_id = a.id AND status = "submitted") AS pending_count
+            FROM assignments a JOIN users u ON u.id = a.teacher_id
+            ORDER BY a.id DESC
+        ');
+    } else {
+        $stmt = db()->prepare('
+            SELECT a.*, u.name AS teacher_name,
+                   (SELECT COUNT(*) FROM assignment_students WHERE assignment_id = a.id) AS students_count,
+                   (SELECT COUNT(*) FROM submissions WHERE assignment_id = a.id AND status = "submitted") AS pending_count
+            FROM assignments a JOIN users u ON u.id = a.teacher_id
+            WHERE a.teacher_id = ?
+            ORDER BY a.id DESC
+        ');
+        $stmt->execute([$user['id']]);
+    }
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+function createAssignment(array $user, array $in): void {
+    require_role('teacher', 'admin');
+
+    $title = trim((string)($in['title'] ?? ''));
+    if ($title === '') json_response(['error' => 'Title required'], 422);
+
+    $gradeMax = max(1, (int)($in['grade_max'] ?? 100));
+    $allow    = !empty($in['allow_resubmit']) ? 1 : 0;
+    $deadline = $in['deadline_at'] ?? null;
+    $subjectId = $in['subject_id'] ?: null;
+
+    $stmt = db()->prepare('
+        INSERT INTO assignments (teacher_id, title, description, subject_id, deadline_at, grade_max, allow_resubmit)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    ');
+    $stmt->execute([
+        $user['id'],
+        $title,
+        $in['description'] ?? null,
+        $subjectId,
+        $deadline ?: null,
+        $gradeMax,
+        $allow,
+    ]);
+    $assignId = (int)db()->lastInsertId();
+
+    // Определяем, кому выдать
+    $targetMode = $in['target_mode'] ?? 'manual'; // manual | group | my_students | all
+    $studentIds = [];
+
+    if ($targetMode === 'manual') {
+        $studentIds = array_map('intval', (array)($in['student_ids'] ?? []));
+    } elseif ($targetMode === 'group') {
+        $group = trim((string)($in['group_name'] ?? ''));
+        if ($group !== '') {
+            $s = db()->prepare("SELECT id FROM users WHERE role = 'student' AND group_name = ?");
+            $s->execute([$group]);
+            $studentIds = array_column($s->fetchAll(), 'id');
+        }
+    } elseif ($targetMode === 'my_students') {
+        $s = db()->prepare('SELECT student_id FROM teacher_students WHERE teacher_id = ?');
+        $s->execute([$user['id']]);
+        $studentIds = array_column($s->fetchAll(), 'student_id');
+    } elseif ($targetMode === 'all') {
+        $s = db()->query("SELECT id FROM users WHERE role = 'student'");
+        $studentIds = array_column($s->fetchAll(), 'id');
+    }
+
+    $studentIds = array_values(array_unique(array_filter($studentIds)));
+
+    if ($studentIds) {
+        $insA = db()->prepare('INSERT IGNORE INTO assignment_students (assignment_id, student_id) VALUES (?, ?)');
+        $insS = db()->prepare('INSERT IGNORE INTO submissions (assignment_id, student_id, status, position) VALUES (?, ?, "new", 0)');
+        foreach ($studentIds as $sid) {
+            $insA->execute([$assignId, $sid]);
+            $insS->execute([$assignId, $sid]);
+        }
+    }
+
+    json_response(['data' => ['id' => $assignId, 'assigned_to' => count($studentIds)]]);
+}
+
+function updateAssignment(array $user, array $in): void {
+    require_role('teacher', 'admin');
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $stmt = db()->prepare('SELECT id FROM assignments WHERE id = ? AND (teacher_id = ? OR ? = "admin")');
+    $stmt->execute([$id, $user['id'], $user['role']]);
+    if (!$stmt->fetch()) json_response(['error' => 'Not found'], 404);
+
+    $title = trim((string)($in['title'] ?? ''));
+    if ($title === '') json_response(['error' => 'Title required'], 422);
+
+    $upd = db()->prepare('
+        UPDATE assignments
+        SET title=?, description=?, subject_id=?, deadline_at=?, grade_max=?, allow_resubmit=?
+        WHERE id=?
+    ');
+    $upd->execute([
+        $title,
+        $in['description'] ?? null,
+        $in['subject_id'] ?: null,
+        $in['deadline_at'] ?: null,
+        max(1, (int)($in['grade_max'] ?? 100)),
+        !empty($in['allow_resubmit']) ? 1 : 0,
+        $id,
+    ]);
+
+    // Дополнительно выдать новым студентам (опционально)
+    $addIds = array_map('intval', (array)($in['add_student_ids'] ?? []));
+    $addIds = array_values(array_unique(array_filter($addIds)));
+    if ($addIds) {
+        $insA = db()->prepare('INSERT IGNORE INTO assignment_students (assignment_id, student_id) VALUES (?, ?)');
+        $insS = db()->prepare('INSERT IGNORE INTO submissions (assignment_id, student_id, status, position) VALUES (?, ?, "new", 0)');
+        foreach ($addIds as $sid) {
+            $insA->execute([$id, $sid]);
+            $insS->execute([$id, $sid]);
+        }
+    }
+
+    json_response(['data' => ['id' => $id]]);
+}
+
+function deleteAssignment(array $user, array $in): void {
+    require_role('teacher', 'admin');
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $stmt = db()->prepare('SELECT id FROM assignments WHERE id = ? AND (teacher_id = ? OR ? = "admin")');
+    $stmt->execute([$id, $user['id'], $user['role']]);
+    if (!$stmt->fetch()) json_response(['error' => 'Not found'], 404);
+
+    db()->prepare('DELETE FROM assignments WHERE id = ?')->execute([$id]);
+    json_response(['data' => ['deleted' => true]]);
+}
+
+function assignmentDetail(array $user, array $in): void {
+    require_role('teacher', 'admin');
+    $id = (int)($in['id'] ?? $_GET['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $stmt = db()->prepare('SELECT * FROM assignments WHERE id = ?');
+    $stmt->execute([$id]);
+    $a = $stmt->fetch();
+    if (!$a) json_response(['error' => 'Not found'], 404);
+
+    if ($user['role'] !== 'admin' && (int)$a['teacher_id'] !== (int)$user['id']) {
+        json_response(['error' => 'Forbidden'], 403);
+    }
+
+    // Список студентов, кому выдано, с их статусами
+    $stmt = db()->prepare('
+        SELECT s.id AS submission_id, s.status, s.grade, s.submitted_at, s.graded_at,
+               u.id AS student_id, u.name, u.email, u.group_name
+        FROM submissions s
+        JOIN users u ON u.id = s.student_id
+        WHERE s.assignment_id = ?
+        ORDER BY u.name
+    ');
+    $stmt->execute([$id]);
+    $students = $stmt->fetchAll();
+
+    foreach ($students as &$st) {
+        $st['files'] = filesFor('submission', (int)$st['submission_id']);
+    }
+
+    $a['teacher_files'] = filesFor('assignment', $id);
+    $a['students'] = $students;
+
+    json_response(['data' => $a]);
+}
+
+// Список сдач (для проверки)
+function listSubmissions(array $user, array $in): void {
+    require_role('teacher', 'admin');
+    $filter = $in['filter'] ?? $_GET['filter'] ?? 'submitted'; // submitted | graded | all
+    $status = match($filter) {
+        'graded' => 'graded',
+        'all'    => null,
+        default  => 'submitted',
+    };
+
+    if ($user['role'] === 'admin') {
+        $sql = 'SELECT s.id, s.status, s.grade, s.submitted_at, s.graded_at, s.work_text,
+                       a.id AS assignment_id, a.title, a.grade_max,
+                       u.name AS student_name, u.email AS student_email, u.group_name
+                FROM submissions s
+                JOIN assignments a ON a.id = s.assignment_id
+                JOIN users u ON u.id = s.student_id';
+        $params = [];
+        if ($status) { $sql .= ' WHERE s.status = ?'; $params[] = $status; }
+        $sql .= ' ORDER BY s.submitted_at DESC, s.id DESC';
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+    } else {
+        $sql = 'SELECT s.id, s.status, s.grade, s.submitted_at, s.graded_at, s.work_text,
+                       a.id AS assignment_id, a.title, a.grade_max,
+                       u.name AS student_name, u.email AS student_email, u.group_name
+                FROM submissions s
+                JOIN assignments a ON a.id = s.assignment_id
+                JOIN users u ON u.id = s.student_id
+                WHERE a.teacher_id = ?';
+        $params = [$user['id']];
+        if ($status) { $sql .= ' AND s.status = ?'; $params[] = $status; }
+        $sql .= ' ORDER BY s.submitted_at DESC, s.id DESC';
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        $r['files'] = filesFor('submission', (int)$r['id']);
+    }
+    json_response(['data' => $rows]);
+}
+
+function submissionDetail(array $user, array $in): void {
+    $id = (int)($in['id'] ?? $_GET['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $stmt = db()->prepare('
+        SELECT s.*, a.title, a.description AS assignment_description, a.grade_max,
+               a.teacher_id, u.name AS student_name, u.email AS student_email, u.group_name
+        FROM submissions s
+        JOIN assignments a ON a.id = s.assignment_id
+        JOIN users u ON u.id = s.student_id
+        WHERE s.id = ?
+    ');
+    $stmt->execute([$id]);
+    $sub = $stmt->fetch();
+    if (!$sub) json_response(['error' => 'Not found'], 404);
+
+    $isOwner   = (int)$sub['student_id'] === (int)$user['id'];
+    $isTeacher = (int)$sub['teacher_id'] === (int)$user['id'] || $user['role'] === 'admin';
+    if (!$isOwner && !$isTeacher) json_response(['error' => 'Forbidden'], 403);
+
+    $sub['files'] = filesFor('submission', $id);
+
+    $stmt = db()->prepare('
+        SELECT c.id, c.body, c.created_at, u.name AS author, u.role
+        FROM comments c JOIN users u ON u.id = c.user_id
+        WHERE c.submission_id = ? ORDER BY c.id ASC
+    ');
+    $stmt->execute([$id]);
+    $sub['comments'] = $stmt->fetchAll();
+
+    json_response(['data' => $sub]);
+}
+
+function gradeSubmission(array $user, array $in): void {
+    require_role('teacher', 'admin');
+    $id     = (int)($in['id'] ?? 0);
+    $grade  = (int)($in['grade'] ?? -1);
+    $comment = trim((string)($in['teacher_comment'] ?? ''));
+    if (!$id || $grade < 0) json_response(['error' => 'id и grade обязательны'], 422);
+
+    $stmt = db()->prepare('
+        SELECT s.id, a.grade_max, a.teacher_id
+        FROM submissions s JOIN assignments a ON a.id = s.assignment_id
+        WHERE s.id = ?
+    ');
+    $stmt->execute([$id]);
+    $row = $stmt->fetch();
+    if (!$row) json_response(['error' => 'Not found'], 404);
+    if ($user['role'] !== 'admin' && (int)$row['teacher_id'] !== (int)$user['id']) {
+        json_response(['error' => 'Forbidden'], 403);
+    }
+    if ($grade > (int)$row['grade_max']) {
+        json_response(['error' => 'Оценка больше максимума (' . $row['grade_max'] . ')'], 422);
+    }
+
+    $upd = db()->prepare("
+        UPDATE submissions
+        SET grade = ?, teacher_comment = ?, status = 'graded', graded_at = NOW()
+        WHERE id = ?
+    ");
+    $upd->execute([$grade, $comment !== '' ? $comment : null, $id]);
+    json_response(['data' => ['id' => $id, 'grade' => $grade]]);
+}
+
+// =====================================================================
+//  ПРЕПОД / АДМИН
+// =====================================================================
+function teacherStudents(array $user): void {
+    require_role('teacher', 'admin');
+    if ($user['role'] === 'admin') {
+        $stmt = db()->query("SELECT id, email, name, group_name FROM users WHERE role = 'student' ORDER BY name");
+    } else {
+        $stmt = db()->prepare("
+            SELECT u.id, u.email, u.name, u.group_name
+            FROM users u JOIN teacher_students ts ON ts.student_id = u.id
+            WHERE ts.teacher_id = ? ORDER BY u.name
+        ");
+        $stmt->execute([$user['id']]);
+    }
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+// =====================================================================
+//  ФАЙЛЫ (обобщённые)
+// =====================================================================
+function filesFor(string $ownerType, int $ownerId): array {
+    $stmt = db()->prepare('SELECT id, filename, mime, size_bytes, created_at FROM attachments WHERE owner_type = ? AND owner_id = ? ORDER BY id DESC');
+    $stmt->execute([$ownerType, $ownerId]);
+    $rows = $stmt->fetchAll();
+    foreach ($rows as &$r) {
+        $r['human'] = human_size((int)$r['size_bytes']);
+        $r['url']   = 'files.php?id=' . $r['id'];
+    }
+    return $rows;
+}
+
+function countComments(int $subId): int {
+    $stmt = db()->prepare('SELECT COUNT(*) FROM comments WHERE submission_id = ?');
+    $stmt->execute([$subId]);
+    return (int)$stmt->fetchColumn();
+}
+
+function listFiles(array $user, array $in): void {
+    $ownerType = $in['owner_type'] ?? $_GET['owner_type'] ?? '';
+    $ownerId   = (int)($in['owner_id'] ?? $_GET['owner_id'] ?? 0);
+    if (!in_array($ownerType, ['assignment','submission'], true) || !$ownerId) {
+        json_response(['error' => 'owner_type/owner_id required'], 422);
+    }
+    if (!canAccessOwner($user, $ownerType, $ownerId)) {
+        json_response(['error' => 'Forbidden'], 403);
+    }
+    json_response(['data' => filesFor($ownerType, $ownerId)]);
+}
+
+function deleteFile(array $user, array $in): void {
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $stmt = db()->prepare('SELECT * FROM attachments WHERE id = ?');
+    $stmt->execute([$id]);
+    $f = $stmt->fetch();
+    if (!$f) json_response(['error' => 'Not found'], 404);
+
+    // Удалять может только тот, кто загрузил, или админ
+    if ((int)$f['user_id'] !== (int)$user['id'] && $user['role'] !== 'admin') {
+        json_response(['error' => 'Forbidden'], 403);
+    }
+
+    $path = UPLOAD_DIR . '/' . $f['storage_path'];
+    if (is_file($path)) @unlink($path);
+    db()->prepare('DELETE FROM attachments WHERE id = ?')->execute([$id]);
+    json_response(['data' => ['deleted' => true]]);
+}
+
+function canAccessOwner(array $user, string $ownerType, int $ownerId): bool {
+    if ($ownerType === 'assignment') {
+        $stmt = db()->prepare('SELECT teacher_id FROM assignments WHERE id = ?');
+        $stmt->execute([$ownerId]);
+        $row = $stmt->fetch();
+        if (!$row) return false;
+        if ($user['role'] === 'admin') return true;
+        if ((int)$row['teacher_id'] === (int)$user['id']) return true;
+        // студент видит методичку только если ему выдано задание
+        $stmt = db()->prepare('SELECT 1 FROM submissions WHERE assignment_id = ? AND student_id = ?');
+        $stmt->execute([$ownerId, $user['id']]);
+        return (bool)$stmt->fetch();
+    }
+    // submission
+    $stmt = db()->prepare('
+        SELECT s.student_id, a.teacher_id
+        FROM submissions s JOIN assignments a ON a.id = s.assignment_id
+        WHERE s.id = ?
+    ');
+    $stmt->execute([$ownerId]);
+    $row = $stmt->fetch();
+    if (!$row) return false;
+    if ($user['role'] === 'admin') return true;
+    return (int)$row['student_id'] === (int)$user['id'] || (int)$row['teacher_id'] === (int)$user['id'];
+}
+
+// =====================================================================
+//  КОММЕНТАРИИ (к submission)
+// =====================================================================
+function listComments(array $user, array $in): void {
+    $subId = (int)($in['submission_id'] ?? $_GET['submission_id'] ?? 0);
+    if (!$subId) json_response(['error' => 'submission_id required'], 422);
+    if (!canAccessOwner($user, 'submission', $subId)) json_response(['error' => 'Forbidden'], 403);
+
+    $stmt = db()->prepare('
+        SELECT c.id, c.body, c.created_at, u.name AS author, u.role
+        FROM comments c JOIN users u ON u.id = c.user_id
+        WHERE c.submission_id = ? ORDER BY c.id ASC
+    ');
+    $stmt->execute([$subId]);
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+function addComment(array $user, array $in): void {
+    $subId = (int)($in['submission_id'] ?? 0);
+    $body  = trim((string)($in['body'] ?? ''));
+    if (!$subId || $body === '') json_response(['error' => 'submission_id и body обязательны'], 422);
+    if (!canAccessOwner($user, 'submission', $subId)) json_response(['error' => 'Forbidden'], 403);
+
+    $stmt = db()->prepare('INSERT INTO comments (submission_id, user_id, body) VALUES (?, ?, ?)');
+    $stmt->execute([$subId, $user['id'], $body]);
+    json_response(['data' => ['id' => (int)db()->lastInsertId()]]);
+}
+
+// =====================================================================
+//  АДМИН
+// =====================================================================
+function adminUsers(array $user): void {
+    require_role('admin');
+    $stmt = db()->query('SELECT id, email, name, role, group_name, blocked, created_at FROM users ORDER BY id DESC');
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+function adminSetRole(array $user, array $in): void {
+    require_role('admin');
+    $id   = (int)($in['id'] ?? 0);
+    $role = $in['role'] ?? '';
+    if (!in_array($role, ['student','teacher','admin'], true)) json_response(['error' => 'Bad role'], 422);
+    if ($id === (int)$user['id'] && $role !== 'admin') json_response(['error' => 'Нельзя снять с себя админа'], 422);
+    db()->prepare('UPDATE users SET role = ? WHERE id = ?')->execute([$role, $id]);
+    json_response(['data' => ['id' => $id, 'role' => $role]]);
+}
+
+function adminBlock(array $user, array $in): void {
+    require_role('admin');
+    $id      = (int)($in['id'] ?? 0);
+    $blocked = (int)($in['blocked'] ?? 0);
+    if ($id === (int)$user['id']) json_response(['error' => 'Нельзя заблокировать себя'], 422);
+    db()->prepare('UPDATE users SET blocked = ? WHERE id = ?')->execute([$blocked ? 1 : 0, $id]);
+    json_response(['data' => ['id' => $id, 'blocked' => $blocked ? 1 : 0]]);
+}
+
+function adminLink(array $user, array $in): void {
+    require_role('admin');
+    $teacherId = (int)($in['teacher_id'] ?? 0);
+    $studentId = (int)($in['student_id'] ?? 0);
+    $action    = $in['action'] ?? 'add';
+    if (!$teacherId || !$studentId) json_response(['error' => 'ids required'], 422);
+
+    if ($action === 'remove') {
+        db()->prepare('DELETE FROM teacher_students WHERE teacher_id = ? AND student_id = ?')->execute([$teacherId, $studentId]);
+        json_response(['data' => ['removed' => true]]);
+    } else {
+        db()->prepare('INSERT IGNORE INTO teacher_students (teacher_id, student_id) VALUES (?, ?)')->execute([$teacherId, $studentId]);
+        json_response(['data' => ['added' => true]]);
+    }
+}
+
+// =====================================================================
+//  ГРУППЫ
+// =====================================================================
+
+// Список всех групп (для админа) или групп препода
+function groupsList(array $user): void {
+    require_role('admin');
+
+    $stmt = db()->query('
+        SELECT g.id, g.name, g.year_start, g.curator_id,
+               c.name AS curator_name,
+               (SELECT COUNT(*) FROM user_groups WHERE group_id = g.id) AS students_cnt,
+               (SELECT COUNT(*) FROM teacher_groups WHERE group_id = g.id) AS teachers_cnt
+        FROM groups g
+        LEFT JOIN users c ON c.id = g.curator_id
+        ORDER BY g.name
+    ');
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+// Создать группу
+function groupsCreate(array $user, array $in): void {
+    require_role('admin');
+    $name = trim((string)($in['name'] ?? ''));
+    if ($name === '') json_response(['error' => 'Название обязательно'], 422);
+
+    $year = (int)($in['year_start'] ?? 0);
+    $curatorId = (int)($in['curator_id'] ?? 0) ?: null;
+
+    try {
+        $stmt = db()->prepare('INSERT INTO groups (name, year_start, curator_id) VALUES (?, ?, ?)');
+        $stmt->execute([$name, $year ?: null, $curatorId]);
+        json_response(['data' => ['id' => (int)db()->lastInsertId()]]);
+    } catch (\PDOException $e) {
+        if ($e->getCode() === '23000') json_response(['error' => 'Группа с таким названием уже есть'], 422);
+        throw $e;
+    }
+}
+
+// Переименовать / сменить куратора
+function groupsUpdate(array $user, array $in): void {
+    require_role('admin');
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+    $name = trim((string)($in['name'] ?? ''));
+    if ($name === '') json_response(['error' => 'Название обязательно'], 422);
+
+    $year = (int)($in['year_start'] ?? 0);
+    $curatorId = (int)($in['curator_id'] ?? 0) ?: null;
+
+    db()->prepare('UPDATE groups SET name = ?, year_start = ?, curator_id = ? WHERE id = ?')
+        ->execute([$name, $year ?: null, $curatorId, $id]);
+    json_response(['data' => ['id' => $id]]);
+}
+
+// Удалить группу
+function groupsDelete(array $user, array $in): void {
+    require_role('admin');
+    $id = (int)($in['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+    db()->prepare('DELETE FROM groups WHERE id = ?')->execute([$id]);
+    json_response(['data' => ['deleted' => true]]);
+}
+
+// Добавить студента в группу
+function groupsAddStudent(array $user, array $in): void {
+    require_role('admin');
+    $groupId   = (int)($in['group_id'] ?? 0);
+    $studentId = (int)($in['student_id'] ?? 0);
+    if (!$groupId || !$studentId) json_response(['error' => 'ids required'], 422);
+
+    // Проверим, что studentId — студент
+    $chk = db()->prepare("SELECT id FROM users WHERE id = ? AND role = 'student'");
+    $chk->execute([$studentId]);
+    if (!$chk->fetch()) json_response(['error' => 'Не студент'], 422);
+
+    db()->prepare('INSERT IGNORE INTO user_groups (user_id, group_id) VALUES (?, ?)')
+        ->execute([$studentId, $groupId]);
+    json_response(['data' => ['added' => true]]);
+}
+
+// Убрать студента из группы
+function groupsRemoveStudent(array $user, array $in): void {
+    require_role('admin');
+    $groupId   = (int)($in['group_id'] ?? 0);
+    $studentId = (int)($in['student_id'] ?? 0);
+    if (!$groupId || !$studentId) json_response(['error' => 'ids required'], 422);
+
+    db()->prepare('DELETE FROM user_groups WHERE user_id = ? AND group_id = ?')
+        ->execute([$studentId, $groupId]);
+    json_response(['data' => ['removed' => true]]);
+}
+
+// Назначить / убрать препода для группы
+function groupsAssignTeacher(array $user, array $in): void {
+    require_role('admin');
+    $groupId   = (int)($in['group_id'] ?? 0);
+    $teacherId = (int)($in['teacher_id'] ?? 0);
+    $action    = $in['action'] ?? 'add'; // add | remove
+    if (!$groupId || !$teacherId) json_response(['error' => 'ids required'], 422);
+
+    if ($action === 'remove') {
+        db()->prepare('DELETE FROM teacher_groups WHERE teacher_id = ? AND group_id = ?')
+            ->execute([$teacherId, $groupId]);
+        json_response(['data' => ['removed' => true]]);
+    } else {
+        db()->prepare('INSERT IGNORE INTO teacher_groups (teacher_id, group_id) VALUES (?, ?)')
+            ->execute([$teacherId, $groupId]);
+        json_response(['data' => ['added' => true]]);
+    }
+}
+
+// Группы текущего препода (для селекта в задании)
+function groupsMy(array $user): void {
+    require_role('teacher', 'admin');
+
+    if ($user['role'] === 'admin') {
+        $stmt = db()->query('
+            SELECT g.id, g.name,
+                   (SELECT COUNT(*) FROM user_groups WHERE group_id = g.id) AS students_cnt
+            FROM groups g ORDER BY g.name
+        ');
+    } else {
+        $stmt = db()->prepare('
+            SELECT g.id, g.name,
+                   (SELECT COUNT(*) FROM user_groups WHERE group_id = g.id) AS students_cnt
+            FROM groups g
+            JOIN teacher_groups tg ON tg.group_id = g.id AND tg.teacher_id = ?
+            ORDER BY g.name
+        ');
+        $stmt->execute([$user['id']]);
+    }
+    json_response(['data' => $stmt->fetchAll()]);
+}
+
+// Детали группы: студенты, преподаватели, куратор
+function groupsDetail(array $user, array $in): void {
+    require_role('admin');
+
+    $id = (int)($in['id'] ?? $_GET['id'] ?? 0);
+    if (!$id) json_response(['error' => 'id required'], 422);
+
+    $g = db()->prepare('SELECT g.*, c.name AS curator_name FROM groups g LEFT JOIN users c ON c.id = g.curator_id WHERE g.id = ?');
+    $g->execute([$id]);
+    $group = $g->fetch();
+    if (!$group) json_response(['error' => 'Not found'], 404);
+
+    $students = db()->prepare('
+        SELECT u.id, u.name, u.email
+        FROM users u JOIN user_groups ug ON ug.user_id = u.id
+        WHERE ug.group_id = ? ORDER BY u.name
+    ');
+    $students->execute([$id]);
+    $group['students'] = $students->fetchAll();
+
+    $teachers = db()->prepare('
+        SELECT u.id, u.name, u.email
+        FROM users u JOIN teacher_groups tg ON tg.teacher_id = u.id
+        WHERE tg.group_id = ? ORDER BY u.name
+    ');
+    $teachers->execute([$id]);
+    $group['teachers'] = $teachers->fetchAll();
+
+    json_response(['data' => $group]);
+}
+
+// Все студенты с их группами (для UI выбора)
+function groupsAllStudents(array $user): void {
+    require_role('admin');
+    $stmt = db()->query('
+        SELECT u.id, u.name, u.email,
+               (SELECT GROUP_CONCAT(g.name SEPARATOR ", ")
+                FROM user_groups ug JOIN groups g ON g.id = ug.group_id
+                WHERE ug.user_id = u.id) AS groups_list
+        FROM users u WHERE u.role = "student" ORDER BY u.name
+    ');
+    json_response(['data' => $stmt->fetchAll()]);
+}

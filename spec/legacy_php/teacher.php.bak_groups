@@ -1,0 +1,455 @@
+<?php
+require __DIR__ . '/config.php';
+$user = require_login();
+if (!in_array($user['role'], ['teacher','admin'], true)) { header('Location: index.php'); exit; }
+$isDark = $user['theme'] === 'dark';
+
+// Считаем сдачи, ожидающие проверки
+if ($user['role'] === 'admin') {
+    $pendingCount = (int) db()->query("SELECT COUNT(*) FROM submissions WHERE status = 'submitted'")->fetchColumn();
+} else {
+    $stmt = db()->prepare("SELECT COUNT(*) FROM submissions s JOIN assignments a ON a.id = s.assignment_id WHERE s.status = 'submitted' AND a.teacher_id = ?");
+    $stmt->execute([$user['id']]);
+    $pendingCount = (int) $stmt->fetchColumn();
+}
+
+// Список предметов препода для селекта
+$stmt = db()->prepare('SELECT id, name, color FROM subjects WHERE user_id = ? ORDER BY name');
+$stmt->execute([$user['id']]);
+$teacherSubjects = $stmt->fetchAll();
+?>
+
+<html lang="ru" class="<?= $isDark ? 'dark' : '' ?>">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Кабинет преподавателя</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="min-h-screen bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-slate-100">
+<?= impersonate_banner() ?>
+
+<header class="bg-white dark:bg-slate-800 shadow-sm border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-3">
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-bold text-amber-500">👨‍🏫 Кабинет преподавателя</h1>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Преподаватель</span>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="calendar.php" class="text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">📅 Календарь</a>
+            <a href="teacher_stats.php" class="text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">📊 Статистика</a>
+            <a href="students.php" class="text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">🎓 Студенты</a>
+            <?php if ($user['role'] === 'admin'): ?>
+                <a href="admin.php" class="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white">👑 Админка</a>
+            <?php endif; ?>
+            <button onclick="toggleTheme()" class="text-sm px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">🌓</button>
+            <span class="text-sm text-slate-500"><?= e($user['name']) ?></span>
+            <a href="logout.php" class="text-sm px-3 py-1.5 rounded-lg bg-red-500 text-white">Выйти</a>
+        </div>
+    </div>
+</header>
+
+<!-- Вкладки -->
+<div class="max-w-7xl mx-auto px-4 pt-4">
+    <div class="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
+        <button onclick="setTab('assignments')" id="tab-assignments" class="px-4 py-2 rounded-md font-medium text-sm bg-white dark:bg-slate-900 shadow">📋 Мои задания</button>
+        <button onclick="setTab('submissions')" id="tab-submissions" class="px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2">📥 На проверку <?php if ($pendingCount > 0): ?><span class="text-xs bg-red-500 text-white rounded-full px-2 py-0.5"><?= $pendingCount ?></span><?php endif; ?></button>
+    </div>
+</div>
+
+<main class="max-w-7xl mx-auto px-4 py-4">
+
+    <!-- Вкладка: Мои задания -->
+    <section id="pane-assignments">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Созданные задания</h2>
+            <button onclick="openCreateModal()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium shadow">+ Создать задание</button>
+        </div>
+        <div id="assignmentsList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+    </section>
+
+    <!-- Вкладка: На проверку -->
+    <section id="pane-submissions" class="hidden">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-lg font-semibold">Сдачи студентов</h2>
+            <div class="flex gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                <button onclick="loadSubmissions('submitted')" id="f-submitted" class="px-3 py-1 rounded-md text-sm bg-white dark:bg-slate-900 shadow">На проверку</button>
+                <button onclick="loadSubmissions('graded')"    id="f-graded" class="px-3 py-1 rounded-md text-sm">Проверенные</button>
+                <button onclick="loadSubmissions('all')"       id="f-all" class="px-3 py-1 rounded-md text-sm">Все</button>
+            </div>
+        </div>
+        <div id="submissionsList" class="space-y-3"></div>
+    </section>
+</main>
+
+<!-- Модалка создания задания -->
+<div id="createModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-2xl shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+        <div class="flex items-start justify-between">
+            <h2 class="text-xl font-bold">Новое задание</h2>
+            <button onclick="closeCreateModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+        </div>
+
+        <form id="createForm" onsubmit="createAssignment(event)" class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium mb-1">Название *</label>
+                <input type="text" name="title" required class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+            </div>
+            <div>
+                <label class="block text-sm font-medium mb-1">Описание задания</label>
+                <textarea name="description" rows="5" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Дедлайн</label>
+                    <input type="date" name="deadline_at" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Макс. балл</label>
+                    <input type="number" name="grade_max" value="100" min="1" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Предмет</label>
+                    <select name="subject_id" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+                        <option value="">— без предмета —</option>
+                        <?php foreach ($teacherSubjects as $subj): ?>
+                            <option value="<?= $subj['id'] ?>"><?= e($subj['name']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+            </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="allow_resubmit" checked>
+                    Разрешить пересдачу после проверки
+                </label>
+            </div>
+
+            <!-- Кому выдать -->
+            <div class="border-t border-slate-200 dark:border-slate-700 pt-4">
+                <label class="block text-sm font-medium mb-2">Кому выдать</label>
+                <div class="space-y-2">
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="target_mode" value="all" onchange="onTargetChange()">
+                        Всем студентам
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="target_mode" value="group" onchange="onTargetChange()">
+                        По группе
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="target_mode" value="my_students" onchange="onTargetChange()">
+                        Моим студентам (привязанным)
+                    </label>
+                    <label class="flex items-center gap-2 text-sm">
+                        <input type="radio" name="target_mode" value="manual" checked onchange="onTargetChange()">
+                        Выбрать вручную
+                    </label>
+                </div>
+
+                <div id="groupInput" class="hidden mt-2">
+                    <input type="text" name="group_name" placeholder="Название группы (например, ИС-21)"
+                           class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+                </div>
+
+                <div id="studentsChecklist" class="hidden mt-2 max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-lg p-2">
+                    <div class="text-xs text-slate-500 mb-1">Студенты:</div>
+                    <div id="studentsChecklistInner"></div>
+                </div>
+            </div>
+
+            <div class="flex gap-2 pt-2">
+                <button type="submit" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium">Создать</button>
+                <button type="button" onclick="closeCreateModal()" class="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg">Отмена</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Модалка сдачи -->
+<div id="subModal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl w-full max-w-3xl shadow-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+        <div class="flex items-start justify-between">
+            <div>
+                <h2 id="subTitle" class="text-xl font-bold"></h2>
+                <div id="subStudent" class="text-sm text-slate-500"></div>
+            </div>
+            <button onclick="closeSubModal()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+        </div>
+
+        <div>
+            <h3 class="font-semibold text-sm mb-1">Работа студента</h3>
+            <div id="subText" class="text-sm bg-slate-100 dark:bg-slate-900 rounded-lg p-3 whitespace-pre-wrap break-words"></div>
+        </div>
+
+        <div>
+            <h3 class="font-semibold text-sm mb-1">📎 Файлы студента</h3>
+            <div id="subFiles" class="space-y-1 text-sm"></div>
+        </div>
+
+        <div>
+            <h3 class="font-semibold text-sm mb-2">💬 Обсуждение</h3>
+            <div id="subComments" class="space-y-2 mb-3 text-sm"></div>
+            <div class="flex gap-2">
+                <input type="text" id="subCommentInput" placeholder="Написать..."
+                       class="flex-1 px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none text-sm">
+                <button type="button" onclick="sendSubComment()" class="px-4 py-2 bg-slate-200 dark:bg-slate-700 rounded-lg text-sm">Отправить</button>
+            </div>
+        </div>
+
+        <div id="gradeForm" class="border-t border-slate-200 dark:border-slate-700 pt-4 space-y-3">
+            <h3 class="font-semibold text-sm">Оценка</h3>
+            <div class="grid grid-cols-3 gap-3">
+                <div>
+                    <label class="block text-xs mb-1">Балл</label>
+                    <input type="number" id="gradeVal" min="0" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none">
+                </div>
+                <div class="col-span-2 self-end text-sm text-slate-500">из <span id="gradeMax">100</span></div>
+            </div>
+            <div>
+                <label class="block text-xs mb-1">Комментарий</label>
+                <textarea id="gradeComment" rows="3" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 outline-none"></textarea>
+            </div>
+            <button onclick="saveGrade()" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-medium">💾 Сохранить оценку</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let STUDENTS = [];
+let ASSIGNMENTS = [];
+let SUBMISSIONS = [];
+let CURRENT_SUB = null;
+let TAB = 'assignments';
+
+function setTab(name) {
+    TAB = name;
+    document.getElementById('pane-assignments').classList.toggle('hidden', name !== 'assignments');
+    document.getElementById('pane-submissions').classList.toggle('hidden', name !== 'submissions');
+    document.getElementById('tab-assignments').classList.toggle('bg-white', name === 'assignments');
+    document.getElementById('tab-assignments').classList.toggle('dark:bg-slate-900', name === 'assignments');
+    document.getElementById('tab-assignments').classList.toggle('shadow', name === 'assignments');
+    document.getElementById('tab-submissions').classList.toggle('bg-white', name === 'submissions');
+    document.getElementById('tab-submissions').classList.toggle('dark:bg-slate-900', name === 'submissions');
+    document.getElementById('tab-submissions').classList.toggle('shadow', name === 'submissions');
+    if (name === 'submissions') loadSubmissions('submitted');
+}
+
+async function loadStudents() {
+    const res = await fetch('api.php?action=teacher_students');
+    const json = await res.json();
+    STUDENTS = json.data || [];
+}
+
+async function loadAssignments() {
+    const res = await fetch('api.php?action=teacher_assignments');
+    const json = await res.json();
+    ASSIGNMENTS = json.data || [];
+    renderAssignments();
+}
+
+function renderAssignments() {
+    const el = document.getElementById('assignmentsList');
+    if (!ASSIGNMENTS.length) { el.innerHTML = '<p class="text-slate-500">Заданий пока нет</p>'; return; }
+    el.innerHTML = ASSIGNMENTS.map(a => `
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700">
+            <div class="font-semibold mb-1">${escapeHtml(a.title)}</div>
+            <div class="text-sm text-slate-500 mb-2">${a.deadline_at ? 'до ' + a.deadline_at : 'без дедлайна'}</div>
+            <div class="flex justify-between text-xs text-slate-500">
+                <span>👥 ${a.students_count}</span>
+                <span class="${a.pending_count > 0 ? 'text-amber-600 font-semibold' : ''}">📥 на проверке: ${a.pending_count}</span>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function loadSubmissions(filter) {
+    ['submitted','graded','all'].forEach(f => {
+        const el = document.getElementById('f-' + f);
+        if (!el) return;
+        el.classList.toggle('bg-white', f === filter);
+        el.classList.toggle('dark:bg-slate-900', f === filter);
+        el.classList.toggle('shadow', f === filter);
+    });
+    const res = await fetch('api.php?action=list_submissions&filter=' + filter);
+    const json = await res.json();
+    SUBMISSIONS = json.data || [];
+    renderSubmissions();
+}
+
+function renderSubmissions() {
+    const el = document.getElementById('submissionsList');
+    if (!SUBMISSIONS.length) { el.innerHTML = '<p class="text-slate-500">Сдач нет</p>'; return; }
+    el.innerHTML = SUBMISSIONS.map(s => `
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-200 dark:border-slate-700 flex justify-between items-center gap-4 cursor-pointer hover:shadow-md"
+             onclick="openSubModal(${s.id})">
+            <div>
+                <div class="font-semibold">${escapeHtml(s.title)}</div>
+                <div class="text-sm text-slate-500">${escapeHtml(s.student_name)} ${s.group_name ? '· ' + escapeHtml(s.group_name) : ''}</div>
+                ${s.submitted_at ? `<div class="text-xs text-slate-400">Сдано: ${s.submitted_at}</div>` : ''}
+            </div>
+            <div class="text-right">
+                ${s.status === 'graded' ? `<div class="text-emerald-600 font-bold">${s.grade} / ${s.grade_max}</div>` : `<div class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">На проверке</div>`}
+            </div>
+        </div>
+    `).join('');
+}
+
+// ---- Создание задания ----
+function openCreateModal() {
+    document.getElementById('createModal').classList.remove('hidden');
+    renderStudentsChecklist();
+    onTargetChange();
+}
+
+function closeCreateModal() {
+    document.getElementById('createModal').classList.add('hidden');
+    document.getElementById('createForm').reset();
+}
+
+function onTargetChange() {
+    const mode = document.querySelector('input[name="target_mode"]:checked').value;
+    document.getElementById('groupInput').classList.toggle('hidden', mode !== 'group');
+    document.getElementById('studentsChecklist').classList.toggle('hidden', mode !== 'manual');
+}
+
+function renderStudentsChecklist() {
+    const inner = document.getElementById('studentsChecklistInner');
+    if (!STUDENTS.length) { inner.innerHTML = '<p class="text-xs text-slate-500">Нет студентов</p>'; return; }
+    inner.innerHTML = STUDENTS.map(s => `
+        <label class="flex items-center gap-2 py-0.5 text-sm">
+            <input type="checkbox" class="student-checkbox" value="${s.id}">
+            ${escapeHtml(s.name)} <span class="text-xs text-slate-400">${escapeHtml(s.group_name || '')}</span>
+        </label>
+    `).join('');
+}
+
+async function createAssignment(e) {
+    e.preventDefault();
+    const form = e.target;
+    const fd = new FormData(form);
+    const targetMode = fd.get('target_mode');
+
+    const payload = {
+        title: fd.get('title'),
+        description: fd.get('description'),
+        subject_id: fd.get('subject_id') || null,
+        deadline_at: fd.get('deadline_at') || null,
+        grade_max: parseInt(fd.get('grade_max')) || 100,
+        allow_resubmit: form.querySelector('[name="allow_resubmit"]').checked ? 1 : 0,
+        target_mode: targetMode,
+    };
+    if (targetMode === 'group') payload.group_name = fd.get('group_name');
+    if (targetMode === 'manual') {
+        payload.student_ids = Array.from(document.querySelectorAll('.student-checkbox:checked')).map(c => parseInt(c.value));
+    }
+
+    const res = await fetch('api.php?action=create_assignment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    });
+    if (res.ok) { closeCreateModal(); await loadAssignments(); }
+    else { const j = await res.json(); alert(j.error || 'Ошибка'); }
+}
+
+// ---- Просмотр сдачи ----
+async function openSubModal(subId) {
+    const res = await fetch('api.php?action=submission_detail&id=' + subId);
+    const json = await res.json();
+    if (!res.ok) { alert(json.error || 'Ошибка'); return; }
+    CURRENT_SUB = json.data;
+
+    document.getElementById('subTitle').textContent = CURRENT_SUB.title;
+    document.getElementById('subStudent').textContent = '👤 ' + CURRENT_SUB.student_name + (CURRENT_SUB.group_name ? ' · ' + CURRENT_SUB.group_name : '');
+    document.getElementById('subText').textContent = CURRENT_SUB.work_text || '(без текста)';
+
+    const files = CURRENT_SUB.files || [];
+    document.getElementById('subFiles').innerHTML = files.length
+        ? files.map(f => `<a href="${f.url}" target="_blank" class="block text-indigo-600 dark:text-indigo-400 hover:underline">📄 ${escapeHtml(f.filename)} <span class="text-xs text-slate-400">(${f.human})</span></a>`).join('')
+        : '<span class="text-xs text-slate-400">Нет файлов</span>';
+
+    renderSubComments(CURRENT_SUB.comments || []);
+
+    document.getElementById('gradeVal').value = CURRENT_SUB.grade ?? '';
+    document.getElementById('gradeMax').textContent = CURRENT_SUB.grade_max;
+    document.getElementById('gradeComment').value = CURRENT_SUB.teacher_comment || '';
+
+    document.getElementById('subModal').classList.remove('hidden');
+}
+
+function closeSubModal() {
+    document.getElementById('subModal').classList.add('hidden');
+    CURRENT_SUB = null;
+}
+
+function renderSubComments(rows) {
+    const el = document.getElementById('subComments');
+    if (!rows.length) { el.innerHTML = '<div class="text-xs text-slate-400">Нет комментариев</div>'; return; }
+    el.innerHTML = rows.map(c => `
+        <div class="bg-slate-100 dark:bg-slate-900 rounded-lg p-2">
+            <div class="flex justify-between text-xs text-slate-500 mb-1">
+                <span class="font-medium">${escapeHtml(c.author)}</span>
+                <span>${c.created_at}</span>
+            </div>
+            <div class="text-sm break-words">${escapeHtml(c.body)}</div>
+        </div>
+    `).join('');
+}
+
+async function sendSubComment() {
+    if (!CURRENT_SUB) return;
+    const input = document.getElementById('subCommentInput');
+    const body = input.value.trim();
+    if (!body) return;
+    const res = await fetch('api.php?action=add_comment', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission_id: CURRENT_SUB.id, body })
+    });
+    if (res.ok) {
+        input.value = '';
+        const refresh = await fetch('api.php?action=submission_detail&id=' + CURRENT_SUB.id).then(r => r.json());
+        CURRENT_SUB = refresh.data;
+        renderSubComments(CURRENT_SUB.comments || []);
+    }
+}
+
+async function saveGrade() {
+    if (!CURRENT_SUB) return;
+    const grade = parseInt(document.getElementById('gradeVal').value);
+    const comment = document.getElementById('gradeComment').value;
+    if (isNaN(grade) || grade < 0) { alert('Введи балл'); return; }
+    const res = await fetch('api.php?action=grade_submission', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: CURRENT_SUB.id, grade, teacher_comment: comment })
+    });
+    if (res.ok) { closeSubModal(); loadSubmissions('graded'); loadAssignments(); }
+    else { const j = await res.json(); alert(j.error || 'Ошибка'); }
+}
+
+// ---- Тема ----
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.classList.toggle('dark');
+    localStorage.setItem('theme', isDark ? 'dark' : 'light');
+    fetch('api.php?action=set_theme', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: isDark ? 'dark' : 'light' })
+    });
+}
+
+function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s == null ? '' : String(s);
+    return div.innerHTML;
+}
+
+document.getElementById('subCommentInput').addEventListener('keydown', e => { if (e.key === 'Enter') sendSubComment(); });
+
+(async () => {
+    await loadStudents();
+    await loadAssignments();
+})();
+</script>
+</body>
+</html>
