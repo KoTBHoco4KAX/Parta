@@ -6,6 +6,7 @@ import (
 
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/teamslot"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -87,6 +88,18 @@ func (s *Server) handleCarryOver(w http.ResponseWriter, r *http.Request) {
 	if updated.AssignedUserID != nil {
 		assigned = *updated.AssignedUserID
 	}
+
+	s.publishCardEvent(r.Context(), events.New(
+		events.TypeTeamSlotStateChanged,
+		user.ID,
+		events.RoomGroup(*user.GroupID),
+		teamSlotStateChangedPayload{
+			TeamSlotID:     updated.ID,
+			TaskID:         updated.TaskID,
+			Status:         updated.Status,
+			AssignedUserID: assigned,
+		},
+	), updated.TaskID)
 
 	writeJSON(w, http.StatusOK, carryOverResponse{
 		TeamSlotID:     updated.ID,

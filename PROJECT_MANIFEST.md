@@ -4,8 +4,8 @@
 > [`spec/`](spec/), разработчик (человек или ИИ) должен понять, ЧТО уже сделано, ГДЕ это лежит,
 > КАК запускается и ЧТО делать следующим шагом. Детали поведения — только в `spec/`.
 
-**Статус:** Фазы 1–5.1 завершены и зелёные. WebSocket (5.2), Frontend (6) и интеграционные тесты (7) — впереди.
-**Последнее обновление:** после завершения Фазы 5.1 (REST API).
+**Статус:** Фазы 1–5.2 и каркас Фазы 6 завершены; интеграционные тесты (7) — впереди.
+**Последнее обновление:** после завершения Фазы 5.2 (WebSocket) и каркаса Фазы 6 (frontend).
 
 ---
 
@@ -49,8 +49,8 @@
 | БД | SQLite, `modernc.org/sqlite`, режим STRICT, WAL | **без CGO** |
 | HTTP | `net/http` + `ServeMux` с method-паттернами (Go 1.22+) | Gin/Echo/Fiber — запрещены |
 | JWT | собственная HS256-реализация на `crypto/hmac`+`sha256` | внешних JWT-библиотек нет |
-| Реалтайм | WebSocket (`nhooyr.io/websocket`) | **ещё не реализовано** |
-| Фронт | Vite 5 + React 18 + TypeScript 5 + Tailwind 3 | каркас создан, приложение — заглушка |
+| Реалтайм | WebSocket (`nhooyr.io/websocket` v1.8.17) | комнаты, 8 событий, публикация после Commit |
+| Фронт | Vite 5 + React 18 + TypeScript 5 + Tailwind 3 | каркас: api/ws/auth, роутинг, экраны-заготовки |
 | Репо | монорепо: `backend/`, `frontend/`, `spec/` | |
 
 ---
@@ -64,9 +64,9 @@
 | **3** | Домен: 8 пакетов (FSM, guards, математика XP, стрик, пари, peer-review, слоты, ошибки) | ✅ завершена | **100% покрытия** (8/8 пакетов) |
 | **4** | Storage: 8 репозиториев + `migrate`, `scan`, `keys`, `errors`, `json` | ✅ завершена | **62 теста, 81.4%** |
 | **5.1** | HTTP REST API: 11 эндпоинтов, JWT, dev-login, RBAC, маппинг ошибок | ✅ завершена | **79 тестов, 79.8%** (`-coverpkg`) |
-| **5.2** | WebSocket: комнаты, конверт событий, публикация из хендлеров | ⏳ ожидается | — |
-| **6** | Frontend: свитчер ролей, канбан, инбокс препода, WS-клиент | ⏳ ожидается | — |
-| **7** | Интеграционные тесты (REST+WS+БД), polish, наблюдаемость | ⏳ ожидается | — |
+| **5.2** | WebSocket: комнаты, конверт событий, публикация из хендлеров | ✅ завершена | `go test ./internal/ws/...` |
+| **6** | Frontend: свитчер ролей, роутинг, API/WS-клиент, базовые UI | ✅ каркас | `npm run build` |
+| **7** | Интеграционные тесты (REST+WS+БД), read-эндпоинты, polish | ⏳ ожидается | — |
 
 ### 2.1. Что именно готово в каждой фазе
 
@@ -111,9 +111,37 @@
 единый JSON-формат ошибок; read-only токен peer-review (15 мин, `scope=peer_review:read`);
 `withTx`-хелпер; логирование и recovery middleware. Полный список — в [§6.2](#62-rest-api).
 
-**Фаза 6 — фронтенд:** создан только каркас Vite (`frontend/src/App.tsx` — заглушка,
-Tailwind настроен, `npm install` выполнен). Никаких экранов, роутинга, API-клиента и WS ещё нет.
-`vite.config.ts` пока **без** proxy на `/api` и `/ws` — это первый шаг Фазы 6.
+**Фаза 5.2 — WebSocket** ([`backend/internal/ws/`](backend/internal/ws/),
+[`backend/internal/events/`](backend/internal/events/))
+
+- `events` — конверт `{event_id,event_type,timestamp,actor_id,room,payload}`, UUID v4 без
+  внешних зависимостей, имена комнат `user/group/teacher/task`, интерфейс `Publisher`
+  и `NoopPublisher` (REST-тесты идут без хаба).
+- `auth` — `TokenService`/`Claims` вынесены из `internal/http`, чтобы `http` и `ws` не
+  образовывали цикл; в `http` остались псевдонимы (`NewTokenService`, `Claims`, `TokenService`).
+- `ws.Hub` — мьютекс + `map[room]map[*conn]struct{}`, неблокирующая публикация (медленный
+  клиент закрывается), `Connections()`, `Close()` для graceful shutdown.
+- `ws.Server` — `GET /ws?token=<jwt>`; без/битый токен → 401 JSON; базовые комнаты
+  `user:{id}`, `group:{id}` (студент), `teacher:{id}` (преподаватель/админ); команды
+  `{"action":"subscribe|unsubscribe","rooms":[...]}` с проверкой прав (чужие `user/teacher/group`,
+  `task` другой группы отклоняются); ping 30 c, write-deadline 10 c, read-limit 32 KiB.
+- Публикация — строго после `tx.Commit()` в хендлерах. Отправляются все 8 событий:
+  `submission.card.moved` (в `group` + `task`), `review.inbox.created` (в `teacher`),
+  `submission.verdict.issued`, `xp.ledger.posted`, `streak.updated`, `wager.resolved`,
+  `peer_review.state_changed`, `team_slot.state_changed`.
+
+**Фаза 6 — фронтенд** ([`frontend/src/`](frontend/src/))
+
+- `core/api.ts` — fetch-обёртка с Bearer, разбор `{error,code}`, типизированные вызовы
+  всех 11 мутаций; `core/types.ts` — DTO.
+- `core/ws.ts` — один сокет на сессию, экспоненциальный backoff с джиттером, повторная
+  подписка после реконнекта, дедупликация по `event_id`, статус online/offline.
+- `core/auth.ts` — dev-свитчер ролей (`admin/teacher/student@parta.dev`), токен в
+  `localStorage`, обновление XP/стрика по WS-событиям.
+- `App.tsx` — hash-роутинг (`/`, `/board`, `/inbox`, `/economy`), мобильный layout,
+  нижняя навигация; экраны `Login/Dashboard/Board/Inbox/Economy` — каркас под read-API.
+- `components/Button.tsx`, `components/Modal.tsx` — базовые UI-компоненты.
+- `vite.config.ts` — proxy `/api` и `/ws` на `localhost:8080` (ws: true).
 
 ---
 
@@ -137,8 +165,8 @@ Tailwind настроен, `npm install` выполнен). Никаких эк�
    `speedrun_window_hours`, `team_size`; `base_xp_computed` считает сервер.
 3. **FSM дублируется намеренно:** домен (`domain/*`) + триггеры SQLite. Не «оптимизируйте»,
    убирая один из слоёв.
-4. **Новые внешние зависимости — только с согласования.** Сейчас в `go.mod` одна прямая
-   зависимость (`modernc.org/sqlite`); для WS потребуется `nhooyr.io/websocket`.
+4. **Новые внешние зависимости — только с согласования.** В `go.mod` две прямые
+   зависимости: `modernc.org/sqlite` и `nhooyr.io/websocket` (реалтайм, согласована манифестом).
 
 ### 3.2. ЛОВУШКА SQLITE: одно соединение и дедлок в транзакции ⚠️
 
@@ -304,7 +332,8 @@ go test ./...                               # все пакеты ok
 go test ./internal/domain/...  -cover        # 100% в каждом из 8 пакетов
 go test ./internal/storage/... -cover        # 62 теста, ~81%
 go test ./internal/http/... -v -cover \
-  -coverpkg=github.com/parta/backend/internal/http   # 79 тестов, ~80%
+  -coverpkg=github.com/parta/backend/internal/http   # REST-тесты, ~80%
+go test ./internal/ws/... ./internal/events/...     # WS-комнаты, права, доставка
 ```
 
 ⚠️ `-coverpkg` обязателен для `internal/http`: тесты лежат в отдельном пакете
@@ -315,19 +344,20 @@ go test ./internal/http/... -v -cover \
 
 ```bash
 cd frontend
-npm install     # уже выполнялся
-npm run dev     # http://localhost:5173
-npm run build   # tsc && vite build
+pnpm install     # или npm install; node_modules в .gitignore
+npm run dev      # http://localhost:5173, /api и /ws проксируются на :8080
+npm run build    # tsc && vite build
 ```
 
-Сейчас это заглушка `App.tsx`. Перед первым реальным экраном добавьте в `vite.config.ts`
-proxy: `/api` → `http://localhost:8080`, `/ws` → `ws://localhost:8080` (иначе CORS/ручное
-указание хоста в каждом запросе).
+Сейчас это рабочий каркас: свитчер ролей, профиль с XP/стриком, живая WS-лента,
+канбан-колонки, форма вердикта и покупка заморозок. Списки заданий/карточек/инбокса
+появятся после read-эндпоинтов Фазы 7 — до этого экраны показывают пустые состояния.
+Прокси `/api` и `/ws` уже настроен в `vite.config.ts`.
 
 ### 4.6. Особенности текущего окружения
 
-- В каталоге репозитория **пока нет `.git`** — истории коммитов нет; правки видны только по файлам.
-- Игнор-лист живёт в [`backend/.gitignore`](backend/.gitignore): `bin/`, `*.db*`, `.env`,
+- Репозиторий инициализирован; рабочая ветка Core — `feat/core-ws`. Игнор-лист живёт
+  в корневом [`.gitignore`](.gitignore) и [`backend/.gitignore`](backend/.gitignore): `bin/`, `*.db*`, `.env`,
   локальные Go-кэши (`.gocache/`, `.gomodcache/`, `.gopath/`, `.gotmp/`), `cover.out`, логи тестов.
 - Если сборка падает с `Access is denied` на `%USERPROFILE%\go-build` или `…\go\pkg\mod`
   (типично для песочницы/ограниченного профиля), задайте кэши внутри репозитория:
@@ -339,7 +369,11 @@ proxy: `/api` → `http://localhost:8080`, `/ws` → `ws://localhost:8080` (ин
 
 ## 5. Что делать дальше
 
-### Шаг 1 (Фаза 5.2). WebSocket-слой
+> **Статус:** шаги 1 (WebSocket) и 2 (каркас фронтенда) выполнены в ветке `feat/core-ws`.
+> Ниже сохранены их контракты как справка. Актуальный следующий шаг — шаг 3 (Фаза 7):
+> read-эндпоинты, сквозные тесты REST+WS+БД, expire-джоба, polish.
+
+### Шаг 1 (Фаза 5.2). WebSocket-слой — ✅ выполнено
 
 **Зависимость:** `go get nhooyr.io/websocket` (сейчас в `go.mod` её нет; это единственная
 планируемая новая зависимость, согласована манифестом).
@@ -405,7 +439,7 @@ proxy: `/api` → `http://localhost:8080`, `/ws` → `ws://localhost:8080` (ин
 **Чего делать нельзя:** отправлять события до коммита, делать WS источником истины,
 дублировать бизнес-логику вердикта в WS-хендлере, добавлять второй JWT-парсер.
 
-### Шаг 2 (Фаза 6). Frontend
+### Шаг 2 (Фаза 6). Frontend — ✅ каркас готов
 
 Каркас уже есть: `frontend/` (Vite + React 18 + TS + Tailwind, заглушка `App.tsx`).
 Порядок работ:
@@ -449,16 +483,25 @@ Parta/
 ├── PROJECT_MANIFEST.md          ← этот файл
 ├── spec/                        ← источник истины (5 файлов)
 ├── backend/
-│   ├── go.mod                   (go 1.22; modernc.org/sqlite)
+│   ├── go.mod                   (go 1.22; modernc.org/sqlite, nhooyr.io/websocket)
 │   ├── Makefile                 (build/run/test/migrate/clean-db)
-│   ├── cmd/server/main.go       (boot: config → Open → Migrate → HTTP + graceful shutdown)
+│   ├── cmd/server/main.go       (config → Open → Migrate → REST + WS + graceful shutdown)
 │   └── internal/
 │       ├── config/              (PARTA_* + JWTIssuer/JWTTTL)
+│       ├── auth/                (TokenService/Claims HS256 — общий для http и ws)
+│       ├── events/              (конверт, UUID, комнаты, Publisher)
 │       ├── migrations/          (embed + 001_init.sql, 002_seed_dev.sql)
 │       ├── domain/              (economy, errors, peerreview, streak, submission, teamslot, wager, xp)
 │       ├── storage/             (db, migrate, errors, scan, keys, json + 8 репозиториев + тесты)
-│       └── http/                (router, middleware, respond, auth + handlers + tests/)
-└── frontend/                    (Vite + React + TS + Tailwind; App.tsx — заглушка)
+│       ├── ws/                  (Hub, Server, client + ws_test.go)
+│       └── http/                (router, middleware, respond, auth, events + handlers + tests/)
+└── frontend/
+    ├── vite.config.ts           (proxy /api и /ws)
+    └── src/
+        ├── App.tsx              (hash-роутинг, мобильный shell)
+        ├── core/                (api.ts, ws.ts, auth.ts, types.ts)
+        ├── components/          (Button.tsx, Modal.tsx)
+        └── pages/               (Login, Dashboard, Board, Inbox, Economy)
 ```
 
 ### 6.2. REST API
@@ -492,6 +535,33 @@ Parta/
 События канбана (`PATCH .../status`): `START` (TODO→IN_PROGRESS), `SUBMIT` (IN_PROGRESS→REVIEW,
 нужны `artifact_url` + `artifact_hash`), `REOPEN` (REJECTED→IN_PROGRESS).
 Вердикты: `ACCEPT` (REVIEW→DONE) и `REJECT` (REVIEW→REJECTED, `comment` обязателен).
+
+### 6.2.1. WebSocket
+
+`GET /ws?token=<jwt>` (в браузере заголовки недоступны, поэтому токен в query).
+Ответы рукопожатия в общем формате ошибок: нет/битый/просроченный токен → **401**
+`{"error":"…","code":"unauthorized"}`.
+
+После подключения сервер присылает служебный кадр
+`{"type":"ready","rooms":["user:5","group:1"]}` и сразу подписывает на базовые комнаты:
+`user:{id}`; студенту — `group:{id}`; преподавателю/админу — `teacher:{id}`.
+Дополнительные подписки:
+
+```json
+{"action":"subscribe","rooms":["task:12"]}
+{"action":"unsubscribe","rooms":["task:12"]}
+```
+
+На каждую команду приходит `{"type":"ack","rooms":[...]}`; запрещённая комната даёт
+`{"type":"error","error":"forbidden room: …"}` и не подписывает. Права: только своя
+`user:*` и `teacher:*`; `group:*` — своя группа; `task:*` — задание своей группы
+(студент) или своё назначение (преподаватель); `admin` — любые комнаты.
+
+События — конверт из `spec/00_ARCHITECTURE.md` §V, поля не менялись. `submission.card.moved`,
+`submission.verdict.issued` и `team_slot.state_changed` уходят в комнату группы **и** в
+`task:{id}` с одинаковым `event_id`; `review.inbox.created` — в `teacher:{id}`;
+XP/стрик/пари — в `user:{id}`. Доставка at-least-once, дедупликация — на клиенте
+(`frontend/src/core/ws.ts`).
 
 ### 6.3. Домен: шпаргалка по вызовам
 
@@ -550,7 +620,12 @@ economy.StreakFreezePriceXP (=200), SpeedrunMultiplier (1.5), NormalMultiplier (
 5. **Возврат escrow peer-review** проводится как `ADMIN_ADJUSTMENT`, потому что в CHECK
    `xp_ledger.reason` нет отдельной причины возврата (ближайшая — `ADMIN_ADJUSTMENT`).
    Если спек расширят причиной `PEER_REVIEW_REFUND`, миграция `003_*` + правка `Expire`.
-6. **WebSocket и фронтенд отсутствуют** — это и есть Фазы 5.2 и 6.
+6. **Реалтайм-доставка не персистентна.** Хаб живёт в памяти: при реконнекте клиент не
+   получает пропущенные события (at-least-once действует только на активное соединение).
+   Для «догона» нужен журнал событий/outbox — задача Фазы 7.
+7. **Фронтенд — каркас, а не полный UI.** Нет списков из REST, drag&drop, формы создания
+   задания, экранов peer-review/слотов; после read-эндпоинтов их нужно наполнить.
+   `npm run build` зелёный, dev-сервер проксирует `/api` и `/ws`.
 
 ---
 

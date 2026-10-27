@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/peerreview"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -157,6 +159,20 @@ func (s *Server) handleCreatePeerReview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.publishPeerReviewState(r.Context(), created, 0)
+	s.publisher.Publish(r.Context(), events.New(
+		events.TypeXPLedgerPosted,
+		user.ID,
+		events.RoomUser(user.ID),
+		xpLedgerPostedPayload{
+			LedgerID:     created.EscrowLedgerID,
+			UserID:       user.ID,
+			Amount:       -created.EscrowAmount,
+			BalanceAfter: user.XPBalance - created.EscrowAmount,
+			Reason:       storage.ReasonPenalty,
+		},
+	))
+
 	writeJSON(w, http.StatusCreated, createPeerReviewResponse{
 		PeerReviewID: created.ID,
 		Status:       created.Status,
@@ -225,6 +241,8 @@ func (s *Server) handleClaimPeerReview(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	s.publishPeerReviewState(r.Context(), claimed, p.UserID)
 
 	writeJSON(w, http.StatusOK, claimPeerReviewResponse{
 		PeerReviewID: claimed.ID,
@@ -305,6 +323,23 @@ func (s *Server) handleCompletePeerReview(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	s.publishPeerReviewState(r.Context(), completed, p.UserID)
+
+	if reviewer, err := s.users.GetByID(r.Context(), p.UserID); err == nil {
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypeXPLedgerPosted,
+			reviewer.ID,
+			events.RoomUser(reviewer.ID),
+			xpLedgerPostedPayload{
+				LedgerID:     completed.EscrowLedgerID,
+				UserID:       reviewer.ID,
+				Amount:       completed.RewardAmount,
+				BalanceAfter: reviewer.XPBalance,
+				Reason:       storage.ReasonPeerReviewReward,
+			},
+		))
+	}
+
 	writeJSON(w, http.StatusOK, completePeerReviewResponse{
 		PeerReviewID: completed.ID,
 		Status:       completed.Status,
@@ -368,4 +403,25 @@ func validateChecklistResults(rawChecklist string, results []checklistResult) er
 	}
 
 	return nil
+}
+
+// publishPeerReviewState отправляет смену состояния ревью автору и рецензенту.
+func (s *Server) publishPeerReviewState(ctx context.Context, review *storage.PeerReview, reviewerID int64) {
+	event := events.New(
+		events.TypePeerReviewStateChanged,
+		reviewerID,
+		events.RoomUser(review.AuthorID),
+		peerReviewStateChangedPayload{
+			PeerReviewID: review.ID,
+			Status:       review.Status,
+			ReviewerID:   reviewerID,
+			ExpiresAt:    eventTime(review.ExpiresAt),
+		},
+	)
+
+	s.publisher.Publish(ctx, event)
+
+	if reviewerID > 0 && reviewerID != review.AuthorID {
+		s.publisher.Publish(ctx, event.InRoom(events.RoomUser(reviewerID)))
+	}
 }

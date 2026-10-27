@@ -61,6 +61,13 @@ func newHarness(t *testing.T) *harness {
 func newHarnessEnv(t *testing.T, env string) *harness {
 	t.Helper()
 
+	return newHarnessWith(t, env)
+}
+
+// newHarnessWith поднимает сервер с заданным PARTA_ENV и опциями httpapi.New.
+func newHarnessWith(t *testing.T, env string, opts ...httpapi.Option) *harness {
+	t.Helper()
+
 	path := filepath.Join(t.TempDir(), "parta_http.db")
 
 	db, err := storage.Open(path)
@@ -74,7 +81,7 @@ func newHarnessEnv(t *testing.T, env string) *harness {
 
 	cfg := config.Config{JWTSecret: testJWTSecret, Env: env, DBPath: path}
 
-	server := httptest.NewServer(httpapi.New(cfg, db).Handler())
+	server := httptest.NewServer(httpapi.New(cfg, db, opts...).Handler())
 
 	t.Cleanup(func() {
 		server.Close()

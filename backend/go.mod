@@ -2,7 +2,10 @@ module github.com/parta/backend
 
 go 1.22
 
-require modernc.org/sqlite v1.34.5
+require (
+	modernc.org/sqlite v1.34.5
+	nhooyr.io/websocket v1.8.17
+)
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect

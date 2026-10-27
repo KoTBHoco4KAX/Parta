@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/economy"
+	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/xp"
 	"github.com/parta/backend/internal/storage"
 )

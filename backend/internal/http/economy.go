@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"net/http"
 
-	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/economy"
+	domainerrors "github.com/parta/backend/internal/domain/errors"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -97,6 +98,19 @@ func (s *Server) handlePurchaseFreezes(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	s.publisher.Publish(r.Context(), events.New(
+		events.TypeXPLedgerPosted,
+		user.ID,
+		events.RoomUser(user.ID),
+		xpLedgerPostedPayload{
+			LedgerID:     ledgerID,
+			UserID:       user.ID,
+			Amount:       -price,
+			BalanceAfter: balance,
+			Reason:       storage.ReasonFreezePurchase,
+		},
+	))
 
 	writeJSON(w, http.StatusOK, purchaseFreezesResponse{
 		StreakFreezes: freezes,

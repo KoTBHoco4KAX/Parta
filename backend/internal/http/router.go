@@ -9,6 +9,7 @@ import (
 
 	"github.com/parta/backend/internal/config"
 	domainerrors "github.com/parta/backend/internal/domain/errors"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -21,10 +22,11 @@ const (
 
 // Server — набор зависимостей и хендлеров REST API.
 type Server struct {
-	cfg    config.Config
-	db     *sql.DB
-	now    func() time.Time
-	tokens *TokenService
+	cfg       config.Config
+	db        *sql.DB
+	now       func() time.Time
+	tokens    *TokenService
+	publisher events.Publisher
 
 	users       *storage.UserRepo
 	tasks       *storage.TaskRepo
@@ -35,15 +37,29 @@ type Server struct {
 	teamSlots   *storage.TeamSlotRepo
 }
 
+// Option настраивает Server.
+type Option func(*Server)
+
+// WithPublisher подключает реалтайм-публикатор. Без этой опции используется
+// no-op: REST-тесты и сценарии без WS работают без хаба.
+func WithPublisher(publisher events.Publisher) Option {
+	return func(s *Server) {
+		if publisher != nil {
+			s.publisher = publisher
+		}
+	}
+}
+
 // New собирает сервер поверх открытой БД.
-func New(cfg config.Config, db *sql.DB) *Server {
+func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 	now := time.Now
 
-	return &Server{
+	server := &Server{
 		cfg:         cfg,
 		db:          db,
 		now:         now,
 		tokens:      NewTokenService(cfg.JWTSecret, now),
+		publisher:   events.NoopPublisher{},
 		users:       storage.NewUserRepo(db),
 		tasks:       storage.NewTaskRepo(db),
 		submissions: storage.NewSubmissionRepo(db),
@@ -52,6 +68,12 @@ func New(cfg config.Config, db *sql.DB) *Server {
 		peerReviews: storage.NewPeerReviewRepo(db),
 		teamSlots:   storage.NewTeamSlotRepo(db),
 	}
+
+	for _, opt := range opts {
+		opt(server)
+	}
+
+	return server
 }
 
 // Handler собирает маршруты, middleware и публичный /api.

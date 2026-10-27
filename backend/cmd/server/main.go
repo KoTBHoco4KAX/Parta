@@ -9,9 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/parta/backend/internal/auth"
 	"github.com/parta/backend/internal/config"
 	httpapi "github.com/parta/backend/internal/http"
 	"github.com/parta/backend/internal/storage"
+	"github.com/parta/backend/internal/ws"
 )
 
 // shutdownTimeout — сколько ждём завершения активных запросов при остановке.
@@ -37,9 +39,33 @@ func main() {
 
 	log.Println("migrations applied")
 
+	// Один сервис токенов на REST и WS: второго JWT-парсера нет.
+	tokens := auth.NewTokenService(cfg.JWTSecret, time.Now)
+
+	hub := ws.NewHub()
+	api := httpapi.New(cfg, db, httpapi.WithPublisher(hub)).Handler()
+
+	wsOptions := []ws.Option{}
+	if cfg.IsDev() {
+		// Vite живёт на другом порту: разрешаем локальные Origin для dev.
+		wsOptions = append(wsOptions, ws.WithOriginPatterns("localhost:*", "127.0.0.1:*"))
+	}
+
+	realtime := ws.NewServer(
+		tokens,
+		hub,
+		storage.NewUserRepo(db),
+		storage.NewTaskRepo(db),
+		wsOptions...,
+	)
+
+	mux := http.NewServeMux()
+	mux.Handle("/ws", realtime)
+	mux.Handle("/", api)
+
 	server := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           httpapi.New(cfg, db).Handler(),
+		Handler:           mux,
 		ReadHeaderTimeout: fallbackReadHeaderTimeout,
 	}
 
@@ -55,6 +81,9 @@ func main() {
 	}()
 
 	<-stop
+
+	// WebSocket-соединения не закрываются http.Server.Shutdown — закрываем хабом.
+	hub.Close()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()

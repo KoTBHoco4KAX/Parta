@@ -7,6 +7,7 @@ import (
 
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/wager"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -100,6 +101,19 @@ func (s *Server) handleCreateWager(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	s.publisher.Publish(r.Context(), events.New(
+		events.TypeXPLedgerPosted,
+		user.ID,
+		events.RoomUser(user.ID),
+		xpLedgerPostedPayload{
+			LedgerID:     created.EscrowLedgerID,
+			UserID:       user.ID,
+			Amount:       -created.StakeAmount,
+			BalanceAfter: user.XPBalance - created.StakeAmount,
+			Reason:       storage.ReasonWagerPlace,
+		},
+	))
 
 	writeJSON(w, http.StatusCreated, createWagerResponse{
 		WagerID:     created.ID,

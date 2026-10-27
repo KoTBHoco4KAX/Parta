@@ -11,6 +11,7 @@ import (
 	"github.com/parta/backend/internal/domain/streak"
 	"github.com/parta/backend/internal/domain/submission"
 	"github.com/parta/backend/internal/domain/xp"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -207,6 +208,14 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Пользователь читается до транзакции: внутри withTx ходить в *sql.DB нельзя.
+	user, err := s.users.GetByID(r.Context(), p.UserID)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
 	now := s.now()
 	actor := submission.Actor{UserID: p.UserID, Role: p.Role}
 
@@ -245,11 +254,55 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Публикация строго после Commit: событие — уведомление, а не источник истины.
+	s.publishCardEvent(r.Context(), events.New(
+		events.TypeSubmissionCardMoved,
+		p.UserID,
+		s.studentRoomFor(user),
+		submissionCardMovedPayload{
+			SubmissionID: updated.ID,
+			TaskID:       updated.TaskID,
+			StudentID:    updated.StudentID,
+			From:         string(sub.Status),
+			To:           string(updated.Status),
+			SubmittedAt:  eventTimePtr(updated.SubmittedAt),
+		},
+	), task.ID)
+
+	if updated.Status == submission.StatusReview {
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypeReviewInboxCreated,
+			p.UserID,
+			events.RoomTeacher(task.AssignedTeacherID),
+			reviewInboxCreatedPayload{
+				SubmissionID:   updated.ID,
+				TaskID:         updated.TaskID,
+				StudentID:      updated.StudentID,
+				GroupID:        task.GroupID,
+				SubmittedAt:    eventTime(now),
+				WaitingSeconds: 0,
+			},
+		))
+	}
+
 	writeJSON(w, http.StatusOK, statusResponse{
 		SubmissionID: updated.ID,
 		Status:       string(updated.Status),
 		SubmittedAt:  formatTimePtr(updated.SubmittedAt),
 	})
+}
+
+// studentRoomFor выбирает основную комнату по уже прочитанному пользователю.
+func (s *Server) studentRoomFor(user *storage.User) string {
+	if user == nil || user.GroupID == nil {
+		if user == nil {
+			return ""
+		}
+
+		return events.RoomUser(user.ID)
+	}
+
+	return events.RoomGroup(*user.GroupID)
 }
 
 // planStatusEvent проверяет guard события и возвращает целевую статус-модель.
@@ -381,6 +434,19 @@ func (s *Server) rejectSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		return
 	}
 
+	s.publishCardEvent(r.Context(), events.New(
+		events.TypeSubmissionVerdictIssued,
+		reviewerID,
+		s.studentRoom(r.Context(), sub.StudentID),
+		submissionVerdictIssuedPayload{
+			SubmissionID: sub.ID,
+			Verdict:      "REJECT",
+			XPAwarded:    0,
+			StreakDelta:  0,
+			ReviewedAt:   eventTime(now),
+		},
+	), sub.TaskID)
+
 	writeJSON(w, http.StatusOK, verdictResponse{
 		SubmissionID: sub.ID,
 		Status:       string(submission.StatusRejected),
@@ -421,8 +487,9 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 	}, task.DeadlineAt, now, true, &finalAt)
 
 	var (
-		ledgerID    int64
-		streakAfter int
+		ledgerEntry    *storage.LedgerEntry
+		streakAfter    int
+		resolvedWagers []resolvedWager
 	)
 
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
@@ -450,7 +517,7 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 			return err
 		}
 
-		ledgerID = entry.ID
+		ledgerEntry = entry
 
 		if err := applyStreak(r.Context(), tx, s, user.ID, decision); err != nil {
 			return err
@@ -468,9 +535,21 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 				note = "работа принята в срок пари"
 			}
 
-			if _, err := s.wagers.Resolve(r.Context(), tx, wager.ID, result, note); err != nil {
+			resolved, err := s.wagers.Resolve(r.Context(), tx, wager.ID, result, note)
+			if err != nil {
 				return err
 			}
+
+			payout := 0
+
+			switch result {
+			case storage.WagerStatusWon:
+				payout = resolved.StakeAmount * 2
+			case storage.WagerStatusCancelled:
+				payout = resolved.StakeAmount
+			}
+
+			resolvedWagers = append(resolvedWagers, resolvedWager{wager: resolved, payout: payout})
 		}
 
 		return nil
@@ -481,13 +560,73 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		return
 	}
 
+	s.publishCardEvent(r.Context(), events.New(
+		events.TypeSubmissionVerdictIssued,
+		user.ID,
+		s.studentRoomFor(user),
+		submissionVerdictIssuedPayload{
+			SubmissionID: sub.ID,
+			Verdict:      "ACCEPT",
+			XPAwarded:    finalXP,
+			StreakDelta:  streakAfter - user.OnTimeStreak,
+			ReviewedAt:   eventTime(now),
+		},
+	), task.ID)
+
+	if ledgerEntry != nil {
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypeXPLedgerPosted,
+			user.ID,
+			events.RoomUser(user.ID),
+			xpLedgerPostedPayload{
+				LedgerID:     ledgerEntry.ID,
+				UserID:       ledgerEntry.UserID,
+				Amount:       ledgerEntry.Amount,
+				BalanceAfter: ledgerEntry.BalanceAfter,
+				Reason:       ledgerEntry.Reason,
+			},
+		))
+	}
+
+	s.publisher.Publish(r.Context(), events.New(
+		events.TypeStreakUpdated,
+		user.ID,
+		events.RoomUser(user.ID),
+		streakUpdatedPayload{
+			UserID:        user.ID,
+			OnTimeStreak:  decision.NewStreak,
+			StreakFreezes: decision.NewFreezes,
+			Reason:        decision.Reason,
+		},
+	))
+
+	for _, resolved := range resolvedWagers {
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypeWagerResolved,
+			user.ID,
+			events.RoomUser(user.ID),
+			wagerResolvedPayload{
+				WagerID:     resolved.wager.ID,
+				Status:      resolved.wager.Status,
+				StakeAmount: resolved.wager.StakeAmount,
+				Payout:      resolved.payout,
+			},
+		))
+	}
+
 	writeJSON(w, http.StatusOK, verdictResponse{
 		SubmissionID: sub.ID,
 		Status:       string(submission.StatusDone),
 		XPAwarded:    finalXP,
 		StreakAfter:  streakAfter,
-		LedgerID:     ledgerID,
+		LedgerID:     ledgerEntry.ID,
 	})
+}
+
+// resolvedWager — пари, закрытое внутри транзакции приёмки, и его выплата.
+type resolvedWager struct {
+	wager  *storage.Wager
+	payout int
 }
 
 // applyStreak применяет решение domain/streak внутри транзакции.
