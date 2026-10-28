@@ -12,8 +12,10 @@ import type {
   CreateWagerRequest,
   CreateWagerResponse,
   DevLoginResponse,
+  Group,
   PeerReview,
   PurchaseFreezesResponse,
+  Role,
   StatusResponse,
   Submission,
   Task,
@@ -100,6 +102,50 @@ export function devLogin(email: string): Promise<DevLoginResponse> {
     body: { email },
     token: null,
   });
+}
+
+// loginWithPassword — POST /api/auth/login: email + пароль (любой) + роль.
+export function loginWithPassword(
+  email: string,
+  password: string,
+  role: Role,
+): Promise<DevLoginResponse> {
+  return apiFetch<DevLoginResponse>('/auth/login', {
+    method: 'POST',
+    token: null,
+    body: { email, password, role },
+  });
+}
+
+// fetchUsers / createUser / deleteUser — управление пользователями (admin).
+export function fetchUsers(): Promise<User[]> {
+  return apiFetch<User[]>('/users');
+}
+
+export function createUser(body: {
+  external_id: string;
+  display_name: string;
+  role: Role;
+  group_id: number | null;
+}): Promise<User> {
+  return apiFetch<User>('/users', { method: 'POST', body });
+}
+
+export function deleteUser(id: number): Promise<void> {
+  return apiFetch<void>(`/users/${id}`, { method: 'DELETE' });
+}
+
+// fetchGroups / createGroup / deleteGroup — управление группами (admin).
+export function fetchGroups(): Promise<Group[]> {
+  return apiFetch<Group[]>('/groups');
+}
+
+export function createGroup(body: { code: string; title: string }): Promise<Group> {
+  return apiFetch<Group>('/groups', { method: 'POST', body });
+}
+
+export function deleteGroup(id: number): Promise<void> {
+  return apiFetch<void>(`/groups/${id}`, { method: 'DELETE' });
 }
 
 function auth(token: string | null) {

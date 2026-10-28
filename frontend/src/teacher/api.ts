@@ -1,5 +1,13 @@
 import { apiFetch } from '../core/api';
-import type { PeerReview as PeerReviewDto, Submission, VerdictResponse } from '../core/types';
+import type {
+  Assignment as AssignmentDto,
+  CreateTaskResponse as CreateTaskResponseDto,
+  PeerReview as PeerReviewDto,
+  Submission,
+  Task,
+  TaskType,
+  VerdictResponse,
+} from '../core/types';
 import type {
   InboxSubmission,
   PeerReview,
@@ -83,8 +91,7 @@ export async function issueVerdict(input: {
 }
 
 /** GET /api/peer-reviews — sandbox-сессии преподавателя. */
-export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
-  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
+export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
 
   return reviews.map((review) => ({
     id: review.id,
@@ -108,4 +115,69 @@ export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
     summary: review.summary,
     accessTokenTtlSeconds: review.access_token_ttl_seconds,
   }));
+}
+
+// TeacherAssignment — назначение «группа + дисциплина» для формы задачи.
+export interface TeacherAssignment {
+  id: number;
+  groupCode: string;
+  groupTitle: string;
+  disciplineCode: string;
+  disciplineTitle: string;
+}
+
+/** GET /api/assignments — назначения текущего преподавателя. */
+export async function fetchTeacherAssignments(): Promise<TeacherAssignment[]> {
+  const rows = await apiFetch<AssignmentDto[]>('/assignments');
+
+  return rows.map((row) => ({
+    id: row.id,
+    groupCode: row.group_code,
+    groupTitle: row.group_title,
+    disciplineCode: row.discipline_code,
+    disciplineTitle: row.discipline_title,
+  }));
+}
+
+/** GET /api/tasks — задания преподавателя. */
+export function fetchTeacherTasks(): Promise<Task[]> {
+  return apiFetch<Task[]>('/tasks');
+}
+
+export interface TeacherTaskInput {
+  assignmentId: number;
+  title: string;
+  descriptionMD: string;
+  taskType: TaskType;
+  requirementsCount: number;
+  expectedHours: number;
+  deadlineAt: string;
+  speedrunWindowHours: number;
+  teamSize: number;
+}
+
+/** POST /api/tasks — создание задания преподавателем. */
+export async function createTeacherTask(
+  input: TeacherTaskInput,
+): Promise<{ taskId: number; baseXP: number; slotsCount: number }> {
+  const response = await apiFetch<CreateTaskResponseDto>('/tasks', {
+    method: 'POST',
+    body: {
+      assignment_id: input.assignmentId,
+      title: input.title,
+      description_md: input.descriptionMD,
+      task_type: input.taskType,
+      requirements_count: input.requirementsCount,
+      expected_hours: input.expectedHours,
+      deadline_at: input.deadlineAt,
+      speedrun_window_hours: input.speedrunWindowHours,
+      team_size: input.teamSize,
+    },
+  });
+
+  return {
+    taskId: response.task_id,
+    baseXP: response.base_xp_computed,
+    slotsCount: response.slots_count ?? 0,
+  };
 }

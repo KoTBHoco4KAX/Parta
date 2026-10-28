@@ -108,8 +108,8 @@ func TestListSubmissionsEnriched(t *testing.T) {
 
 	studentToken := h.login(t, "student1@parta.dev")
 	status, own := h.getArray(t, "/api/submissions", studentToken)
-	if status != http.StatusOK || len(own) != 1 {
-		t.Fatalf("student submissions = %d (status %d), want 1", len(own), status)
+	if status != http.StatusOK || len(own) != 2 {
+		t.Fatalf("student submissions = %d (status %d), want 2 (seed tasks)", len(own), status)
 	}
 }
 

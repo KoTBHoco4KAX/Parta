@@ -15,6 +15,14 @@ func TestSubmissionRepoCreateIfNotExists(t *testing.T) {
 	ids := seed(t, db)
 	repo := NewSubmissionRepo(db)
 
+	// Миграция 003 бэкфиллит карточки для сид-заданий: чистим одну, чтобы
+	// проверить именно путь создания.
+	if _, err := db.ExecContext(context.Background(),
+		`DELETE FROM submissions WHERE task_id = ? AND student_id = ?`,
+		ids.taskLab, ids.student1); err != nil {
+		t.Fatalf("clean submission: %v", err)
+	}
+
 	created, isNew, err := repo.CreateIfNotExists(context.Background(), ids.taskLab, ids.student1)
 	if err != nil {
 		t.Fatalf("CreateIfNotExists: %v", err)

@@ -14,6 +14,10 @@ func TestCreateSubmissionIdempotent(t *testing.T) {
 
 	body := map[string]any{"task_id": ids.taskLab}
 
+	// Миграция 003 уже создала карточку для сид-задания — проверяем создание
+	// с чистого листа, как для задания, опубликованного до этой миграции.
+	h.exec(`DELETE FROM submissions WHERE task_id = ? AND student_id = ?`, ids.taskLab, ids.student1)
+
 	status, first := h.request(t, http.MethodPost, "/api/submissions", token, body)
 	if status != http.StatusCreated {
 		t.Fatalf("first status = %d, want 201 (%v)", status, first)

@@ -45,7 +45,7 @@ export function DashboardPage({ navigate }: Props) {
       </section>
 
       <section className="grid grid-cols-2 gap-3">
-        <Button variant="secondary" onClick={() => navigate('/board')}>
+        <Button variant="secondary" onClick={() => navigate('/kanban')}>
           Канбан
         </Button>
         <Button variant="secondary" onClick={() => navigate('/inbox')}>

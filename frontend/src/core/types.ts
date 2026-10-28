@@ -19,6 +19,18 @@ export interface DevLoginResponse {
   user: User;
 }
 
+export interface LoginRequest {
+  email: string;
+  password: string;
+  role: Role;
+}
+
+export interface Group {
+  id: number;
+  code: string;
+  title: string;
+}
+
 export interface CreateTaskRequest {
   assignment_id: number;
   title: string;

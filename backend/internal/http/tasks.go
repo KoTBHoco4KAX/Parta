@@ -48,7 +48,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !requireRole(w, p, RoleTeacher, RoleAdmin) {
+	if !requireRole(w, p, RoleTeacher) {
 		return
 	}
 
@@ -58,7 +58,15 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deadline, err := s.validateCreateTask(r, p, &req)
+	deadline, groupID, err := s.validateCreateTask(r, p, &req)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	// Список студентов читается до транзакции: внутри withTx нельзя ходить в *sql.DB.
+	students, err := s.users.ListByGroup(r.Context(), groupID)
 	if err != nil {
 		writeError(w, err)
 
@@ -102,6 +110,14 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 		taskID = task.ID
 
+		// Каждый студент группы сразу получает карточку TODO: студент не создаёт
+		// задачи и не вводит id вручную.
+		for i := range students {
+			if err := s.submissions.CreateTodoTx(r.Context(), tx, task.ID, students[i].ID); err != nil {
+				return err
+			}
+		}
+
 		if len(seeds) == 0 {
 			return nil
 		}
@@ -123,48 +139,53 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 }
 
 // validateCreateTask проверяет права на назначение и корректность полей.
-func (s *Server) validateCreateTask(r *http.Request, p principal, req *createTaskRequest) (time.Time, error) {
+func (s *Server) validateCreateTask(r *http.Request, p principal, req *createTaskRequest) (time.Time, int64, error) {
 	if req.AssignmentID <= 0 || req.Title == "" {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
 	if !validTaskType(req.TaskType) {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
 	if req.RequirementsCount <= 0 || req.ExpectedHours <= 0 || req.SpeedrunWindowHours <= 0 {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
 	if req.TaskType == string(economy.TaskTypeTeamProject) {
 		if req.TeamSize < 2 {
-			return time.Time{}, domainerrors.ErrInvalidArgument
+			return time.Time{}, 0, domainerrors.ErrInvalidArgument
 		}
 	} else if req.TeamSize == 0 {
 		req.TeamSize = 1
 	} else if req.TeamSize != 1 {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
 	teacherID, err := s.tasks.TeacherIDForAssignment(r.Context(), req.AssignmentID)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, 0, err
 	}
 
 	if p.Role == RoleTeacher && teacherID != p.UserID {
-		return time.Time{}, domainerrors.ErrForbidden
+		return time.Time{}, 0, domainerrors.ErrForbidden
+	}
+
+	groupID, err := s.tasks.GroupIDForAssignment(r.Context(), req.AssignmentID)
+	if err != nil {
+		return time.Time{}, 0, err
 	}
 
 	deadline, err := time.Parse(time.RFC3339, req.DeadlineAt)
 	if err != nil {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
 	if !deadline.After(s.now()) {
-		return time.Time{}, domainerrors.ErrInvalidArgument
+		return time.Time{}, 0, domainerrors.ErrInvalidArgument
 	}
 
-	return deadline, nil
+	return deadline, groupID, nil
 }
 
 // validTaskType проверяет тип задания по CHECK в tasks.task_type.

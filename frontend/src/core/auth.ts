@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, devLogin } from './api';
+import { ApiError, loginWithPassword } from './api';
 import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
 import type { ConnectionStatus, Role, User, WsEvent } from './types';
@@ -37,7 +37,7 @@ interface AuthContextValue {
   error: string | null;
   connection: ConnectionStatus;
   events: WsEvent[];
-  login: (role: Role) => Promise<void>;
+  login: (email: string, password: string, role: Role) => Promise<void>;
   logout: () => void;
 }
 
@@ -72,12 +72,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [events, setEvents] = useState<WsEvent[]>([]);
   const socketRef = useRef<PartaSocket | null>(null);
 
-  const login = useCallback(async (role: Role) => {
+  const login = useCallback(async (email: string, password: string, role: Role) => {
     setBusy(true);
     setError(null);
 
     try {
-      const response = await devLogin(ROLE_EMAILS[role]);
+      const response = await loginWithPassword(email, password, role);
       const next = { token: response.token, user: response.user };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

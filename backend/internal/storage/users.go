@@ -78,6 +78,48 @@ func (r *UserRepo) ListByGroup(ctx context.Context, groupID int64) ([]User, erro
 	return users, MapSQLError(rows.Err())
 }
 
+// ListAll возвращает всех пользователей для админки.
+func (r *UserRepo) ListAll(ctx context.Context) ([]User, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+userColumns+` FROM users ORDER BY display_name, id`)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+	defer rows.Close()
+
+	users := make([]User, 0)
+
+	for rows.Next() {
+		user, err := scanUser(rows)
+		if err != nil {
+			return nil, MapSQLError(err)
+		}
+
+		users = append(users, *user)
+	}
+
+	return users, MapSQLError(rows.Err())
+}
+
+// Delete удаляет пользователя, если на него нет ссылок.
+func (r *UserRepo) Delete(ctx context.Context, id int64) error {
+	result, err := r.db.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id)
+	if err != nil {
+		return MapSQLError(err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return MapSQLError(err)
+	}
+
+	if affected == 0 {
+		return domainerrors.ErrNotFound
+	}
+
+	return nil
+}
+
 // Create заводит пользователя с нулевым балансом и стриком.
 func (r *UserRepo) Create(ctx context.Context, extID, role string, groupID *int64, displayName string) (*User, error) {
 	row := r.db.QueryRowContext(ctx,

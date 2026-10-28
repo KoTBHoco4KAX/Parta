@@ -29,6 +29,7 @@ type Server struct {
 	publisher events.Publisher
 
 	users       *storage.UserRepo
+	groups      *storage.GroupRepo
 	tasks       *storage.TaskRepo
 	submissions *storage.SubmissionRepo
 	ledger      *storage.XPLedgerRepo
@@ -61,6 +62,7 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		tokens:      NewTokenService(cfg.JWTSecret, now),
 		publisher:   events.NoopPublisher{},
 		users:       storage.NewUserRepo(db),
+		groups:      storage.NewGroupRepo(db),
 		tasks:       storage.NewTaskRepo(db),
 		submissions: storage.NewSubmissionRepo(db),
 		ledger:      storage.NewXPLedgerRepo(db),
@@ -79,6 +81,7 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 // Handler собирает маршруты, middleware и публичный /api.
 func (s *Server) Handler() http.Handler {
 	public := http.NewServeMux()
+	public.Handle("POST /api/auth/login", http.HandlerFunc(s.handleLogin))
 	public.Handle("POST /api/auth/dev-login", http.HandlerFunc(s.handleDevLogin))
 
 	protected := http.NewServeMux()
@@ -89,6 +92,12 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("GET /api/wagers", http.HandlerFunc(s.handleListWagers))
 	protected.Handle("GET /api/peer-reviews", http.HandlerFunc(s.handleListPeerReviews))
 	protected.Handle("GET /api/assignments", http.HandlerFunc(s.handleListAssignments))
+	protected.Handle("GET /api/users", http.HandlerFunc(s.handleListUsers))
+	protected.Handle("POST /api/users", http.HandlerFunc(s.handleCreateUser))
+	protected.Handle("DELETE /api/users/{id}", http.HandlerFunc(s.handleDeleteUser))
+	protected.Handle("GET /api/groups", http.HandlerFunc(s.handleListGroups))
+	protected.Handle("POST /api/groups", http.HandlerFunc(s.handleCreateGroup))
+	protected.Handle("DELETE /api/groups/{id}", http.HandlerFunc(s.handleDeleteGroup))
 	protected.Handle("PATCH /api/submissions/{id}/status", http.HandlerFunc(s.handleSubmissionStatus))
 	protected.Handle("POST /api/submissions/{id}/verdict", http.HandlerFunc(s.handleVerdict))
 	protected.Handle("POST /api/users/me/streak-freezes/purchase", http.HandlerFunc(s.handlePurchaseFreezes))

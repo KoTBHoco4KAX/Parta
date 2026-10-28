@@ -58,6 +58,20 @@ func (r *TaskRepo) getByID(ctx context.Context, q querier, id int64) (*submissio
 	return task, MapSQLError(err)
 }
 
+// GroupIDForAssignment возвращает группу, на которую назначено задание.
+func (r *TaskRepo) GroupIDForAssignment(ctx context.Context, assignmentID int64) (int64, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT group_id FROM teacher_assignments WHERE id = ?`, assignmentID)
+
+	var groupID int64
+
+	if err := row.Scan(&groupID); err != nil {
+		return 0, MapSQLError(err)
+	}
+
+	return groupID, nil
+}
+
 // TeacherIDForAssignment возвращает преподавателя, за которым закреплено назначение.
 func (r *TaskRepo) TeacherIDForAssignment(ctx context.Context, assignmentID int64) (int64, error) {
 	row := r.db.QueryRowContext(ctx,

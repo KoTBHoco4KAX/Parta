@@ -112,6 +112,31 @@ func (r *SubmissionRepo) GetByTeamSlot(ctx context.Context, teamSlotID int64) (*
 	return sub, MapSQLError(err)
 }
 
+// CreateTodoForPublishedGroupTasks создаёт карточки TODO новому студенту по всем
+// уже опубликованным заданиям его группы.
+func (r *SubmissionRepo) CreateTodoForPublishedGroupTasks(ctx context.Context, studentID, groupID int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO submissions (task_id, student_id, status)
+		 SELECT t.id, ?, 'TODO'
+		 FROM tasks t
+		 JOIN teacher_assignments ta ON ta.id = t.assignment_id
+		 WHERE ta.group_id = ? AND t.status = 'PUBLISHED'
+		 ON CONFLICT DO NOTHING`, studentID, groupID)
+
+	return MapSQLError(err)
+}
+
+// CreateTodoTx создаёт карточку TODO для студента в рамках транзакции.
+// Нужна POST /api/tasks: задание сразу появляется на доске всей группы.
+func (r *SubmissionRepo) CreateTodoTx(ctx context.Context, tx *sql.Tx, taskID, studentID int64) error {
+	_, err := tx.ExecContext(ctx,
+		`INSERT INTO submissions (task_id, student_id, status)
+		 VALUES (?, ?, 'TODO')
+		 ON CONFLICT DO NOTHING`, taskID, studentID)
+
+	return MapSQLError(err)
+}
+
 // CreateIfNotExists создаёт карточку в статусе TODO и сообщает, была ли она создана.
 func (r *SubmissionRepo) CreateIfNotExists(ctx context.Context, taskID, studentID int64) (*submission.Submission, bool, error) {
 	result, err := r.db.ExecContext(ctx,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiError, createSubmissionCard, fetchSubmissions, fetchTasks, moveSubmission } from '../../core/api';
+import { ApiError, fetchSubmissions, fetchTasks, moveSubmission } from '../../core/api';
 import type { Submission, Task } from '../../core/types';
 import { Button } from '../../components/Button';
 import SubmitWorkModal from '../components/SubmitWorkModal';
@@ -92,18 +92,25 @@ export default function KanbanPage() {
 
     try {
       if (!submission) {
-        const created = await createSubmissionCard(task.id);
-        if (target === 'in-progress') {
-          await moveSubmission(created.submission_id, 'START');
-        }
-      } else if (target === 'in-progress') {
+        setError('Карточка ещё не создана сервером. Обновите доску.');
+        return;
+      }
+
+      if (target === 'in-progress') {
         if (submission.status === 'TODO') {
           await moveSubmission(submission.id, 'START');
         } else if (submission.status === 'REJECTED') {
           await moveSubmission(submission.id, 'REOPEN');
         }
-      } else if (target === 'review' && submission.status === 'IN_PROGRESS') {
-        setSelected(submission);
+      } else if (target === 'review') {
+        // Сдавать можно из TODO или IN_PROGRESS: сначала START, затем модалка.
+        if (submission.status === 'TODO') {
+          await moveSubmission(submission.id, 'START');
+        }
+
+        if (submission.status === 'TODO' || submission.status === 'IN_PROGRESS') {
+          setSelected(submission);
+        }
       }
 
       await load();

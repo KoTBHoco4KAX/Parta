@@ -103,6 +103,8 @@ func TestCardEventsPublishedAfterCommit(t *testing.T) {
 
 	studentToken := h.login(t, "student1@parta.dev")
 
+	h.exec(`DELETE FROM submissions WHERE task_id = ? AND student_id = ?`, ids.taskLab, ids.student1)
+
 	status, body := h.request(t, "POST", "/api/submissions", studentToken, map[string]any{"task_id": ids.taskLab})
 	if status != 201 {
 		t.Fatalf("create submission = %d %v", status, body)

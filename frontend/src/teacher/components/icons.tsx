@@ -26,6 +26,14 @@ export function IconInbox(props: IconProps) {
   );
 }
 
+export function IconPlus(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  );
+}
+
 export function IconUsers(props: IconProps) {
   return (
     <svg {...defaults} {...props}>
