@@ -1,16 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { AuthProvider, useAuth } from './core/auth';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { BoardPage } from './pages/BoardPage';
 import { InboxPage } from './pages/InboxPage';
 import { EconomyPage } from './pages/EconomyPage';
+import KanbanPage from './student/pages/KanbanPage';
+import GamificationPage from './student/pages/GamificationPage';
+import BetsPage from './student/pages/BetsPage';
 
 const NAV = [
   { path: '/', label: 'Главная' },
   { path: '/board', label: 'Канбан' },
+  { path: '/kanban', label: 'Задачи' },
   { path: '/inbox', label: 'Инбокс' },
   { path: '/economy', label: 'Экономика' },
+  { path: '/gamification', label: 'XP' },
+  { path: '/bets', label: 'Пари' },
 ] as const;
 
 // useHashRoute — минимальный роутер без внешних зависимостей: hash переживает
@@ -87,10 +93,25 @@ function Shell() {
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-5 pb-24">
+      <main className="flex-1 px-4 py-5 pb-32">
         {route === '/board' ? <BoardPage /> : null}
+        {route === '/kanban' ? (
+          <StudentScreen>
+            <KanbanPage />
+          </StudentScreen>
+        ) : null}
         {route === '/inbox' ? <InboxPage /> : null}
         {route === '/economy' ? <EconomyPage /> : null}
+        {route === '/gamification' ? (
+          <StudentScreen>
+            <GamificationPage />
+          </StudentScreen>
+        ) : null}
+        {route === '/bets' ? (
+          <StudentScreen>
+            <BetsPage />
+          </StudentScreen>
+        ) : null}
         {route === '/' || !NAV.some((item) => item.path === route) ? (
           <DashboardPage navigate={navigate} />
         ) : null}
@@ -107,7 +128,7 @@ function Shell() {
                   type="button"
                   onClick={() => navigate(item.path)}
                   className={[
-                    'w-full rounded-lg px-2 py-2 text-[11px] font-medium transition',
+                    'w-full rounded-lg px-2 py-2 text-[10px] font-medium transition',
                     active ? 'bg-emerald-500/15 text-emerald-300' : 'text-slate-400 hover:bg-slate-900',
                   ].join(' ')}
                 >
@@ -118,6 +139,16 @@ function Shell() {
           })}
         </ul>
       </nav>
+    </div>
+  );
+}
+
+// StudentScreen — светлая подложка для экранов из ветки студента: они верстались
+// под светлую тему (bg-white карточки), а shell использует тёмную.
+function StudentScreen({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 text-slate-900">
+      {children}
     </div>
   );
 }
