@@ -8,6 +8,8 @@ import { EconomyPage } from './pages/EconomyPage';
 import KanbanPage from './student/pages/KanbanPage';
 import GamificationPage from './student/pages/GamificationPage';
 import BetsPage from './student/pages/BetsPage';
+import TeacherApp from './teacher';
+import AdminApp from './admin';
 
 const NAV = [
   { path: '/', label: 'Главная' },
@@ -64,6 +66,16 @@ function Shell() {
         <LoginPage />
       </div>
     );
+  }
+
+  // Кабинеты преподавателя и админа пришли из ветки feat/teacher-ui: у каждого
+  // свой полноэкранный layout, поэтому монтируем их до общего shell.
+  if (role === 'teacher') {
+    return <TeacherApp />;
+  }
+
+  if (role === 'admin') {
+    return <AdminApp />;
   }
 
   return (
