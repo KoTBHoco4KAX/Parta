@@ -15,7 +15,8 @@ import {
   PEER_STATUS_LABEL,
   PEER_STATUS_TONE,
 } from '../lib/labels';
-import { fetchPeerReviews, isMockApiError } from '../mock/api';
+import { fetchPeerReviewSessions } from '../api';
+import { ApiError } from '../../core/api';
 import { Badge, Button, EmptyState, Modal, Skeleton, cn } from './ui';
 import {
   IconAlert,
@@ -118,16 +119,16 @@ function Stat({
 }) {
   const valueTone =
     tone === 'sky'
-      ? 'text-sky-700'
+      ? 'text-sky-300'
       : tone === 'rose'
-        ? 'text-rose-600'
+        ? 'text-rose-400'
         : tone === 'emerald'
-          ? 'text-emerald-700'
-          : 'text-slate-900';
+          ? 'text-emerald-400'
+          : 'text-slate-100';
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2.5 shadow-sm">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
         {label}
       </p>
       <p className={cn('mt-0.5 text-base font-bold tabular-nums', valueTone)}>{value}</p>
@@ -164,7 +165,7 @@ function PeerReviewCard({
       }}
       data-testid={`peer-card-${review.id}`}
       aria-label={`Открыть P2P-ревью #${review.id}: ${review.taskTitle}`}
-      className="group w-full cursor-pointer rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-indigo-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-500"
+      className="group w-full cursor-pointer rounded-2xl border border-slate-800 bg-slate-900 p-4 text-left shadow-sm transition hover:border-emerald-500/40 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-500"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -190,21 +191,21 @@ function PeerReviewCard({
         )}
       </div>
 
-      <p className="mt-2 line-clamp-1 text-sm font-medium text-slate-800">
+      <p className="mt-2 line-clamp-1 text-sm font-medium text-slate-200">
         {review.taskTitle}
       </p>
 
-      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-500">
+      <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-slate-400">
         <span>
           Автор{' '}
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-slate-300">
             {personLabel(review.authorId, review.authorName, 'author', anonymize)}
           </span>
         </span>
         <span aria-hidden="true">·</span>
         <span>
           Рецензент{' '}
-          <span className="font-medium text-slate-700">
+          <span className="font-medium text-slate-300">
             {personLabel(
               review.reviewerId,
               review.reviewerName,
@@ -225,22 +226,22 @@ function PeerReviewCard({
             {progress.passed}/{progress.total} критериев
           </Badge>
         ) : review.status === 'IN_REVIEW' ? (
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[11px] text-slate-400">
             чек-лист заполняет рецензент
           </span>
         ) : review.status === 'CREATED' ? (
-          <span className="text-[11px] text-slate-500">ожидает рецензента</span>
+          <span className="text-[11px] text-slate-400">ожидает рецензента</span>
         ) : (
-          <span className="text-[11px] text-slate-500">возвращён автору</span>
+          <span className="text-[11px] text-slate-400">возвращён автору</span>
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-2.5 text-[11px]">
-        <span className="inline-flex items-center gap-1 text-slate-500">
+      <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2.5 text-[11px]">
+        <span className="inline-flex items-center gap-1 text-slate-400">
           <IconShield className="h-3.5 w-3.5" />
           sandbox · read-only
         </span>
-        <span className="inline-flex items-center gap-1 font-medium text-indigo-600 group-hover:text-indigo-700">
+        <span className="inline-flex items-center gap-1 font-medium text-emerald-400 group-hover:text-emerald-300">
           Открыть
           <IconChevronRight className="h-3.5 w-3.5" />
         </span>
@@ -269,12 +270,13 @@ function PeerReviewDetails({
   return (
     <Modal
       open
+      size="lg"
       onClose={onClose}
       title={`P2P-ревью #${review.id}`}
       subtitle={`${review.taskTitle} · ${review.groupCode}`}
       footer={
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <p className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
+          <p className="inline-flex items-center gap-1.5 text-[11px] text-slate-400">
             <IconLock className="h-3.5 w-3.5" />
             Экспорт артефакта отключён политикой sandbox.
           </p>
@@ -298,48 +300,48 @@ function PeerReviewDetails({
           ) : null}
         </section>
 
-        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-slate-50 p-3 text-[11px]">
+        <dl className="grid grid-cols-2 gap-x-3 gap-y-2 rounded-xl bg-slate-900 p-3 text-[11px]">
           <div>
-            <dt className="text-slate-500">Автор</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Автор</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {personLabel(review.authorId, review.authorName, 'author', anonymize)}
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Рецензент</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Рецензент</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {personLabel(review.reviewerId, review.reviewerName, 'reviewer', anonymize)}
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Escrow автора</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Escrow автора</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {review.escrowAmount} XP
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Награда рецензенту</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Награда рецензенту</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {review.rewardAmount} XP
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Создано</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Создано</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {formatDateTime(review.createdAt)}
             </dd>
           </div>
           <div>
-            <dt className="text-slate-500">Истекает</dt>
-            <dd className="mt-0.5 font-medium text-slate-800">
+            <dt className="text-slate-400">Истекает</dt>
+            <dd className="mt-0.5 font-medium text-slate-200">
               {formatDateTime(review.expiresAt)}
             </dd>
           </div>
         </dl>
 
-        <section className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-3">
-          <p className="flex items-start gap-2 text-[11px] leading-relaxed text-indigo-900">
-            <IconShield className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+        <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+          <p className="flex items-start gap-2 text-[11px] leading-relaxed text-emerald-100">
+            <IconShield className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
             <span>
               Рецензент получает поток через backend-прокси, а не файл: одноразовый
               токен на 15 минут, watermark с reviewer_id/peer_review_id, экспорт и
@@ -350,7 +352,7 @@ function PeerReviewDetails({
 
         <section>
           <div className="flex items-center justify-between gap-2">
-            <h4 className="text-xs font-semibold text-slate-700">Артефакт</h4>
+            <h4 className="text-xs font-semibold text-slate-300">Артефакт</h4>
             {review.status === 'IN_REVIEW' ? (
               <span className="text-[10px] text-slate-400">
                 токен TTL {review.accessTokenTtlSeconds / 60} мин
@@ -377,14 +379,14 @@ function PeerReviewDetails({
               </div>
             </div>
           ) : (
-            <div className="mt-2 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
+            <div className="mt-2 flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-900 px-4 py-8 text-center">
               <IconLock className="h-5 w-5 text-slate-400" />
-              <p className="mt-2 text-xs font-medium text-slate-700">
+              <p className="mt-2 text-xs font-medium text-slate-300">
                 {review.status === 'CREATED'
                   ? 'Поток откроется, когда ревью возьмут'
                   : 'Срок ревью истёк — поток закрыт'}
               </p>
-              <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-slate-500">
+              <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-slate-400">
                 {review.status === 'CREATED'
                   ? 'До CLAIM артефакт не покидает backend и недоступен даже преподавателю.'
                   : 'Escrow возвращён автору по EXPIRE, доступ к потоку аннулирован.'}
@@ -395,8 +397,8 @@ function PeerReviewDetails({
 
         <section>
           <div className="flex items-end justify-between gap-2">
-            <h4 className="text-xs font-semibold text-slate-700">Чек-лист</h4>
-            <span className="text-[10px] tabular-nums text-slate-500">
+            <h4 className="text-xs font-semibold text-slate-300">Чек-лист</h4>
+            <span className="text-[10px] tabular-nums text-slate-400">
               {review.status === 'COMPLETED'
                 ? `${progress.passed}/${progress.total} · вес ${progress.passedWeight}/${progress.totalWeight}`
                 : `${progress.total} критериев`}
@@ -404,7 +406,7 @@ function PeerReviewDetails({
           </div>
 
           {review.status === 'COMPLETED' ? (
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
               <div
                 className={cn(
                   'h-full rounded-full transition',
@@ -428,16 +430,16 @@ function PeerReviewDetails({
               return (
                 <li
                   key={item.code}
-                  className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2"
+                  className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2"
                 >
                   <span
                     className={cn(
                       'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
                       done
                         ? passed
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-rose-100 text-rose-700'
-                        : 'bg-slate-100 text-slate-400',
+                          ? 'bg-emerald-500/20 text-emerald-400'
+                          : 'bg-rose-500/20 text-rose-300'
+                        : 'bg-slate-800 text-slate-400',
                     )}
                   >
                     {done ? (
@@ -451,7 +453,7 @@ function PeerReviewDetails({
                     )}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-medium text-slate-800">{item.title}</p>
+                    <p className="text-[11px] font-medium text-slate-200">{item.title}</p>
                     <p className="text-[10px] text-slate-400">
                       {item.code} · вес {item.weight}
                     </p>
@@ -461,8 +463,8 @@ function PeerReviewDetails({
                       'text-[10px] font-medium',
                       done
                         ? passed
-                          ? 'text-emerald-700'
-                          : 'text-rose-600'
+                          ? 'text-emerald-400'
+                          : 'text-rose-400'
                         : 'text-slate-400',
                     )}
                   >
@@ -480,7 +482,7 @@ function PeerReviewDetails({
           </ul>
 
           {review.status === 'IN_REVIEW' ? (
-            <p className="mt-2 text-[10px] leading-relaxed text-slate-500">
+            <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
               Результаты чек-листа не отдаются до COMPLETE: иначе ревью можно
               «подсмотреть» и повлиять на оценку работы.
             </p>
@@ -489,28 +491,28 @@ function PeerReviewDetails({
 
         {review.summary ? (
           <section>
-            <h4 className="text-xs font-semibold text-slate-700">Итог рецензента</h4>
-            <blockquote className="mt-2 rounded-xl border-l-2 border-indigo-400 bg-slate-50 px-3 py-2 text-[11px] leading-relaxed text-slate-700">
+            <h4 className="text-xs font-semibold text-slate-300">Итог рецензента</h4>
+            <blockquote className="mt-2 rounded-xl border-l-2 border-emerald-500 bg-slate-900 px-3 py-2 text-[11px] leading-relaxed text-slate-300">
               {review.summary}
             </blockquote>
           </section>
         ) : null}
 
         <section>
-          <h4 className="text-xs font-semibold text-slate-700">Хронология</h4>
+          <h4 className="text-xs font-semibold text-slate-300">Хронология</h4>
           <ol className="mt-2 space-y-1.5 text-[11px]">
-            <li className="flex items-center gap-2 text-slate-600">
+            <li className="flex items-center gap-2 text-slate-300">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
               Создано · {formatDateTime(review.createdAt)}
             </li>
-            <li className="flex items-center gap-2 text-slate-600">
+            <li className="flex items-center gap-2 text-slate-300">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-400" />
               {review.takenAt
                 ? `Взято в работу · ${formatDateTime(review.takenAt)}`
                 : 'Ещё не взято в работу'}
             </li>
             {review.completedAt ? (
-              <li className="flex items-center gap-2 text-emerald-700">
+              <li className="flex items-center gap-2 text-emerald-400">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 Завершено · {formatDateTime(review.completedAt)}
               </li>
@@ -518,7 +520,7 @@ function PeerReviewDetails({
             <li
               className={cn(
                 'flex items-center gap-2',
-                review.status === 'EXPIRED' ? 'text-rose-600' : 'text-slate-600',
+                review.status === 'EXPIRED' ? 'text-rose-400' : 'text-slate-300',
               )}
             >
               <span
@@ -533,7 +535,7 @@ function PeerReviewDetails({
           </ol>
         </section>
 
-        <p className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-500">
+        <p className="flex items-start gap-2 text-[11px] leading-relaxed text-slate-400">
           <IconLock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Преподаватель наблюдает за сессией, но не завершает ревью за студента:
           COMPLETE доступен только рецензенту, иначе рушится анонимность P2P.
@@ -565,7 +567,7 @@ export function PeerReviewScreen() {
     setLoading(true);
     setError(null);
 
-    fetchPeerReviews()
+    fetchPeerReviewSessions()
       .then((data) => {
         if (cancelled) {
           return;
@@ -580,7 +582,7 @@ export function PeerReviewScreen() {
         }
 
         setError(
-          isMockApiError(cause)
+          cause instanceof ApiError
             ? cause.message
             : 'Не удалось загрузить P2P-сессии.',
         );
@@ -642,8 +644,8 @@ export function PeerReviewScreen() {
     <div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-slate-900">P2P-ревью</h1>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          <h1 className="text-lg font-bold tracking-tight text-slate-100">P2P-ревью</h1>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
             Наблюдение за sandbox-сессиями. Преподаватель не может завершить ревью
             за студента.
           </p>
@@ -677,14 +679,14 @@ export function PeerReviewScreen() {
         <Stat label="Завершено" value={String(counts.COMPLETED)} tone="emerald" />
       </div>
 
-      <div className="mt-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3.5">
+      <div className="mt-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-3.5">
         <div className="flex items-start gap-3">
-          <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+          <IconShield className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
           <div>
-            <p className="text-xs font-semibold text-indigo-950">
+            <p className="text-xs font-semibold text-emerald-50">
               P2P-ревью идёт в sandbox
             </p>
-            <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-indigo-900/80">
+            <ul className="mt-1 space-y-0.5 text-[11px] leading-relaxed text-emerald-100/80">
               <li>· Рецензенту отдаётся поток, а не файл: скачивание и экспорт закрыты.</li>
               <li>· Одноразовый read-only токен живёт 15 минут, поток помечен watermark.</li>
               <li>· Ревью нельзя взять у себя и нельзя держать больше 3 активных.</li>
@@ -694,7 +696,7 @@ export function PeerReviewScreen() {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+        <div className="flex flex-wrap gap-1 rounded-xl bg-slate-800 p-1">
           {(['ALL', 'ACTIVE', 'COMPLETED', 'EXPIRED'] as const).map((value) => (
             <button
               key={value}
@@ -704,8 +706,8 @@ export function PeerReviewScreen() {
               className={cn(
                 'rounded-lg px-2.5 py-1 text-[11px] font-medium transition',
                 filter === value
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800',
+                  ? 'bg-slate-900 text-slate-100 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200',
               )}
             >
               {PEER_FILTER_LABEL[value]}
@@ -714,22 +716,22 @@ export function PeerReviewScreen() {
           ))}
         </div>
 
-        <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+        <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-xl border border-slate-800 bg-slate-900 px-2.5 py-1.5 shadow-sm">
           <input
             type="checkbox"
             className="peer sr-only"
             checked={anonymize}
             onChange={(event) => setAnonymize(event.target.checked)}
           />
-          <span className="relative h-5 w-9 rounded-full bg-slate-300 transition after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition after:content-[''] peer-checked:bg-indigo-600 peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-300" />
-          <span className="text-[11px] font-medium text-slate-600">Анонимизация</span>
+          <span className="relative h-5 w-9 rounded-full bg-slate-600 transition after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-slate-100 after:transition after:content-[''] peer-checked:bg-emerald-500 peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40" />
+          <span className="text-[11px] font-medium text-slate-300">Анонимизация</span>
         </label>
       </div>
 
       {error ? (
         <div
           role="alert"
-          className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+          className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200"
         >
           <IconAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="flex-1">
@@ -752,7 +754,7 @@ export function PeerReviewScreen() {
           ? [0, 1, 2].map((index) => (
               <div
                 key={index}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm"
               >
                 <div className="flex justify-between">
                   <Skeleton className="h-4 w-24" />

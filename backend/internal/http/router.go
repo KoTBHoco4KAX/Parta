@@ -82,8 +82,13 @@ func (s *Server) Handler() http.Handler {
 	public.Handle("POST /api/auth/dev-login", http.HandlerFunc(s.handleDevLogin))
 
 	protected := http.NewServeMux()
+	protected.Handle("GET /api/tasks", http.HandlerFunc(s.handleListTasks))
 	protected.Handle("POST /api/tasks", http.HandlerFunc(s.handleCreateTask))
+	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
 	protected.Handle("POST /api/submissions", http.HandlerFunc(s.handleCreateSubmission))
+	protected.Handle("GET /api/wagers", http.HandlerFunc(s.handleListWagers))
+	protected.Handle("GET /api/peer-reviews", http.HandlerFunc(s.handleListPeerReviews))
+	protected.Handle("GET /api/assignments", http.HandlerFunc(s.handleListAssignments))
 	protected.Handle("PATCH /api/submissions/{id}/status", http.HandlerFunc(s.handleSubmissionStatus))
 	protected.Handle("POST /api/submissions/{id}/verdict", http.HandlerFunc(s.handleVerdict))
 	protected.Handle("POST /api/users/me/streak-freezes/purchase", http.HandlerFunc(s.handlePurchaseFreezes))

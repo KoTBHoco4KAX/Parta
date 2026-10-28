@@ -1,70 +1,216 @@
-import { useState } from 'react';
-import { Task, TaskStatus } from '../types';
-import { mockTasks } from '../mocks/data';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ApiError, createSubmissionCard, fetchSubmissions, fetchTasks, moveSubmission } from '../../core/api';
+import type { Submission, Task } from '../../core/types';
+import { Button } from '../../components/Button';
 import SubmitWorkModal from '../components/SubmitWorkModal';
+import type { TaskStatus } from '../types';
 
-const columns: { id: TaskStatus; title: string; color: string }[] = [
-  { id: 'todo', title: 'К выполнению', color: 'bg-gray-100' },
-  { id: 'in-progress', title: 'В работе', color: 'bg-blue-50' },
-  { id: 'review', title: 'На проверке', color: 'bg-yellow-50' },
-  { id: 'done', title: 'Готово', color: 'bg-green-50' },
+const columns: { id: TaskStatus; title: string }[] = [
+  { id: 'todo', title: 'К выполнению' },
+  { id: 'in-progress', title: 'В работе' },
+  { id: 'review', title: 'На проверке' },
+  { id: 'done', title: 'Готово' },
 ];
 
+function statusFromSubmission(status: Submission['status'] | undefined): TaskStatus {
+  switch (status) {
+    case 'IN_PROGRESS':
+      return 'in-progress';
+    case 'REVIEW':
+      return 'review';
+    case 'DONE':
+      return 'done';
+    case 'TODO':
+    case 'REJECTED':
+    default:
+      return 'todo';
+  }
+}
+
+// KanbanPage — реальная доска студента: GET /api/tasks + /api/submissions,
+// движения через POST /api/submissions и PATCH /api/submissions/{id}/status.
 export default function KanbanPage() {
-  const [tasks, setTasks] = useState<Task[]>(mockTasks);
-  const [draggedTask, setDraggedTask] = useState<Task | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
+  const [selected, setSelected] = useState<Submission | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const handleDragStart = (task: Task) => {
-    setDraggedTask(task);
-  };
+  const load = useCallback(async () => {
+    setError(null);
 
-  const handleDrop = (status: TaskStatus) => {
-    if (draggedTask) {
-      setTasks(tasks.map(t => t.id === draggedTask.id ? { ...t, status } : t));
-      setDraggedTask(null);
+    try {
+      const [nextTasks, nextSubmissions] = await Promise.all([
+        fetchTasks(),
+        fetchSubmissions(),
+      ]);
+
+      setTasks(nextTasks);
+      setSubmissions(nextSubmissions);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить доску.');
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-  };
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const submissionByTask = useMemo(() => {
+    const map = new Map<number, Submission>();
+    for (const submission of submissions) {
+      map.set(submission.task_id, submission);
+    }
+
+    return map;
+  }, [submissions]);
+
+  const cards = useMemo(
+    () =>
+      tasks.map((task) => ({
+        task,
+        submission: submissionByTask.get(task.id) ?? null,
+        status: statusFromSubmission(submissionByTask.get(task.id)?.status),
+      })),
+    [tasks, submissionByTask],
+  );
+
+  async function handleDrop(task: Task, target: TaskStatus) {
+    const submission = submissionByTask.get(task.id) ?? null;
+    const current = statusFromSubmission(submission?.status);
+
+    if (busy || current === target) {
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+
+    try {
+      if (!submission) {
+        const created = await createSubmissionCard(task.id);
+        if (target === 'in-progress') {
+          await moveSubmission(created.submission_id, 'START');
+        }
+      } else if (target === 'in-progress') {
+        if (submission.status === 'TODO') {
+          await moveSubmission(submission.id, 'START');
+        } else if (submission.status === 'REJECTED') {
+          await moveSubmission(submission.id, 'REOPEN');
+        }
+      } else if (target === 'review' && submission.status === 'IN_PROGRESS') {
+        setSelected(submission);
+      }
+
+      await load();
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось переместить карточку.');
+    } finally {
+      setBusy(false);
+      setDraggedTaskId(null);
+    }
+  }
+
+  if (loading) {
+    return <p className="py-10 text-center text-sm text-slate-400">Загружаем доску…</p>;
+  }
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Канбан-доска</h1>
-      <div className="grid grid-cols-4 gap-4">
-        {columns.map(column => (
-          <div
-            key={column.id}
-            className={`${column.color} rounded-lg p-4`}
-            onDrop={() => handleDrop(column.id)}
-            onDragOver={handleDragOver}
-          >
-            <h2 className="font-semibold mb-4">{column.title} ({tasks.filter(t => t.status === column.id).length})</h2>
-            <div className="space-y-3">
-              {tasks.filter(t => t.status === column.id).map(task => (
-                <div
-                  key={task.id}
-                  draggable
-                  onDragStart={() => handleDragStart(task)}
-                  className="bg-white p-3 rounded shadow cursor-move hover:shadow-md"
-                  onClick={() => column.id === 'review' && setSelectedTask(task)}
-                >
-                  <h3 className="font-medium">{task.title}</h3>
-                  <p className="text-sm text-gray-600 mt-1">{task.description}</p>
-                  {task.subject && <span className="text-xs bg-gray-200 px-2 py-1 rounded mt-2 inline-block">{task.subject}</span>}
-                  {task.dueDate && <p className="text-xs text-red-500 mt-2">До: {task.dueDate}</p>}
-                  {column.id === 'review' && <p className="text-xs text-blue-600 mt-1">Нажми для сдачи работы</p>}
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
+    <div>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
+          <p className="mt-0.5 text-xs text-slate-400">Перетащите карточку, чтобы сменить статус.</p>
+        </div>
+        <Button variant="secondary" size="sm" onClick={() => void load()}>
+          Обновить
+        </Button>
       </div>
-      {selectedTask && (
-        <SubmitWorkModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+
+      {error ? (
+        <p role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+          {error}
+        </p>
+      ) : null}
+
+      {tasks.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
+          Заданий пока нет. Они появятся, когда преподаватель опубликует работу.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {columns.map((column) => {
+            const columnCards = cards.filter((card) => card.status === column.id);
+
+            return (
+              <section
+                key={column.id}
+                onDrop={() => {
+                  const task = tasks.find((candidate) => candidate.id === draggedTaskId);
+                  if (task) {
+                    void handleDrop(task, column.id);
+                  }
+                }}
+                onDragOver={(event) => event.preventDefault()}
+                className="rounded-xl border border-slate-800 bg-slate-900/60 p-3"
+              >
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                  {column.title} · {columnCards.length}
+                </h2>
+
+                <div className="space-y-2">
+                  {columnCards.map(({ task, submission, status }) => (
+                    <article
+                      key={task.id}
+                      draggable
+                      onDragStart={() => setDraggedTaskId(task.id)}
+                      onClick={() => {
+                        if (submission?.status === 'IN_PROGRESS') {
+                          setSelected(submission);
+                        }
+                      }}
+                      className="cursor-move rounded-lg border border-slate-800 bg-slate-950 p-3 hover:border-slate-700"
+                    >
+                      <h3 className="text-sm font-medium text-slate-100">{task.title}</h3>
+                      <p className="mt-1 line-clamp-2 text-xs text-slate-400">{task.description_md}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-slate-300">
+                          {task.task_type}
+                        </span>
+                        <span className="text-slate-500">до {new Date(task.deadline_at).toLocaleDateString()}</span>
+                        {submission?.status === 'REJECTED' ? (
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-rose-300">доработка</span>
+                        ) : null}
+                        {status === 'in-progress' ? (
+                          <span className="text-emerald-400">нажмите, чтобы сдать</span>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
       )}
+
+      {selected ? (
+        <SubmitWorkModal
+          submissionId={selected.id}
+          taskTitle={selected.task_title}
+          initialUrl={selected.artifact_url}
+          initialHash={selected.artifact_hash}
+          onClose={() => setSelected(null)}
+          onSubmitted={() => {
+            setSelected(null);
+            void load();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

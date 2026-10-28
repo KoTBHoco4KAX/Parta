@@ -18,4 +18,4 @@ export type {
   TaskType,
   TeamSlotRole,
 } from './types';
-export { createTask, fetchAssignments, fetchCreatedTasks } from './mock/api';
+export { createTask, fetchAssignments, fetchCreatedTasks } from './api';

@@ -1,11 +1,10 @@
-import {
-  useEffect,
-  useId,
-  type ButtonHTMLAttributes,
-  type ReactNode,
-} from 'react';
+import type { ReactNode } from 'react';
 import type { ToastData } from '../types';
 import { IconAlert, IconCheck, IconX } from './icons';
+
+// Базовые кнопка и модалка живут в src/components: кабинеты не заводят свои.
+export { Button } from '../../components/Button';
+export { Modal } from '../../components/Modal';
 
 /** Склейка классов без classnames/clsx — сторонние зависимости не нужны. */
 export function cn(...values: Array<string | false | null | undefined>): string {
@@ -22,13 +21,13 @@ export type BadgeTone =
   | 'violet';
 
 const badgeTones: Record<BadgeTone, string> = {
-  slate: 'bg-slate-100 text-slate-600 ring-slate-200',
-  indigo: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
-  sky: 'bg-sky-50 text-sky-700 ring-sky-200',
-  emerald: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  amber: 'bg-amber-50 text-amber-800 ring-amber-200',
-  rose: 'bg-rose-50 text-rose-700 ring-rose-200',
-  violet: 'bg-violet-50 text-violet-700 ring-violet-200',
+  slate: 'bg-slate-800 text-slate-300 ring-slate-700',
+  indigo: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
+  sky: 'bg-sky-500/10 text-sky-300 ring-sky-500/30',
+  emerald: 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/30',
+  amber: 'bg-amber-500/10 text-amber-300 ring-amber-500/30',
+  rose: 'bg-rose-500/10 text-rose-300 ring-rose-500/30',
+  violet: 'bg-violet-500/10 text-violet-300 ring-violet-500/30',
 };
 
 export function Badge({
@@ -52,27 +51,6 @@ export function Badge({
     </span>
   );
 }
-
-export type ButtonVariant = 'primary' | 'accept' | 'reject' | 'outline' | 'ghost';
-
-const buttonVariants: Record<ButtonVariant, string> = {
-  primary:
-    'bg-indigo-600 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline-indigo-600 disabled:bg-indigo-300',
-  accept:
-    'bg-emerald-600 text-white shadow-sm hover:bg-emerald-500 focus-visible:outline-emerald-600 disabled:bg-emerald-300',
-  reject:
-    'bg-rose-600 text-white shadow-sm hover:bg-rose-500 focus-visible:outline-rose-600 disabled:bg-rose-300',
-  outline:
-    'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 focus-visible:outline-slate-400 disabled:text-slate-400',
-  ghost:
-    'text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-slate-400',
-};
-
-const buttonSizes = {
-  sm: 'h-9 px-3 text-xs',
-  md: 'h-11 px-4 text-sm',
-  lg: 'h-12 px-5 text-sm',
-} as const;
 
 export function Spinner({ className }: { className?: string }) {
   return (
@@ -101,130 +79,8 @@ export function Spinner({ className }: { className?: string }) {
   );
 }
 
-export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant;
-  size?: keyof typeof buttonSizes;
-  loading?: boolean;
-  block?: boolean;
-}
-
-export function Button({
-  variant = 'primary',
-  size = 'md',
-  loading = false,
-  block = false,
-  className,
-  children,
-  disabled,
-  type = 'button',
-  ...props
-}: ButtonProps) {
-  return (
-    <button
-      type={type}
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed',
-        buttonVariants[variant],
-        buttonSizes[size],
-        block && 'w-full',
-        className,
-      )}
-      disabled={disabled || loading}
-      aria-busy={loading || undefined}
-      {...props}
-    >
-      {loading ? <Spinner className="h-4 w-4" /> : null}
-      {children}
-    </button>
-  );
-}
-
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cn('animate-pulse rounded-xl bg-slate-200/80', className)} />;
-}
-
-export function Modal({
-  open,
-  onClose,
-  title,
-  subtitle,
-  children,
-  footer,
-}: {
-  open: boolean;
-  onClose: () => void;
-  title: ReactNode;
-  subtitle?: ReactNode;
-  children: ReactNode;
-  footer?: ReactNode;
-}) {
-  const titleId = useId();
-
-  useEffect(() => {
-    if (!open) {
-      return undefined;
-    }
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', onKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [open, onClose]);
-
-  if (!open) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
-      <div
-        className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        className="relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-w-2xl sm:rounded-3xl"
-      >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <div className="min-w-0">
-            <h2 id={titleId} className="text-base font-semibold text-slate-900">
-              {title}
-            </h2>
-            {subtitle ? (
-              <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="-mr-1 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Закрыть"
-          >
-            <IconX className="h-5 w-5" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
-
-        {footer ? (
-          <div className="border-t border-slate-200 bg-slate-50/80 px-5 py-4">{footer}</div>
-        ) : null}
-      </div>
-    </div>
-  );
+  return <div className={cn('animate-pulse rounded-xl bg-slate-800', className)} />;
 }
 
 export function EmptyState({
@@ -239,17 +95,17 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-slate-300 bg-white/60 px-6 py-12 text-center">
+    <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-900/40 px-6 py-10 text-center">
       {icon ? (
-        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-800 text-slate-400">
           {icon}
         </div>
       ) : null}
-      <p className="text-sm font-semibold text-slate-900">{title}</p>
+      <p className="text-sm font-semibold text-slate-100">{title}</p>
       {description ? (
-        <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-500">{description}</p>
+        <p className="mt-1 max-w-sm text-xs leading-relaxed text-slate-400">{description}</p>
       ) : null}
-      {action ? <div className="mt-5">{action}</div> : null}
+      {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );
 }
@@ -263,16 +119,16 @@ export function Toast({
 }) {
   const toneStyles =
     toast.tone === 'success'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
       : toast.tone === 'error'
-        ? 'border-rose-200 bg-rose-50 text-rose-900'
-        : 'border-slate-200 bg-white text-slate-900';
+        ? 'border-rose-500/30 bg-rose-500/10 text-rose-100'
+        : 'border-slate-700 bg-slate-900 text-slate-100';
 
   return (
     <div
       role="status"
       className={cn(
-        'pointer-events-auto flex w-full items-start gap-3 rounded-2xl border p-3 shadow-lg shadow-slate-900/5',
+        'pointer-events-auto flex w-full items-start gap-3 rounded-2xl border p-3 shadow-lg shadow-slate-950/40',
         toneStyles,
       )}
     >
@@ -280,15 +136,13 @@ export function Toast({
         className={cn(
           'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
           toast.tone === 'success'
-            ? 'bg-emerald-600 text-white'
+            ? 'bg-emerald-500 text-slate-950'
             : toast.tone === 'error'
-              ? 'bg-rose-600 text-white'
-              : 'bg-slate-200 text-slate-700',
+              ? 'bg-rose-500 text-white'
+              : 'bg-slate-700 text-slate-200',
         )}
       >
-        {toast.tone === 'success' ? (
-          <IconCheck className="h-4 w-4" />
-        ) : toast.tone === 'error' ? (
+        {toast.tone === 'error' ? (
           <IconAlert className="h-4 w-4" />
         ) : (
           <IconCheck className="h-4 w-4" />

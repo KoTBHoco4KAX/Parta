@@ -15,10 +15,7 @@ export type {
   VerdictResult,
 } from './types';
 export {
-  MockApiError,
-  fetchPeerReviews,
+  fetchPeerReviewSessions,
   fetchReviewInbox,
-  isMockApiError,
   issueVerdict,
-  resetTeacherDemo,
-} from './mock/api';
+} from './api';

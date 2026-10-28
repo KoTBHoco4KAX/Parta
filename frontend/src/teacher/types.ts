@@ -2,8 +2,8 @@
  * DTO преподавательского кабинета.
  *
  * Формы намеренно повторяют spec/02_FSM.md, spec/04_API.md и события WS из
- * spec/00_ARCHITECTURE.md §V. Слой данных сейчас — мок (`mock/api.ts`), поэтому
- * типы — единственный контракт между UI и будущим REST/WS-клиентом.
+ * spec/00_ARCHITECTURE.md §V. Слой данных — REST (`api.ts`), типы описывают
+ * контракт между UI и backend; DTO — в `src/core/types.ts`.
  */
 
 /** Типы заданий из CHECK `tasks.task_type` (spec/03_MATH.md §1). */

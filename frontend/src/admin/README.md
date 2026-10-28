@@ -1,8 +1,7 @@
 # Админка — `frontend/src/admin`
 
-Самодостаточный модуль роли `admin` для Фазы 6. **Backend не требуется:** данные — мок,
-контракт — `POST /api/tasks` из `spec/04_API.md` с расширениями backend (`slots_count`,
-создание `team_size` слотов).
+Самодостаточный модуль роли `admin`. Данные — реальные REST-запросы (`GET /api/assignments`,
+`GET/POST /api/tasks`) через `apiFetch`. Визуальные правила — в `DESIGN_SPEC.md`.
 
 ## Экран
 
@@ -51,14 +50,14 @@ SlotBaseXP = max(10, round(BaseXP / team_size * 1.15))   // TEAM_PROJECT
 - слоты строятся как `DB, BIZ, QA_DOC, DEVOPS`, далее с суффиксами `_2`, `_3`, как в
   `teamSlotSeeds` бэкенда.
 
-## Моки и интеграция
+## Данные и интеграция
 
-- `mock/data.ts` — 4 назначения из dev-сида и 2 уже созданные задачи.
-- `mock/api.ts` — `fetchAssignments`, `fetchCreatedTasks`, `createTask`.
-  Ошибки — `MockApiError` (`code`, `status`), как `{error, code}` бэкенда.
-- Для перехода на backend замените тела трёх функций на fetch: DTO в `types.ts` уже
-  совпадают с `POST /api/tasks`. Read-эндпоинта списка задач в бэкенде пока нет
-  (`PROJECT_MANIFEST` §6.5).
+- `api.ts` — `fetchAssignments` (`GET /api/assignments`),
+  `fetchCreatedTasks` (`GET /api/tasks`), `createTask` (`POST /api/tasks`).
+  Ошибки — общий `ApiError` (`code`, `status`).
+- Группа и дисциплина подставляются в список задач из назначений по `assignment_id`.
+- `slots_count` приходит из ответа `POST /api/tasks`; для списка он вычисляется как
+  `team_size` у `TEAM_PROJECT`.
 
 ## Проверка
 

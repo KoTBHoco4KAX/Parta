@@ -1,13 +1,7 @@
-export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
+// UI-модели студенческого кабинета. Данные приходят из core/types (REST DTO),
+// здесь остаётся только то, что нужно отрисовке.
 
-export interface Task {
-  id: string;
-  title: string;
-  description: string;
-  status: TaskStatus;
-  dueDate?: string;
-  subject?: string;
-}
+export type TaskStatus = 'todo' | 'in-progress' | 'review' | 'done';
 
 export interface Achievement {
   id: string;
@@ -16,21 +10,6 @@ export interface Achievement {
   icon: string;
   unlocked: boolean;
   xpReward: number;
-}
-
-export interface UserStats {
-  xp: number;
-  level: number;
-  streak: number;
-  freezes: number;
-}
-
-export interface Bet {
-  id: string;
-  opponent: string;
-  amount: number;
-  stake: string;
-  status: 'pending' | 'active' | 'won' | 'lost';
 }
 
 export interface FileUpload {

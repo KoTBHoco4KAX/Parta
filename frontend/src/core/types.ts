@@ -139,3 +139,103 @@ export interface WsEvent<T = unknown> {
 }
 
 export type ConnectionStatus = 'connecting' | 'online' | 'offline';
+
+// Read-модели GET /api/tasks, /api/submissions, /api/wagers, /api/peer-reviews,
+// /api/assignments. Имена полей повторяют JSON backend один в один.
+
+export type TaskType = 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
+
+export interface Task {
+  id: number;
+  assignment_id: number;
+  title: string;
+  description_md: string;
+  task_type: TaskType;
+  requirements_count: number;
+  expected_hours: number;
+  deadline_at: string;
+  speedrun_window_hours: number;
+  team_size: number;
+  base_xp_computed: number;
+  group_id: number;
+  assigned_teacher_id: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Revision {
+  at: string;
+  actor_id: number;
+  comment: string;
+}
+
+export interface Submission {
+  id: number;
+  task_id: number;
+  student_id: number;
+  team_slot_id: number | null;
+  status: SubmissionStatus;
+  artifact_url: string;
+  artifact_hash: string;
+  submitted_at: string | null;
+  final_submitted_at: string | null;
+  reviewed_at: string | null;
+  reviewer_id: number | null;
+  revision_log: Revision[];
+  task_title: string;
+  task_type: TaskType;
+  deadline_at: string;
+  speedrun_window_hours: number;
+  base_xp_computed: number;
+  group_id: number;
+  group_code: string;
+  student_name: string;
+  team_slot_role: string | null;
+  attempt: number;
+}
+
+export interface Wager {
+  id: number;
+  task_id: number;
+  task_title: string;
+  task_deadline_at: string;
+  stake_amount: number;
+  deadline_at: string;
+  status: 'PLACED' | 'WON' | 'LOST' | 'CANCELLED';
+  created_at: string;
+  resolved_at: string | null;
+  resolution_note: string;
+}
+
+export interface PeerReview {
+  id: number;
+  submission_id: number;
+  task_id: number;
+  task_title: string;
+  group_code: string;
+  author_id: number;
+  author_name: string;
+  reviewer_id: number | null;
+  reviewer_name: string | null;
+  status: 'CREATED' | 'IN_REVIEW' | 'COMPLETED' | 'EXPIRED';
+  escrow_amount: number;
+  reward_amount: number;
+  created_at: string;
+  taken_at: string | null;
+  completed_at: string | null;
+  expires_at: string;
+  checklist: ChecklistItem[];
+  checklist_results: ChecklistResult[];
+  summary: string;
+  access_token_ttl_seconds: number;
+}
+
+export interface Assignment {
+  id: number;
+  group_code: string;
+  group_title: string;
+  discipline_code: string;
+  discipline_title: string;
+  teacher_name: string;
+}

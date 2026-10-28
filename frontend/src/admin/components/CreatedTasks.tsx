@@ -26,12 +26,12 @@ function TaskRow({ task }: { task: CreatedTask }) {
         <Badge tone="emerald">{task.status}</Badge>
       </div>
 
-      <p className="mt-1.5 text-sm font-medium leading-snug text-slate-900">
+      <p className="mt-1.5 text-sm font-medium leading-snug text-slate-100">
         {task.title}
       </p>
 
-      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-        <span className="font-semibold text-slate-800">
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-400">
+        <span className="font-semibold text-slate-200">
           {task.baseXP} XP
           {task.taskType === 'TEAM_PROJECT' ? (
             <span className="font-normal text-slate-400"> / слот</span>
@@ -52,8 +52,7 @@ function TaskRow({ task }: { task: CreatedTask }) {
 }
 
 /**
- * Список созданных задач. В backend read-эндпоинтов ещё нет (PROJECT_MANIFEST §6.5),
- * поэтому список живёт в моке и пополняется после `POST /api/tasks`.
+ * Список созданных задач: данные приходят из GET /api/tasks.
  */
 export function CreatedTasks({
   tasks,
@@ -63,11 +62,11 @@ export function CreatedTasks({
   loading: boolean;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Созданные задачи</h2>
-          <p className="mt-0.5 text-[11px] text-slate-500">
+          <h2 className="text-sm font-semibold text-slate-100">Созданные задачи</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">
             Новые — сверху. Нажмите «Опубликовать», чтобы добавить ещё одну.
           </p>
         </div>
@@ -93,7 +92,7 @@ export function CreatedTasks({
           />
         </div>
       ) : (
-        <ul className="mt-3 divide-y divide-slate-100">
+        <ul className="mt-3 divide-y divide-slate-800">
           {tasks.map((task) => (
             <TaskRow key={task.taskId} task={task} />
           ))}

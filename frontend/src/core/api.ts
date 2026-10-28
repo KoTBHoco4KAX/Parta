@@ -1,5 +1,6 @@
 import type {
   ApiErrorBody,
+  Assignment,
   CarryOverResponse,
   ClaimPeerReviewResponse,
   CompletePeerReviewResponse,
@@ -11,11 +12,16 @@ import type {
   CreateWagerRequest,
   CreateWagerResponse,
   DevLoginResponse,
+  PeerReview,
   PurchaseFreezesResponse,
   StatusResponse,
+  Submission,
+  Task,
   User,
   VerdictResponse,
+  Wager,
 } from './types';
+import { readStoredToken } from './session';
 
 // Vite проксирует /api на backend (см. vite.config.ts), поэтому базовый путь
 // относительный: в проде тот же origin, в dev — прокси.
@@ -49,8 +55,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     headers['Content-Type'] = 'application/json';
   }
 
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  // options.token === undefined означает «взять текущую сессию из localStorage»;
+  // явный null оставляет запрос анонимным (dev-login).
+  const token = options.token === undefined ? readStoredToken() : options.token;
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   const response = await fetch(`${API_PREFIX}${path}`, {
@@ -88,11 +98,110 @@ export function devLogin(email: string): Promise<DevLoginResponse> {
   return request<DevLoginResponse>('/auth/dev-login', {
     method: 'POST',
     body: { email },
+    token: null,
   });
 }
 
 function auth(token: string | null) {
   return { token };
+}
+
+/**
+ * apiFetch — единая точка интеграции экранов с backend.
+ *
+ * Токен по умолчанию берётся из localStorage (сессия AuthProvider), поэтому
+ * вызывающему коду не нужно протаскивать его через props. Ошибки приходят
+ * типом ApiError с `status` и `code`.
+ */
+export function apiFetch<T>(
+  path: string,
+  options: Omit<RequestOptions, 'token'> & { token?: string | null } = {},
+): Promise<T> {
+  return request<T>(path, options);
+}
+
+// fetchTasks — GET /api/tasks: backend сам режет выдачу по роли.
+export function fetchTasks(): Promise<Task[]> {
+  return apiFetch<Task[]>('/tasks');
+}
+
+// fetchSubmissions — GET /api/submissions?status=..., карточки с данными задания.
+export function fetchSubmissions(status?: string): Promise<Submission[]> {
+  const query = status ? `?status=${encodeURIComponent(status)}` : '';
+
+  return apiFetch<Submission[]>(`/submissions${query}`);
+}
+
+// fetchWagers — GET /api/wagers: пари текущего студента.
+export function fetchWagers(): Promise<Wager[]> {
+  return apiFetch<Wager[]>('/wagers');
+}
+
+// fetchPeerReviews — GET /api/peer-reviews: sandbox-сессии преподавателя.
+export function fetchPeerReviews(): Promise<PeerReview[]> {
+  return apiFetch<PeerReview[]>('/peer-reviews');
+}
+
+// fetchAssignments — GET /api/assignments: пары «группа + дисциплина».
+export function fetchAssignments(): Promise<Assignment[]> {
+  return apiFetch<Assignment[]>('/assignments');
+}
+
+// createSubmissionCard — POST /api/submissions: идемпотентная карточка TODO.
+export function createSubmissionCard(
+  taskId: number,
+  teamSlotId?: number,
+): Promise<CreateSubmissionResponse> {
+  return apiFetch<CreateSubmissionResponse>('/submissions', {
+    method: 'POST',
+    body: { task_id: taskId, team_slot_id: teamSlotId },
+  });
+}
+
+// moveSubmission — PATCH /api/submissions/{id}/status.
+export function moveSubmission(
+  submissionId: number,
+  event: 'START' | 'SUBMIT' | 'REOPEN',
+  artifact?: { url: string; hash: string },
+): Promise<StatusResponse> {
+  return apiFetch<StatusResponse>(`/submissions/${submissionId}/status`, {
+    method: 'PATCH',
+    body: {
+      event,
+      artifact_url: artifact?.url,
+      artifact_hash: artifact?.hash,
+    },
+  });
+}
+
+// issueVerdict — POST /api/submissions/{id}/verdict.
+export function issueVerdict(
+  submissionId: number,
+  verdict: 'ACCEPT' | 'REJECT',
+  comment?: string,
+): Promise<VerdictResponse> {
+  return apiFetch<VerdictResponse>(`/submissions/${submissionId}/verdict`, {
+    method: 'POST',
+    body: { verdict, comment },
+  });
+}
+
+// buyStreakFreezes — POST /api/users/me/streak-freezes/purchase.
+export function buyStreakFreezes(quantity: number): Promise<PurchaseFreezesResponse> {
+  return apiFetch<PurchaseFreezesResponse>('/users/me/streak-freezes/purchase', {
+    method: 'POST',
+    body: { quantity },
+  });
+}
+
+// placeWager — POST /api/wagers.
+export function placeWager(body: CreateWagerRequest): Promise<CreateWagerResponse> {
+  return apiFetch<CreateWagerResponse>('/wagers', { method: 'POST', body });
+}
+
+// createTaskReal — POST /api/tasks для админки.
+export function createTaskReal(body: CreateTaskRequest): Promise<CreateTaskResponse> {
+  return apiFetch<CreateTaskResponse>('/tasks', { method: 'POST', body });
 }
 
 export const api = {

@@ -15,7 +15,8 @@ import {
   defaultDeadlineLocal,
   toDatetimeLocalValue,
 } from '../lib/xp';
-import { createTask, isMockApiError } from '../mock/api';
+import { createTask } from '../api';
+import { ApiError } from '../../core/api';
 import { XpPreview } from './XpPreview';
 import {
   Badge,
@@ -263,7 +264,7 @@ export function TaskForm({
       await onCreated();
     } catch (cause) {
       setFormError(
-        isMockApiError(cause)
+        cause instanceof ApiError
           ? cause.message
           : 'Не удалось создать задачу. Попробуйте ещё раз.',
       );
@@ -283,12 +284,12 @@ export function TaskForm({
     <form
       onSubmit={handleSubmit}
       noValidate
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">Новая задача</h2>
-          <p className="mt-0.5 text-[11px] text-slate-500">
+          <h2 className="text-sm font-semibold text-slate-100">Новая задача</h2>
+          <p className="mt-0.5 text-[11px] text-slate-400">
             POST /api/tasks · teacher, admin
           </p>
         </div>
@@ -368,9 +369,9 @@ export function TaskForm({
           </Field>
 
           <div>
-            <p className="text-xs font-medium text-slate-700">
+            <p className="text-xs font-medium text-slate-300">
               Тип задания
-              <span className="ml-0.5 text-rose-600" aria-hidden="true">
+              <span className="ml-0.5 text-rose-400" aria-hidden="true">
                 *
               </span>
             </p>
@@ -384,19 +385,19 @@ export function TaskForm({
                   className={cn(
                     'rounded-xl border px-2.5 py-2 text-left transition',
                     state.taskType === taskType
-                      ? 'border-indigo-500 bg-indigo-50/70 ring-2 ring-indigo-100'
-                      : 'border-slate-200 bg-white hover:border-indigo-300 hover:bg-indigo-50/30',
+                      ? 'border-emerald-500 bg-emerald-500/10 ring-2 ring-emerald-500/20'
+                      : 'border-slate-800 bg-slate-900 hover:border-emerald-500/40 hover:bg-emerald-500/10',
                   )}
                 >
                   <span className="flex items-center justify-between gap-1">
-                    <span className="text-xs font-semibold text-slate-900">
+                    <span className="text-xs font-semibold text-slate-100">
                       {TASK_TYPE_LABEL[taskType]}
                     </span>
                     <span className="font-mono text-[10px] text-slate-400">
                       w={TASK_TYPE_WEIGHT[taskType].toFixed(1)}
                     </span>
                   </span>
-                  <span className="mt-0.5 block text-[10px] leading-tight text-slate-500">
+                  <span className="mt-0.5 block text-[10px] leading-tight text-slate-400">
                     {TASK_TYPE_DESCRIPTION[taskType]}
                   </span>
                 </button>
@@ -523,7 +524,7 @@ export function TaskForm({
               />
             </Field>
           ) : (
-            <p className="rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+            <p className="rounded-xl bg-slate-900 px-3 py-2 text-[11px] text-slate-400">
               team_size = 1: индивидуальная задача, ролевые слоты не создаются.
             </p>
           )}
@@ -531,7 +532,7 @@ export function TaskForm({
           {formError ? (
             <div
               role="alert"
-              className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+              className="flex items-start gap-2 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200"
             >
               <IconAlert className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{formError}</span>
@@ -539,19 +540,19 @@ export function TaskForm({
           ) : null}
 
           {lastResult ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-900">
+            <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-emerald-200">
                 <IconCheck className="h-4 w-4" />
                 Задача #{lastResult.response.taskId} опубликована
               </p>
-              <p className="mt-1 text-[11px] text-emerald-800">
+              <p className="mt-1 text-[11px] text-emerald-200">
                 «{lastResult.title}» · Base XP {lastResult.response.baseXP} · статус{' '}
                 {lastResult.response.status} · слотов {lastResult.response.slotsCount}
               </p>
             </div>
           ) : null}
 
-          <div className="flex flex-col gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 border-t border-slate-800 pt-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-[10px] text-slate-400">
               После публикации задача получает статус PUBLISHED и становится
               доступна группам.

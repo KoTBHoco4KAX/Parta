@@ -138,6 +138,39 @@ func (r *TaskRepo) ListByGroup(ctx context.Context, groupID int64) ([]submission
 	return tasks, MapSQLError(rows.Err())
 }
 
+// ListAll возвращает все задания (админский справочник).
+func (r *TaskRepo) ListAll(ctx context.Context) ([]submission.Task, error) {
+	return r.listTasks(ctx, ` ORDER BY t.created_at DESC, t.id DESC`)
+}
+
+// ListByTeacher возвращает задания, закреплённые за преподавателем.
+func (r *TaskRepo) ListByTeacher(ctx context.Context, teacherID int64) ([]submission.Task, error) {
+	return r.listTasks(ctx,
+		` WHERE ta.teacher_id = ? ORDER BY t.created_at DESC, t.id DESC`, teacherID)
+}
+
+// listTasks выполняет taskSelect с переданным хвостом запроса.
+func (r *TaskRepo) listTasks(ctx context.Context, tail string, args ...any) ([]submission.Task, error) {
+	rows, err := r.db.QueryContext(ctx, taskSelect+tail, args...)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+	defer rows.Close()
+
+	tasks := make([]submission.Task, 0)
+
+	for rows.Next() {
+		task, err := scanTask(rows)
+		if err != nil {
+			return nil, MapSQLError(err)
+		}
+
+		tasks = append(tasks, *task)
+	}
+
+	return tasks, MapSQLError(rows.Err())
+}
+
 // UpdateBaseXP пересчитывает и сохраняет Base XP задания.
 func (r *TaskRepo) UpdateBaseXP(ctx context.Context, tx *sql.Tx, taskID int64, baseXP int) error {
 	result, err := tx.ExecContext(ctx,

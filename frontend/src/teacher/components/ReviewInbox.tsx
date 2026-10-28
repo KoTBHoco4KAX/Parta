@@ -8,9 +8,8 @@ import {
 import { VERDICT_LABEL } from '../lib/labels';
 import {
   fetchReviewInbox,
-  isMockApiError,
-  resetTeacherDemo,
-} from '../mock/api';
+} from '../api';
+import { ApiError } from '../../core/api';
 import { SubmissionCard } from './SubmissionCard';
 import { VerdictModal } from './VerdictModal';
 import { Badge, Button, EmptyState, Skeleton, cn } from './ui';
@@ -41,14 +40,14 @@ function Stat({
 }) {
   const valueTone =
     tone === 'rose'
-      ? 'text-rose-600'
+      ? 'text-rose-400'
       : tone === 'amber'
-        ? 'text-amber-600'
-        : 'text-slate-900';
+        ? 'text-amber-400'
+        : 'text-slate-100';
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm">
-      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 px-3 py-2.5 shadow-sm">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-slate-400">
         {label}
       </p>
       <p className={cn('mt-0.5 text-base font-bold tabular-nums', valueTone)}>{value}</p>
@@ -78,7 +77,6 @@ export function ReviewInbox({
     [],
   );
   const [now, setNow] = useState(() => Date.now());
-  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,7 +99,7 @@ export function ReviewInbox({
         }
 
         setError(
-          isMockApiError(cause)
+          cause instanceof ApiError
             ? cause.message
             : 'Не удалось загрузить инбокс. Проверьте соединение.',
         );
@@ -170,32 +168,18 @@ export function ReviewInbox({
     });
   }
 
-  async function handleResetDemo() {
-    setResetting(true);
-
-    try {
-      await resetTeacherDemo();
-      setRefreshKey((key) => key + 1);
-      notify({
-        tone: 'info',
-        title: 'Демо-сценарий восстановлен',
-        description: 'В инбоксе снова 6 работ в REVIEW.',
-      });
-    } catch {
-      notify({ tone: 'error', title: 'Не удалось сбросить демо-данные' });
-    } finally {
-      setResetting(false);
-    }
+  async function handleRefresh() {
+    setRefreshKey((key) => key + 1);
   }
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-slate-900">
+          <h1 className="text-lg font-bold tracking-tight text-slate-100">
             Инбокс ревью
           </h1>
-          <p className="mt-0.5 text-xs leading-relaxed text-slate-500">
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
             Работы в статусе REVIEW. Ожидание и on-time считаются по submitted_at.
           </p>
         </div>
@@ -225,7 +209,7 @@ export function ReviewInbox({
         />
       </div>
 
-      <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+      <div className="mt-3 rounded-2xl border border-slate-800 bg-slate-900 p-2.5 shadow-sm">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
             type="button"
@@ -235,7 +219,7 @@ export function ReviewInbox({
               'rounded-lg px-2.5 py-1 text-[11px] font-medium transition',
               effectiveGroup === 'ALL'
                 ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
             )}
           >
             Все группы
@@ -250,14 +234,14 @@ export function ReviewInbox({
                 'rounded-lg px-2.5 py-1 text-[11px] font-medium transition',
                 effectiveGroup === groupCode
                   ? 'bg-slate-900 text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
               )}
             >
               {groupCode}
             </button>
           ))}
 
-          <span className="ml-auto flex items-center gap-1 rounded-lg bg-slate-100 p-1">
+          <span className="ml-auto flex items-center gap-1 rounded-lg bg-slate-800 p-1">
             <button
               type="button"
               onClick={() => setSort('waiting')}
@@ -265,8 +249,8 @@ export function ReviewInbox({
               className={cn(
                 'rounded-md px-2 py-0.5 text-[10px] font-medium transition',
                 sort === 'waiting'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800',
+                  ? 'bg-slate-900 text-slate-100 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200',
               )}
             >
               Дольше ждут
@@ -278,8 +262,8 @@ export function ReviewInbox({
               className={cn(
                 'rounded-md px-2 py-0.5 text-[10px] font-medium transition',
                 sort === 'deadline'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800',
+                  ? 'bg-slate-900 text-slate-100 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200',
               )}
             >
               Ближе дедлайн
@@ -291,7 +275,7 @@ export function ReviewInbox({
       {error ? (
         <div
           role="alert"
-          className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+          className="mt-3 flex items-start gap-2 rounded-2xl border border-rose-500/30 bg-rose-500/10 p-3 text-xs text-rose-200"
         >
           <IconAlert className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="flex-1">
@@ -315,7 +299,7 @@ export function ReviewInbox({
             {[0, 1, 2].map((index) => (
               <div
                 key={index}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-sm"
               >
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-10 w-10 rounded-full" />
@@ -340,11 +324,11 @@ export function ReviewInbox({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleResetDemo}
-                loading={resetting}
+                onClick={handleRefresh}
+                loading={loading}
               >
                 <IconRefresh className="h-4 w-4" />
-                Восстановить демо
+                Обновить
               </Button>
             }
           />
@@ -388,21 +372,21 @@ export function ReviewInbox({
       {log.length > 0 ? (
         <section className="mt-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-800">Вердикты за сессию</h2>
+            <h2 className="text-sm font-semibold text-slate-200">Вердикты за сессию</h2>
             <Badge tone="slate">{log.length}</Badge>
           </div>
           <ul className="mt-2 space-y-1.5">
             {log.map(({ result, item }) => (
               <li
                 key={`${result.submissionId}-${result.reviewedAt}`}
-                className="flex items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm"
+                className="flex items-center gap-2.5 rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 shadow-sm"
               >
                 <span
                   className={cn(
                     'flex h-7 w-7 shrink-0 items-center justify-center rounded-full',
                     result.verdict === 'ACCEPT'
-                      ? 'bg-emerald-100 text-emerald-700'
-                      : 'bg-rose-100 text-rose-700',
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : 'bg-rose-500/20 text-rose-300',
                   )}
                 >
                   {result.verdict === 'ACCEPT' ? (
@@ -412,10 +396,10 @@ export function ReviewInbox({
                   )}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-xs font-medium text-slate-800">
+                  <p className="truncate text-xs font-medium text-slate-200">
                     {item.studentName}
                   </p>
-                  <p className="flex items-center gap-1 text-[10px] text-slate-500">
+                  <p className="flex items-center gap-1 text-[10px] text-slate-400">
                     <IconClock className="h-3 w-3" />
                     {VERDICT_LABEL[result.verdict]} · {formatTime(result.reviewedAt)}
                   </p>
@@ -423,7 +407,7 @@ export function ReviewInbox({
                 <span
                   className={cn(
                     'text-xs font-semibold tabular-nums',
-                    result.verdict === 'ACCEPT' ? 'text-emerald-700' : 'text-slate-400',
+                    result.verdict === 'ACCEPT' ? 'text-emerald-400' : 'text-slate-400',
                   )}
                 >
                   {result.verdict === 'ACCEPT' ? `+${result.xpAwarded} XP` : '0 XP'}

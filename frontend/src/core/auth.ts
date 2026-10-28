@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react';
 import { ApiError, devLogin } from './api';
+import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
 import type { ConnectionStatus, Role, User, WsEvent } from './types';
 
@@ -20,7 +21,7 @@ export const ROLE_EMAILS: Record<Role, string> = {
   student: 'student1@parta.dev',
 };
 
-const STORAGE_KEY = 'parta.auth';
+const STORAGE_KEY = AUTH_STORAGE_KEY;
 const EVENT_LIMIT = 100;
 
 interface StoredAuth {
