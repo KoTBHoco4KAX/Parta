@@ -1,3 +1,5 @@
+import StudentApp from './student/StudentApp';
+
 export default function App() {
-  return <div className="p-4">parta</div>;
+  return <StudentApp />;
 }
