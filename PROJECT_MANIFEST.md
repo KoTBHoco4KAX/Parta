@@ -626,6 +626,10 @@ economy.StreakFreezePriceXP (=200), SpeedrunMultiplier (1.5), NormalMultiplier (
 7. **Фронтенд — каркас, а не полный UI.** Нет списков из REST, drag&drop, формы создания
    задания, экранов peer-review/слотов; после read-эндпоинтов их нужно наполнить.
    `npm run build` зелёный, dev-сервер проксирует `/api` и `/ws`.
+8. **Attachments: UI реализован, backend-контракта нет.** UI готов в `feat/teacher-ui` и
+   gated через `ATTACHMENTS_ENABLED=false`. Backend-контракт не определён (нет таблицы
+   вложений в `spec/01_SCHEMA.sql`, нет storage-слоя). Требуется отдельное решение по
+   хранению файлов и миграция. См. BUGLOG BUG-001/002.
 
 ---
 

@@ -40,6 +40,10 @@ import TeacherApp from './teacher';
   и `downloadSubmissionAttachment` (`GET /api/attachments/{id}`). Ответ списка
   принимается как массив или `{attachments|items|data}`; файл скачивается fetch-ом
   с `Authorization`, поэтому имя сохраняется через object URL.
+- Attachments gated behind `ATTACHMENTS_ENABLED=false` до появления
+  backend-спеки. Включить после мержа backend-контракта из BUGLOG BUG-001/002.
+  При выключенном флаге `AttachmentList.tsx` не делает запросов и показывает
+  только fallback: `artifact_url` + `artifact_hash`.
 - P2P-бонус: `awardReviewerXP` (`POST /api/peer-reviews/{id}/award`,
   body `{reviewer_id, amount, comment}`) — только для `COMPLETED`-сессии.
   Ответ: `{peer_review_id, reviewer_id, xp_awarded, ledger_id, xp_balance?}`.
