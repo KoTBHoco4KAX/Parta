@@ -1,30 +1,38 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ApiError } from '../../core/api';
-import type { Group } from '../../core/types';
+import type { Group, User } from '../../core/types';
 import { Button } from '../../components/Button';
-import { createGroup, deleteGroup, fetchGroups } from '../api';
+import { createGroup, deleteGroup, fetchGroups, fetchUsers } from '../api';
 import type { ToastData } from '../types';
+import { GroupMembersModal } from './GroupMembersModal';
 import { Badge, EmptyState, Skeleton, inputClass } from './ui';
-import { IconAlert, IconLayers, IconPlus } from './icons';
+import { IconAlert, IconLayers, IconPlus, IconUsers } from './icons';
 
-// GroupsPanel — добавление и удаление учебных групп.
+// GroupsPanel — учебные группы: создание, удаление и состав студентов.
 export function GroupsPanel({
   notify,
 }: {
   notify: (toast: Omit<ToastData, 'id'>) => void;
 }) {
   const [groups, setGroups] = useState<Group[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [code, setCode] = useState('');
   const [title, setTitle] = useState('');
+  const [membersGroup, setMembersGroup] = useState<Group | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
 
     try {
-      setGroups(await fetchGroups());
+      const [nextGroups, nextUsers] = await Promise.all([
+        fetchGroups(),
+        fetchUsers(),
+      ]);
+      setGroups(nextGroups);
+      setUsers(nextUsers);
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить группы.');
     } finally {
@@ -141,31 +149,66 @@ export function GroupsPanel({
           />
         ) : (
           <ul className="space-y-2">
-            {groups.map((group) => (
-              <li
-                key={group.id}
-                className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-900 p-3"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-[11px] font-semibold text-emerald-300">
-                  {group.code.slice(0, 4)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-100">{group.code}</p>
-                  <p className="truncate text-[11px] text-slate-400">{group.title}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void handleDelete(group)}
-                  aria-label={`Удалить ${group.code}`}
+            {groups.map((group) => {
+              const memberCount = users.filter(
+                (user) => user.role === 'student' && user.group_id === group.id,
+              ).length;
+
+              return (
+                <li
+                  key={group.id}
+                  className="rounded-xl border border-slate-800 bg-slate-900 p-3"
                 >
-                  Удалить
-                </Button>
-              </li>
-            ))}
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-[11px] font-semibold text-emerald-300">
+                      {group.code.slice(0, 4)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-100">
+                        {group.code}
+                      </p>
+                      <p className="truncate text-[11px] text-slate-400">
+                        {group.title} · {memberCount} студентов
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => setMembersGroup(group)}
+                      aria-label={`Студенты группы ${group.code}`}
+                    >
+                      <IconUsers className="h-4 w-4" />
+                      Студенты · {memberCount}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleDelete(group)}
+                      aria-label={`Удалить ${group.code}`}
+                    >
+                      Удалить
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
+
+      {membersGroup ? (
+        <GroupMembersModal
+          group={membersGroup}
+          users={users}
+          notify={notify}
+          onClose={() => setMembersGroup(null)}
+          onChanged={load}
+        />
+      ) : null}
     </div>
   );
 }

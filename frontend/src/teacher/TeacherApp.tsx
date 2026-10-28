@@ -66,7 +66,7 @@ export default function TeacherApp() {
       </nav>
 
       {tab === 'inbox' ? <ReviewInbox notify={notify} /> : null}
-      {tab === 'peer' ? <PeerReviewScreen /> : null}
+      {tab === 'peer' ? <PeerReviewScreen notify={notify} /> : null}
       {tab === 'tasks' ? <TasksScreen notify={notify} /> : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-4">

@@ -1,4 +1,5 @@
-import { apiFetch } from '../core/api';
+import { ApiError, apiFetch } from '../core/api';
+import { readStoredToken } from '../core/session';
 import type {
   Assignment as AssignmentDto,
   CreateTaskResponse as CreateTaskResponseDto,
@@ -11,7 +12,9 @@ import type {
 import type {
   InboxSubmission,
   PeerReview,
+  ReviewerAwardResult,
   ReviewInboxItem,
+  SubmissionAttachment,
   Verdict,
   VerdictResult,
 } from './types';
@@ -91,7 +94,8 @@ export async function issueVerdict(input: {
 }
 
 /** GET /api/peer-reviews — sandbox-сессии преподавателя. */
-export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
+export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
+  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
 
   return reviews.map((review) => ({
     id: review.id,
@@ -179,5 +183,188 @@ export async function createTeacherTask(
     taskId: response.task_id,
     baseXP: response.base_xp_computed,
     slotsCount: response.slots_count ?? 0,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Вложения сдачи (Sprint 2): список и скачивание через /api/attachments.
+// ---------------------------------------------------------------------------
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function firstString(
+  record: Record<string, unknown>,
+  keys: string[],
+  fallback: string,
+): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+
+  return fallback;
+}
+
+function firstNumber(...values: unknown[]): number {
+  for (const value of values) {
+    const parsed = typeof value === 'string' ? Number(value) : value;
+    if (typeof parsed === 'number' && Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function normalizeAttachment(value: unknown): SubmissionAttachment | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const id = firstNumber(record.id, record.attachment_id);
+  if (id <= 0) {
+    return null;
+  }
+
+  return {
+    id,
+    submissionId: firstNumber(record.submission_id),
+    filename: firstString(record, ['filename', 'file_name', 'name'], `Файл #${id}`),
+    sizeBytes: firstNumber(record.size_bytes, record.size, record.bytes),
+    contentType: firstString(
+      record,
+      ['content_type', 'mime_type', 'mime'],
+      'application/octet-stream',
+    ),
+    createdAt: firstString(record, ['created_at', 'uploaded_at'], ''),
+  };
+}
+
+function extractAttachmentRows(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  const record = asRecord(payload);
+  if (!record) {
+    return [];
+  }
+
+  for (const key of ['attachments', 'items', 'data', 'files']) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
+/**
+ * GET /api/attachments?submission_id={id} — файлы, прикреплённые студентом.
+ *
+ * Ответ принимается в двух формах: массив или `{ attachments | items | data }`.
+ * 404 не маскируется: экран покажет ссылку на artifact_url как fallback.
+ */
+export async function fetchSubmissionAttachments(
+  submissionId: number,
+): Promise<SubmissionAttachment[]> {
+  const payload = await apiFetch<unknown>(`/attachments?submission_id=${submissionId}`);
+
+  return extractAttachmentRows(payload)
+    .map(normalizeAttachment)
+    .filter((item): item is SubmissionAttachment => item !== null);
+}
+
+/**
+ * GET /api/attachments/{id} — скачивание файла.
+ *
+ * Файл отдаётся с JWT, поэтому обычный `<a href>` не подходит: запрос идёт
+ * через fetch, а результат сохраняется объектным URL с именем из вложения.
+ */
+export async function downloadSubmissionAttachment(
+  attachment: SubmissionAttachment,
+): Promise<void> {
+  const token = readStoredToken();
+  const headers: Record<string, string> = { Accept: '*/*' };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(`/api/attachments/${attachment.id}`, { headers });
+
+  if (!response.ok) {
+    let code = 'download_failed';
+    let message = `Не удалось скачать файл (${response.status})`;
+
+    try {
+      const payload = (await response.json()) as { error?: unknown; code?: unknown };
+      if (typeof payload.error === 'string' && payload.error.trim() !== '') {
+        message = payload.error;
+      }
+      if (typeof payload.code === 'string' && payload.code.trim() !== '') {
+        code = payload.code;
+      }
+    } catch {
+      // Тело не JSON — оставляем сообщение по HTTP-статусу.
+    }
+
+    throw new ApiError(response.status, code, message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = attachment.filename.trim() !== '' ? attachment.filename : `attachment-${attachment.id}`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
+// ---------------------------------------------------------------------------
+// P2P: бонус рецензенту за качественную проверку.
+// ---------------------------------------------------------------------------
+
+/**
+ * POST /api/peer-reviews/{id}/award — начисление бонусного XP рецензенту.
+ *
+ * Вызывается только для COMPLETED-сессии: преподаватель не завершает ревью за
+ * студента, но может отметить качество проверки.
+ */
+export async function awardReviewerXP(input: {
+  peerReviewId: number;
+  reviewerId: number;
+  amount: number;
+  comment: string;
+}): Promise<ReviewerAwardResult> {
+  const response = await apiFetch<Record<string, unknown>>(
+    `/peer-reviews/${input.peerReviewId}/award`,
+    {
+      method: 'POST',
+      body: {
+        reviewer_id: input.reviewerId,
+        amount: input.amount,
+        comment: input.comment.trim(),
+      },
+    },
+  );
+
+  return {
+    peerReviewId: firstNumber(response.peer_review_id, input.peerReviewId),
+    reviewerId: firstNumber(response.reviewer_id, input.reviewerId),
+    xpAwarded: firstNumber(response.xp_awarded, response.reward_xp, input.amount),
+    ledgerId: firstNumber(response.ledger_id),
+    xpBalance:
+      typeof response.xp_balance === 'number' ? response.xp_balance : null,
   };
 }

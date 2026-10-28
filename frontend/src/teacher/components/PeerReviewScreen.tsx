@@ -3,6 +3,8 @@ import type {
   PeerReview,
   PeerReviewFilter,
   PeerReviewStatus,
+  ReviewerAwardResult,
+  ToastData,
 } from '../types';
 import {
   anonymousId,
@@ -17,6 +19,7 @@ import {
 } from '../lib/labels';
 import { fetchPeerReviewSessions } from '../api';
 import { ApiError } from '../../core/api';
+import { ReviewerAwardModal } from './ReviewerAwardModal';
 import { Badge, Button, EmptyState, Modal, Skeleton, cn } from './ui';
 import {
   IconAlert,
@@ -27,6 +30,7 @@ import {
   IconLock,
   IconRefresh,
   IconShield,
+  IconSparkles,
   IconUsers,
   IconX,
 } from './icons';
@@ -140,11 +144,13 @@ function PeerReviewCard({
   review,
   now,
   anonymize,
+  awardedXP,
   onOpen,
 }: {
   review: PeerReview;
   now: number;
   anonymize: boolean;
+  awardedXP: number | null;
   onOpen: (review: PeerReview) => void;
 }) {
   const progress = checklistProgress(review);
@@ -234,6 +240,9 @@ function PeerReviewCard({
         ) : (
           <span className="text-[11px] text-slate-400">возвращён автору</span>
         )}
+        {awardedXP !== null ? (
+          <Badge tone="emerald">бонус +{awardedXP} XP</Badge>
+        ) : null}
       </div>
 
       <div className="mt-3 flex items-center justify-between border-t border-slate-800 pt-2.5 text-[11px]">
@@ -254,11 +263,15 @@ function PeerReviewDetails({
   review,
   anonymize,
   now,
+  awardedXP,
+  onAward,
   onClose,
 }: {
   review: PeerReview;
   anonymize: boolean;
   now: number;
+  awardedXP: number | null;
+  onAward: (review: PeerReview) => void;
   onClose: () => void;
 }) {
   const progress = checklistProgress(review);
@@ -498,6 +511,42 @@ function PeerReviewDetails({
           </section>
         ) : null}
 
+        {review.status === 'COMPLETED' && review.reviewerId !== null ? (
+          <section className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
+            <div className="flex items-start gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-300">
+                <IconSparkles className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-semibold text-emerald-50">
+                  Качество проверки
+                </h4>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-emerald-100/80">
+                  {awardedXP !== null
+                    ? `Бонус +${awardedXP} XP уже начислен рецензенту и записан в XP-журнал.`
+                    : 'Ревью завершено. Поощрите рецензента бонусным XP за качественный чек-лист и разбор работы.'}
+                </p>
+                {awardedXP === null ? (
+                  <Button
+                    variant="accept"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => onAward(review)}
+                  >
+                    <IconSparkles className="h-3.5 w-3.5" />
+                    Начислить XP рецензенту
+                  </Button>
+                ) : null}
+              </div>
+              {awardedXP !== null ? (
+                <Badge tone="emerald" className="shrink-0">
+                  +{awardedXP} XP
+                </Badge>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
         <section>
           <h4 className="text-xs font-semibold text-slate-300">Хронология</h4>
           <ol className="mt-2 space-y-1.5 text-[11px]">
@@ -546,18 +595,25 @@ function PeerReviewDetails({
 }
 
 /**
- * Экран P2P-ревью для преподавателя: мониторинг sandbox-сессий.
+ * Экран P2P-ревью для преподавателя: мониторинг sandbox-сессий и бонус XP
+ * рецензенту за качественную проверку.
  *
- * Действий здесь нет намеренно — преподаватель не может подменить рецензента
- * (spec/02_FSM.md §3), поэтому экран read-only.
+ * Завершить ревью за студента нельзя (spec/02_FSM.md §3), поэтому все действия
+ * экрана сводятся к наблюдению и поощрению уже завершённых сессий.
  */
-export function PeerReviewScreen() {
+export function PeerReviewScreen({
+  notify,
+}: {
+  notify?: (toast: Omit<ToastData, 'id'>) => void;
+} = {}) {
   const [reviews, setReviews] = useState<PeerReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<PeerReviewFilter>('ALL');
   const [anonymize, setAnonymize] = useState(true);
   const [selected, setSelected] = useState<PeerReview | null>(null);
+  const [awards, setAwards] = useState<Record<number, number>>({});
+  const [awardTarget, setAwardTarget] = useState<PeerReview | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
 
@@ -640,14 +696,28 @@ export function PeerReviewScreen() {
     });
   }, [reviews, filter]);
 
+  function handleAwarded(result: ReviewerAwardResult) {
+    setAwards((previous) => ({
+      ...previous,
+      [result.peerReviewId]: result.xpAwarded,
+    }));
+    setAwardTarget(null);
+
+    notify?.({
+      tone: 'success',
+      title: `+${result.xpAwarded} XP рецензенту`,
+      description: `P2P-ревью #${result.peerReviewId}: бонус за качественную проверку начислен.`,
+    });
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold tracking-tight text-slate-100">P2P-ревью</h1>
           <p className="mt-0.5 text-xs leading-relaxed text-slate-400">
-            Наблюдение за sandbox-сессиями. Преподаватель не может завершить ревью
-            за студента.
+            Наблюдение за sandbox-сессиями и бонус XP рецензенту за качественную
+            проверку. Завершить ревью за студента нельзя.
           </p>
         </div>
         <Button
@@ -690,6 +760,7 @@ export function PeerReviewScreen() {
               <li>· Рецензенту отдаётся поток, а не файл: скачивание и экспорт закрыты.</li>
               <li>· Одноразовый read-only токен живёт 15 минут, поток помечен watermark.</li>
               <li>· Ревью нельзя взять у себя и нельзя держать больше 3 активных.</li>
+              <li>· После COMPLETED можно начислить бонус XP рецензенту за качество.</li>
             </ul>
           </div>
         </div>
@@ -792,6 +863,7 @@ export function PeerReviewScreen() {
                 review={review}
                 now={now}
                 anonymize={anonymize}
+                awardedXP={awards[review.id] ?? null}
                 onOpen={setSelected}
               />
             ))
@@ -803,7 +875,20 @@ export function PeerReviewScreen() {
           review={selected}
           anonymize={anonymize}
           now={now}
+          awardedXP={awards[selected.id] ?? null}
+          onAward={(review) => {
+            setSelected(null);
+            setAwardTarget(review);
+          }}
           onClose={() => setSelected(null)}
+        />
+      ) : null}
+
+      {awardTarget ? (
+        <ReviewerAwardModal
+          review={awardTarget}
+          onClose={() => setAwardTarget(null)}
+          onAwarded={handleAwarded}
         />
       ) : null}
     </div>

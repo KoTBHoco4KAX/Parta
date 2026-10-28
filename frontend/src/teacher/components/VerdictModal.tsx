@@ -3,7 +3,6 @@ import type { ReviewInboxItem, Verdict, VerdictResult } from '../types';
 import {
   formatDateTime,
   formatDeadline,
-  shortHash,
 } from '../lib/format';
 import {
   computeFinalXP,
@@ -13,12 +12,11 @@ import {
 import { TASK_TYPE_LABEL } from '../lib/labels';
 import { issueVerdict } from '../api';
 import { ApiError } from '../../core/api';
+import { AttachmentList } from './AttachmentList';
 import { Badge, Button, Modal, cn } from './ui';
 import {
   IconAlert,
   IconCheck,
-  IconExternal,
-  IconFile,
   IconLock,
   IconX,
 } from './icons';
@@ -177,25 +175,13 @@ export function VerdictModal({
             </div>
           </dl>
 
-          <a
-            href={item.artifactUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="mt-3 flex items-center gap-2 rounded-xl border border-slate-800 px-3 py-2.5 transition hover:border-emerald-500/40 hover:bg-emerald-500/10"
-          >
-            <IconFile className="h-4 w-4 shrink-0 text-slate-400" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-slate-300">
-              {item.artifactUrl}
-            </span>
-            <IconExternal className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-          </a>
-
-          <p
-            className="mt-1.5 truncate font-mono text-[10px] text-slate-400"
-            title={item.artifactHash}
-          >
-            {shortHash(item.artifactHash)}
-          </p>
+          <div className="mt-3">
+            <AttachmentList
+              submissionId={item.id}
+              artifactUrl={item.artifactUrl}
+              artifactHash={item.artifactHash}
+            />
+          </div>
         </section>
 
         {/* Журнал доработок */}

@@ -118,6 +118,29 @@ export type InboxSort = 'waiting' | 'deadline';
 /** Фильтр списка P2P-ревью. */
 export type PeerReviewFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
 
+/**
+ * Вложение, прикреплённое студентом к сдаче.
+ * Контракт: `GET /api/attachments?submission_id={id}` (список) и
+ * `GET /api/attachments/{id}` (поток файла).
+ */
+export interface SubmissionAttachment {
+  id: number;
+  submissionId: number;
+  filename: string;
+  sizeBytes: number;
+  contentType: string;
+  createdAt: string;
+}
+
+/** Результат `POST /api/peer-reviews/{id}/award` — бонус рецензенту. */
+export interface ReviewerAwardResult {
+  peerReviewId: number;
+  reviewerId: number;
+  xpAwarded: number;
+  ledgerId: number;
+  xpBalance: number | null;
+}
+
 /** Тост, которым приложение сообщает о результате действия. */
 export interface ToastData {
   id: number;
