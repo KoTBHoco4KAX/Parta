@@ -335,11 +335,74 @@ export async function downloadSubmissionAttachment(
 // P2P: бонус рецензенту за качественную проверку.
 // ---------------------------------------------------------------------------
 
+/** Нормализованный ответ POST /api/peer-reviews/{id}/award. */
+export interface AwardPeerReviewResult {
+  amount: number;
+  totalXp: number;
+  ledgerId: string;
+}
+
+/** Тело запроса начисления бонуса рецензенту (UI-модель). */
+export interface AwardPeerReviewBody {
+  reviewerId: number;
+  amount: number;
+  comment?: string;
+}
+
+// ledgerIdOf приводит ledger_id из backend (int64 или строка) к строке.
+function ledgerIdOf(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return '';
+}
+
 /**
  * POST /api/peer-reviews/{id}/award — начисление бонусного XP рецензенту.
  *
+ * Канонический контракт backend:
+ * `200 {peer_review_id, reviewer_id, amount, total_xp, ledger_id}`.
+ * Вся нормализация snake_case → UI-поля живёт здесь (DESIGN_SPEC §4.2), чтобы
+ * компоненты читали только `amount` / `totalXp` / `ledgerId`.
+ *
  * Вызывается только для COMPLETED-сессии: преподаватель не завершает ревью за
  * студента, но может отметить качество проверки.
+ */
+export async function awardPeerReview(
+  id: number,
+  body: AwardPeerReviewBody,
+): Promise<{ amount: number; totalXp: number; ledgerId: string }> {
+  const response = await apiFetch<Record<string, unknown>>(
+    `/peer-reviews/${id}/award`,
+    {
+      method: 'POST',
+      body: {
+        reviewer_id: body.reviewerId,
+        amount: body.amount,
+        comment: body.comment?.trim() ?? '',
+      },
+    },
+  );
+
+  return {
+    amount: firstNumber(response.amount, response.xp_awarded, body.amount),
+    totalXp: firstNumber(
+      response.total_xp,
+      response.xp_balance,
+      response.reward_xp,
+    ),
+    ledgerId: ledgerIdOf(response.ledger_id),
+  };
+}
+
+/**
+ * @deprecated Оставлен для обратной совместимости экспорта модуля.
+ * Используйте `awardPeerReview()`: он возвращает `amount` / `totalXp` / `ledgerId`.
  */
 export async function awardReviewerXP(input: {
   peerReviewId: number;
@@ -347,24 +410,17 @@ export async function awardReviewerXP(input: {
   amount: number;
   comment: string;
 }): Promise<ReviewerAwardResult> {
-  const response = await apiFetch<Record<string, unknown>>(
-    `/peer-reviews/${input.peerReviewId}/award`,
-    {
-      method: 'POST',
-      body: {
-        reviewer_id: input.reviewerId,
-        amount: input.amount,
-        comment: input.comment.trim(),
-      },
-    },
-  );
+  const result = await awardPeerReview(input.peerReviewId, {
+    reviewerId: input.reviewerId,
+    amount: input.amount,
+    comment: input.comment,
+  });
 
   return {
-    peerReviewId: firstNumber(response.peer_review_id, input.peerReviewId),
-    reviewerId: firstNumber(response.reviewer_id, input.reviewerId),
-    xpAwarded: firstNumber(response.xp_awarded, response.reward_xp, input.amount),
-    ledgerId: firstNumber(response.ledger_id),
-    xpBalance:
-      typeof response.xp_balance === 'number' ? response.xp_balance : null,
+    peerReviewId: input.peerReviewId,
+    reviewerId: input.reviewerId,
+    xpAwarded: result.amount,
+    ledgerId: Number(result.ledgerId) || 0,
+    xpBalance: result.totalXp > 0 ? result.totalXp : null,
   };
 }

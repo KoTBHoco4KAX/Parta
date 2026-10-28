@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ApiError } from '../../core/api';
-import { awardReviewerXP } from '../api';
-import type { PeerReview, ReviewerAwardResult } from '../types';
+import { awardPeerReview, type AwardPeerReviewResult } from '../api';
+import type { PeerReview } from '../types';
 import { Badge, Button, Modal, cn } from './ui';
 import { IconAlert, IconSparkles } from './icons';
 
@@ -25,7 +25,7 @@ export function ReviewerAwardModal({
 }: {
   review: PeerReview;
   onClose: () => void;
-  onAwarded: (result: ReviewerAwardResult) => void;
+  onAwarded: (result: AwardPeerReviewResult) => void;
 }) {
   const [amount, setAmount] = useState(
     String(review.rewardAmount > 0 ? review.rewardAmount : 20),
@@ -54,8 +54,7 @@ export function ReviewerAwardModal({
     setError(null);
 
     try {
-      const result = await awardReviewerXP({
-        peerReviewId: review.id,
+      const result = await awardPeerReview(review.id, {
         reviewerId: review.reviewerId,
         amount: parsedAmount,
         comment,

@@ -3,7 +3,6 @@ import type {
   PeerReview,
   PeerReviewFilter,
   PeerReviewStatus,
-  ReviewerAwardResult,
   ToastData,
 } from '../types';
 import {
@@ -17,7 +16,10 @@ import {
   PEER_STATUS_LABEL,
   PEER_STATUS_TONE,
 } from '../lib/labels';
-import { fetchPeerReviewSessions } from '../api';
+import {
+  fetchPeerReviewSessions,
+  type AwardPeerReviewResult,
+} from '../api';
 import { ApiError } from '../../core/api';
 import { ReviewerAwardModal } from './ReviewerAwardModal';
 import { Badge, Button, EmptyState, Modal, Skeleton, cn } from './ui';
@@ -696,17 +698,25 @@ export function PeerReviewScreen({
     });
   }, [reviews, filter]);
 
-  function handleAwarded(result: ReviewerAwardResult) {
+  function handleAwarded(result: AwardPeerReviewResult) {
+    if (!awardTarget) {
+      return;
+    }
+
+    const peerReviewId = awardTarget.id;
     setAwards((previous) => ({
       ...previous,
-      [result.peerReviewId]: result.xpAwarded,
+      [peerReviewId]: result.amount,
     }));
     setAwardTarget(null);
 
     notify?.({
       tone: 'success',
-      title: `+${result.xpAwarded} XP рецензенту`,
-      description: `P2P-ревью #${result.peerReviewId}: бонус за качественную проверку начислен.`,
+      title: `+${result.amount} XP рецензенту`,
+      description:
+        result.totalXp > 0
+          ? `P2P-ревью #${peerReviewId}: бонус начислен, баланс рецензента ${result.totalXp} XP.`
+          : `P2P-ревью #${peerReviewId}: бонус за качественную проверку начислен.`,
     });
   }
 

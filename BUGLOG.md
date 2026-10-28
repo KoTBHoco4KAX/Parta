@@ -4,8 +4,8 @@
 backend-контрактов — отдельная задача, здесь фиксируются блокеры и текущее
 поведение интерфейса.
 
-Проверено по `backend/internal/http/router.go` на коммите `32817e4`
-(`feat/teacher-ui`). Код компонентов в этом коммите не менялся.
+Проверено по `backend/internal/http/router.go` на ветке `feat/teacher-ui`
+(базовый коммит `32817e4`; актуализация — коммит с нормализацией award-контракта).
 
 ## Sprint 2 — Teacher/Admin UI
 
@@ -25,7 +25,9 @@ backend-контрактов — отдельная задача, здесь ф�
   `file_name`, `size_bytes`, `uploaded_at` как синонимы.
 - Авторизация: JWT (Bearer). Доступ — автор сдачи / teacher курса / admin.
 - Приоритет: high (блокирует фичу вложений)
-- Статус: open
+- Статус: open / blocked on spec
+- Примечание: backend-контракта на вложения нет в PROJECT_MANIFEST.md §6.5 и
+  `spec/`. Ждёт решения архитектора, не блокирует мерж остальных фич спринта.
 
 ### [BUG-002] Отсутствует GET /api/attachments/{id}
 
@@ -44,14 +46,16 @@ backend-контрактов — отдельная задача, здесь ф�
   `Authorization: Bearer <jwt>` (не через `<a href>`, чтобы не терять токен).
 - Авторизация: те же правила, что BUG-001.
 - Приоритет: high
-- Статус: open
+- Статус: open / blocked on spec
+- Примечание: backend-контракта на вложения нет в PROJECT_MANIFEST.md §6.5 и
+  `spec/`. Ждёт решения архитектора, не блокирует мерж остальных фич спринта.
 
 ### [BUG-003] Отсутствует POST /api/peer-reviews/{id}/award
 
 - Ветка: feat/teacher-ui
 - Компоненты: `frontend/src/teacher/components/ReviewerAwardModal.tsx`,
   `frontend/src/teacher/components/PeerReviewScreen.tsx` (запрос —
-  `awardReviewerXP` в `frontend/src/teacher/api.ts`)
+  `awardPeerReview` в `frontend/src/teacher/api.ts`)
 - Симптом: 404 при начислении XP рецензенту.
 - Где ловится: `ReviewerAwardModal.tsx` → `handleSubmit` → `catch`;
   отдельная ветка `ApiError.status === 404`.
@@ -61,16 +65,15 @@ backend-контрактов — отдельная задача, здесь ф�
   сессий `COMPLETED` в `PeerReviewDetails`; при успехе — toast и бейдж
   «бонус +N XP» на карточке, при ошибке toast не показывается.
 - Ожидаемый контракт: body `{ reviewer_id, amount 1..1000, comment? }` →
-  `200 { reviewer_id, amount, total_xp }`.
-- Совместимость UI: сейчас результат читается из `xp_awarded` (или `reward_xp`),
-  `ledger_id`, `xp_balance`; при ответе строго по контракту выше UI покажет
-  `amount` как начисленную сумму, но `total_xp` проигнорирует. Нужно либо
-  добавить эти поля в ответ, либо синхронизировать маппинг в `api.ts` перед
-  релизом.
+  `200 { peer_review_id, reviewer_id, amount, total_xp, ledger_id }`.
+- Контракт согласован, UI нормализует в `api.ts`: `amount ← amount | xp_awarded`,
+  `totalXp ← total_xp | xp_balance | reward_xp`, `ledgerId ← ledger_id`.
+  Компоненты читают только UI-поля `amount` / `totalXp` / `ledgerId` и не знают
+  про snake_case (DESIGN_SPEC §4.2).
 - Роли: teacher, admin. Предусловия: `peer_review.status = COMPLETED`,
   `reviewer_id` совпадает с рецензентом сессии.
 - Приоритет: high
-- Статус: open
+- Статус: open (контракт согласован, ждёт реализации backend)
 
 ### [BUG-004] PATCH /api/users/{id} не поддерживает group_id
 
@@ -93,37 +96,35 @@ backend-контрактов — отдельная задача, здесь ф�
 - Приоритет: high
 - Статус: open
 
-### [BUG-005] Отсутствует POST /api/users и GET /api/users?group_id=/unassigned=
+### [BUG-005] Отсутствует GET /api/users?group_id=/unassigned=
 
 - Ветка: feat/teacher-ui
 - Компоненты: `frontend/src/admin/components/GroupMembersModal.tsx`
-  (создание студента и список кандидатов), `frontend/src/admin/components/GroupsPanel.tsx`
+  (список кандидатов), `frontend/src/admin/components/GroupsPanel.tsx`
   (загрузка пользователей)
-- Симптом из отчёта: создание студента в группе и список кандидатов не
-  обеспечены контрактом.
-- Уточнение по факту проверки: `POST /api/users` **уже реализован**
-  (`backend/internal/http/admin.go:65`, маршрут
-  `backend/internal/http/router.go:96`) и используется UI — создание студента
-  в группе работает. `GET /api/users` тоже существует, но игнорирует
-  `group_id`/`unassigned`; UI сейчас получает полный список и фильтрует
-  кандидатов на клиенте (`GroupMembersModal.tsx` → `candidates`).
-- Где ловится: ошибки создания — `GroupMembersModal.tsx` → `handleCreate` →
-  `catch`; фильтрация кандидатов ошибок не даёт.
+- Симптом: серверного фильтра пользователей по группе нет; UI получает полный
+  список `GET /api/users` и фильтрует кандидатов на клиенте.
+- Где ловится: ошибок нет — фильтрация в `GroupMembersModal.tsx` → `candidates`
+  (`user.role === 'student' && user.group_id !== group.id`). `POST /api/users`
+  существует (`backend/internal/http/admin.go:65`, `router.go:96`) и
+  используется для создания студента сразу в группе.
 - Что видит пользователь: при успешном создании — toast «Студент создан и сразу
-  привязан к группе»; при ошибке — inline-ошибка (rose) в модалке. Отсутствие
-  серверного фильтра пользователю сейчас не видно, но список тянется целиком.
+  привязан к группе»; при ошибке — inline-ошибка (rose). Отсутствие серверного
+  фильтра визуально не проявляется, но список тянется целиком.
 - Ожидаемый контракт (если фильтр нужен): `GET /api/users?group_id={id}` и
-  `GET /api/users?unassigned=true` для списка кандидатов; `POST /api/users`
-  оставить с телом `{ external_id, display_name, role, group_id }`.
-- Приоритет: medium (не блокирует UI; оптимизация и явный контракт)
+  `GET /api/users?unassigned=true` для списка кандидатов; текущий
+  `GET /api/users` без параметров оставить для админского списка.
+- Приоритет: low
 - Статус: open
+- Примечание: не блокирует: фильтрация кандидатов сейчас на клиенте, но она
+  неполная для больших групп.
 
 ### Сводка
 
-| ID | Контракт | Приоритет | Влияние на UI |
-|---|---|---|---|
-| BUG-001 | `GET /api/attachments?submission_id=` | high | inline-error + fallback на `artifact_url` |
-| BUG-002 | `GET /api/attachments/{id}` | high | inline-error, скачивание недоступно |
-| BUG-003 | `POST /api/peer-reviews/{id}/award` | high | inline-error в модалке начисления |
-| BUG-004 | `PATCH /api/users/{id}` | high | inline-error, состав группы не меняется |
-| BUG-005 | `GET /api/users?group_id=/unassigned=` | medium | не блокирует: фильтрация на клиенте |
+| ID | Контракт | Приоритет | Статус | Влияние на UI |
+|---|---|---|---|---|
+| BUG-001 | `GET /api/attachments?submission_id=` | high | open / blocked on spec | inline-error + fallback на `artifact_url` |
+| BUG-002 | `GET /api/attachments/{id}` | high | open / blocked on spec | inline-error, скачивание недоступно |
+| BUG-003 | `POST /api/peer-reviews/{id}/award` | high | open; контракт согласован, UI нормализует в `api.ts` | inline-error в модалке начисления |
+| BUG-004 | `PATCH /api/users/{id}` | high | open | inline-error, состав группы не меняется |
+| BUG-005 | `GET /api/users?group_id=/unassigned=` | low | open | не блокирует: фильтрация на клиенте, неполная для больших групп |
