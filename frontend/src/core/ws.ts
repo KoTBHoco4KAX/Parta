@@ -1,5 +1,46 @@
 import type { ConnectionStatus, WsEvent } from './types';
 
+// Типы событий, на которые подписаны экраны. Константы дублируют
+// backend/internal/events/events.go, чтобы в UI не было «магических строк».
+export const WS_EVENT_SUBMISSION_CARD_MOVED = 'submission.card.moved';
+export const WS_EVENT_SUBMISSION_VERDICT_ISSUED = 'submission.verdict.issued';
+export const WS_EVENT_REVIEW_INBOX_CREATED = 'review.inbox.created';
+
+// Payload конверта submission.card.moved (spec/00_ARCHITECTURE.md §V).
+export interface SubmissionCardMovedPayload {
+  submission_id: number;
+  task_id: number;
+  student_id: number;
+  from: string;
+  to: string;
+  submitted_at: string | null;
+}
+
+// Payload конверта submission.verdict.issued.
+export interface SubmissionVerdictIssuedPayload {
+  submission_id: number;
+  verdict: 'ACCEPT' | 'REJECT';
+  xp_awarded: number;
+  streak_delta: number;
+  reviewed_at: string;
+}
+
+// isSubmissionBoardEvent — true для событий, меняющих канбан студента.
+export function isSubmissionBoardEvent(event: Pick<WsEvent, 'event_type'>): boolean {
+  return (
+    event.event_type === WS_EVENT_SUBMISSION_CARD_MOVED ||
+    event.event_type === WS_EVENT_SUBMISSION_VERDICT_ISSUED
+  );
+}
+
+// isReviewInboxEvent — true для событий, меняющих инбокс преподавателя.
+export function isReviewInboxEvent(event: Pick<WsEvent, 'event_type'>): boolean {
+  return (
+    event.event_type === WS_EVENT_REVIEW_INBOX_CREATED ||
+    event.event_type === WS_EVENT_SUBMISSION_VERDICT_ISSUED
+  );
+}
+
 // wsUrl собирает адрес сокета из текущего origin: Vite проксирует /ws на backend.
 function wsUrl(token: string): string {
   const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';

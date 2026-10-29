@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './core/auth';
+import { initMaxBridge } from './core/max';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { InboxPage } from './pages/InboxPage';
@@ -48,6 +49,16 @@ function normalizeRoute(hash: string): string {
 
 // App — провайдер сессии и роутинг по hash.
 export default function App() {
+  // MAX/VK Bridge инициализируется один раз. В обычном браузере
+  // initMaxBridge сразу возвращает graceful fallback и ничего не шлёт.
+  useEffect(() => {
+    void initMaxBridge().then((status) => {
+      if (status.supported && !status.initialized) {
+        console.info('MAX bridge: fallback —', status.reason);
+      }
+    });
+  }, []);
+
   return (
     <AuthProvider>
       <Shell />

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ApiError, fetchSubmissions, fetchTasks, moveSubmission } from '../../core/api';
+import { useAuth } from '../../core/auth';
+import { isSubmissionBoardEvent } from '../../core/ws';
 import type { Submission, Task } from '../../core/types';
 import { Button } from '../../components/Button';
 import SubmitWorkModal from '../components/SubmitWorkModal';
@@ -30,6 +32,7 @@ function statusFromSubmission(status: Submission['status'] | undefined): TaskSta
 // KanbanPage — реальная доска студента: GET /api/tasks + /api/submissions,
 // движения через POST /api/submissions и PATCH /api/submissions/{id}/status.
 export default function KanbanPage() {
+  const { subscribe } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +62,18 @@ export default function KanbanPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Реалтайм: сдача работы студентом и вердикт преподавателя приходят по WS.
+  // Перечитываем доску с сервера, а не правим локальную копию «на глаз».
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (isSubmissionBoardEvent(event)) {
+          void load();
+        }
+      }),
+    [load, subscribe],
+  );
 
   const submissionByTask = useMemo(() => {
     const map = new Map<number, Submission>();

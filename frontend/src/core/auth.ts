@@ -39,6 +39,9 @@ interface AuthContextValue {
   events: WsEvent[];
   login: (email: string, password: string, role: Role) => Promise<void>;
   logout: () => void;
+  // subscribe регистрирует слушателя всех WS-событий сессии.
+  // Возвращённая функция снимает подписку (её нужно вернуть из useEffect).
+  subscribe: (listener: (event: WsEvent) => void) => () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -71,6 +74,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<ConnectionStatus>('offline');
   const [events, setEvents] = useState<WsEvent[]>([]);
   const socketRef = useRef<PartaSocket | null>(null);
+  // Слушатели событий живут вне React-состояния: экран может обновить свои
+  // данные по WS, не дожидаясь перерисовки всего AuthContext.
+  const listenersRef = useRef(new Set<(event: WsEvent) => void>());
+
+  const subscribe = useCallback((listener: (event: WsEvent) => void) => {
+    listenersRef.current.add(listener);
+
+    return () => {
+      listenersRef.current.delete(listener);
+    };
+  }, []);
 
   const login = useCallback(async (email: string, password: string, role: Role) => {
     setBusy(true);
@@ -111,6 +125,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onEvent: (event) => {
         setEvents((previous) => [event, ...previous].slice(0, EVENT_LIMIT));
         applyUserEvent(event, setAuth);
+
+        // Слушатели экранов не должны ломать сокет: ошибку одного экрана
+        // изолируем, остальные получают событие.
+        for (const listener of listenersRef.current) {
+          try {
+            listener(event);
+          } catch (cause) {
+            console.error('ws: event listener failed', cause);
+          }
+        }
       },
     });
 
@@ -134,8 +158,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       events,
       login,
       logout,
+      subscribe,
     }),
-    [auth, busy, connection, error, events, login, logout, token],
+    [auth, busy, connection, error, events, login, logout, subscribe, token],
   );
 
   return createElement(AuthContext.Provider, { value }, children);

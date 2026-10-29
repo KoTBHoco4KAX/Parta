@@ -1,11 +1,15 @@
 package ws_test
 
 import (
+	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +31,7 @@ type fixture struct {
 	hub    *ws.Hub
 	tokens *auth.TokenService
 	users  *storage.UserRepo
+	db     *sql.DB
 
 	student1 int64
 	student3 int64
@@ -60,7 +65,9 @@ func newFixture(t *testing.T) *fixture {
 
 	mux := http.NewServeMux()
 	mux.Handle("/ws", realtime)
-	mux.Handle("/", httpapi.New(cfg, db).Handler())
+	// Тот же хаб — публикатор REST-слоя: тесты проверяют полный контур
+	// «HTTP-мутация → Commit → Hub → WebSocket-клиент».
+	mux.Handle("/", httpapi.New(cfg, db, httpapi.WithPublisher(hub)).Handler())
 
 	server := httptest.NewServer(mux)
 	t.Cleanup(func() {
@@ -68,7 +75,7 @@ func newFixture(t *testing.T) *fixture {
 		server.Close()
 	})
 
-	f := &fixture{server: server, hub: hub, tokens: tokens, users: users}
+	f := &fixture{server: server, hub: hub, tokens: tokens, users: users, db: db}
 
 	queries := []struct {
 		dest  *int64
@@ -125,6 +132,54 @@ func (f *fixture) dial(t *testing.T, token string) (*websocket.Conn, *http.Respo
 	defer cancel()
 
 	return websocket.Dial(ctx, url, nil)
+}
+
+// doJSON выполняет REST-запрос к тестовому серверу и разбирает JSON-ответ.
+func (f *fixture) doJSON(t *testing.T, method, path, token string, body any) (int, map[string]any) {
+	t.Helper()
+
+	var reader io.Reader
+
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal request: %v", err)
+		}
+
+		reader = bytes.NewReader(payload)
+	}
+
+	req, err := http.NewRequest(method, f.server.URL+path, reader)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := f.server.Client().Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, path, err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	payload := map[string]any{}
+
+	if len(bytes.TrimSpace(raw)) > 0 {
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			t.Fatalf("%s %s: body is not JSON: %q", method, path, string(raw))
+		}
+	}
+
+	return resp.StatusCode, payload
 }
 
 // readJSON читает один кадр и разбирает его в map.
@@ -301,6 +356,92 @@ func TestWSDeliversGroupAndTaskRooms(t *testing.T) {
 
 	if event := readEvent(t, conn); event.Room != events.RoomTask(f.taskLab) {
 		t.Fatalf("task room event = %+v", event)
+	}
+}
+
+func TestWSReceivesSubmissionLifecycle(t *testing.T) {
+	f := newFixture(t)
+
+	studentToken := f.token(t, f.student1, ws.RoleStudent)
+	teacherToken := f.token(t, f.teacher, ws.RoleTeacher)
+
+	studentConn, _, err := f.dial(t, studentToken)
+	if err != nil {
+		t.Fatalf("student dial: %v", err)
+	}
+	defer studentConn.Close(websocket.StatusNormalClosure, "")
+
+	teacherConn, _, err := f.dial(t, teacherToken)
+	if err != nil {
+		t.Fatalf("teacher dial: %v", err)
+	}
+	defer teacherConn.Close(websocket.StatusNormalClosure, "")
+
+	expectReady(t, studentConn, events.RoomUser(f.student1), events.RoomGroup(f.group21))
+	expectReady(t, teacherConn, events.RoomUser(f.teacher), events.RoomTeacher(f.teacher))
+
+	var submissionID int64
+	if err := f.db.QueryRow(
+		`SELECT id FROM submissions WHERE task_id = ? AND student_id = ? AND status = 'TODO' LIMIT 1`,
+		f.taskLab,
+		f.student1,
+	).Scan(&submissionID); err != nil {
+		t.Fatalf("seed submission: %v", err)
+	}
+
+	statusPath := "/api/submissions/" + strconv.FormatInt(submissionID, 10) + "/status"
+
+	status, body := f.doJSON(t, http.MethodPatch, statusPath, studentToken, map[string]any{"event": "START"})
+	if status != http.StatusOK {
+		t.Fatalf("START = %d %v", status, body)
+	}
+
+	moved := readEvent(t, studentConn)
+	if moved.EventType != events.TypeSubmissionCardMoved || moved.Room != events.RoomGroup(f.group21) {
+		t.Fatalf("START event = %+v", moved)
+	}
+
+	if payload, ok := moved.Payload.(map[string]any); !ok || payload["to"] != "IN_PROGRESS" {
+		t.Fatalf("START payload = %#v", moved.Payload)
+	}
+
+	status, body = f.doJSON(t, http.MethodPatch, statusPath, studentToken, map[string]any{
+		"event":         "SUBMIT",
+		"artifact_url":  "https://parta.local/artifact.zip",
+		"artifact_hash": "sha256:deadbeef",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("SUBMIT = %d %v", status, body)
+	}
+
+	submitted := readEvent(t, studentConn)
+	if submitted.EventType != events.TypeSubmissionCardMoved || submitted.Room != events.RoomGroup(f.group21) {
+		t.Fatalf("SUBMIT event = %+v", submitted)
+	}
+
+	if payload, ok := submitted.Payload.(map[string]any); !ok || payload["to"] != "REVIEW" {
+		t.Fatalf("SUBMIT payload = %#v", submitted.Payload)
+	}
+
+	inbox := readEvent(t, teacherConn)
+	if inbox.EventType != events.TypeReviewInboxCreated || inbox.Room != events.RoomTeacher(f.teacher) {
+		t.Fatalf("inbox event = %+v", inbox)
+	}
+
+	status, body = f.doJSON(t, http.MethodPost, "/api/submissions/"+strconv.FormatInt(submissionID, 10)+"/verdict", teacherToken, map[string]any{
+		"verdict": "ACCEPT",
+	})
+	if status != http.StatusOK {
+		t.Fatalf("verdict = %d %v", status, body)
+	}
+
+	verdict := readEvent(t, studentConn)
+	if verdict.EventType != events.TypeSubmissionVerdictIssued || verdict.Room != events.RoomGroup(f.group21) {
+		t.Fatalf("verdict event = %+v", verdict)
+	}
+
+	if payload, ok := verdict.Payload.(map[string]any); !ok || payload["verdict"] != "ACCEPT" {
+		t.Fatalf("verdict payload = %#v", verdict.Payload)
 	}
 }
 
