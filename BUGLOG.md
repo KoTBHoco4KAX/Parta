@@ -16,23 +16,21 @@ backend-контрактов — отдельная задача, здесь ф�
   (запрос — `fetchSubmissionAttachments` в `frontend/src/teacher/api.ts`)
 - Симптом: 404, список вложений не загружается.
 - Где ловится: `AttachmentList.tsx`, `useEffect` → `.catch`, ветка
-  `cause instanceof ApiError && cause.status === 404` (только при включённом
-  флаге).
-- Что видит пользователь: при `ATTACHMENTS_ENABLED=false` запросов нет — виден
-  только fallback-блок: ссылка `artifact_url`, хэш `artifact_hash` и бейдж
-  «временно недоступно». После включения флага при 404 показывался бы
-  inline-amber с «Повторить»; toast не показывается.
-- Ожидаемый контракт: `200 { items: [{ id, filename, size, created_at }] }`.
+  `cause instanceof ApiError && cause.status === 404`.
+- Что видит пользователь: при ошибке — inline-amber с «Повторить» и fallback
+  на `artifact_url` + `artifact_hash`; toast не показывается. При успехе —
+  одна запись «artifact» с внешней ссылкой.
+- Ожидаемый контракт: `200 { items: [{ id, filename, size, created_at, url }] }`.
   UI также принимает массив или `{ attachments | data | files }` и поля
   `file_name`, `size_bytes`, `uploaded_at` как синонимы.
 - Авторизация: JWT (Bearer). Доступ — автор сдачи / teacher курса / admin.
-- Приоритет: high (блокирует фичу вложений)
-- Статус: open / blocked on spec / out of Sprint 2 scope
-- Примечание: backend-контракта на вложения нет в PROJECT_MANIFEST.md §6.5 и
-  `spec/`. Решение архитектора: не реализуем в Спринте 2, требуется спека
-  (PROJECT_MANIFEST §6.5) и хранилище. UI gated через
-  `ATTACHMENTS_ENABLED=false` в `AttachmentList.tsx`. Не блокирует мерж
-  остальных фич спринта.
+- Приоритет: high
+- Статус: mvp / blocked on full spec
+- Примечание: MVP реализован в `backend/internal/http/teacher_api.go` —
+  `GET /api/attachments?submission_id=` отдаёт синтетический
+  `artifact-{submission_id}` со ссылкой `artifact_url`. Полноценное хранилище
+  файлов (таблица вложений + storage) ждёт отдельной спеки и решения
+  архитектора. UI включён через `ATTACHMENTS_ENABLED=true`.
 
 ### [BUG-002] Отсутствует GET /api/attachments/{id}
 
@@ -42,22 +40,17 @@ backend-контрактов — отдельная задача, здесь ф�
   `frontend/src/teacher/api.ts`)
 - Симптом: 404 при скачивании файла вложения.
 - Где ловится: `downloadSubmissionAttachment` бросает `ApiError` по
-  `!response.ok`; `AttachmentList.tsx` → `handleDownload` → `catch` (только при
-  включённом флаге).
-- Что видит пользователь: при `ATTACHMENTS_ENABLED=false` кнопка «Скачать» не
-  рендерится и запросов нет — остаётся fallback-ссылка на артефакт. После
-  включения флага при 404 была бы inline-ошибка (rose) под списком файлов.
-- Ожидаемый контракт: бинарный поток; `Content-Type` исходного файла;
-  `Content-Disposition: attachment; filename="…"`; запрос с JWT в заголовке
-  `Authorization: Bearer <jwt>` (не через `<a href>`, чтобы не терять токен).
+  `!response.ok`; `AttachmentList.tsx` → `handleDownload` → `catch`.
+- Что видит пользователь: при 404 — inline-ошибка (rose) под списком файлов;
+  при CORS-барьере внешнего `artifact_url` файл открывается в новой вкладке.
+  При успехе — toast «Файл скачан».
+- Ожидаемый контракт: `302 Location: artifact_url` (без `Content-Disposition`,
+  сервер не проксирует файл — SSRF-безопасно); JWT на первом запросе.
 - Авторизация: те же правила, что BUG-001.
 - Приоритет: high
-- Статус: open / blocked on spec / out of Sprint 2 scope
-- Примечание: backend-контракта на вложения нет в PROJECT_MANIFEST.md §6.5 и
-  `spec/`. Решение архитектора: не реализуем в Спринте 2, требуется спека
-  (PROJECT_MANIFEST §6.5) и хранилище. UI gated через
-  `ATTACHMENTS_ENABLED=false` в `AttachmentList.tsx`. Не блокирует мерж
-  остальных фич спринта.
+- Статус: mvp / blocked on full spec
+- Примечание: redirect-MVP реализован в `teacher_api.go`; полноценная отдача
+  файлов из хранилища ждёт спеки. UI включён через `ATTACHMENTS_ENABLED=true`.
 
 ### [BUG-003] Отсутствует POST /api/peer-reviews/{id}/award
 
@@ -82,8 +75,10 @@ backend-контрактов — отдельная задача, здесь ф�
 - Роли: teacher, admin. Предусловия: `peer_review.status = COMPLETED`,
   `reviewer_id` совпадает с рецензентом сессии.
 - Приоритет: high
-- Статус: open / waiting for backend
-- Примечание: ждёт backend-агента, контракты согласованы, см. коммит `08ff4b0`.
+- Статус: closed
+- Закрыто: коммит `feat: backend MVP, migrations, frontend types` (ветка
+  `feat/teacher-ui`). Обработчик — `backend/internal/http/teacher_api.go`,
+  идемпотентность через `peer_review:{id}:award`; тесты — `teacher_api_test.go`.
 
 ### [BUG-004] PATCH /api/users/{id} не поддерживает group_id
 
@@ -96,16 +91,20 @@ backend-контрактов — отдельная задача, здесь ф�
 - Что видит пользователь: inline-ошибка (rose) «Сервер пока не поддерживает
   изменение состава группы (PATCH /api/users/{id}).». При успехе — toast и
   перечитывание списка; при ошибке toast не показывается.
-- Фактическое состояние роутера: `PATCH /api/users/{id}` не зарегистрирован
-  (есть только `GET`, `POST`, `DELETE /api/users...`), запрос уходит в
-  catch-all `protected.Handle("/")` и возвращает 404.
+- Фактическое состояние роутера: `PATCH /api/users/{id}` зарегистрирован в
+  `router.go` и реализован в `teacher_api.go`; запрос обновляет `users.group_id`
+  в транзакции.
 - Ожидаемый контракт: body `{ group_id: int64 | null }` →
   `200 <обновлённый пользователь>`; `null` убирает студента из группы.
-- Авторизация: admin. Валидация: менять можно только `student`; группа должна
-  существовать; `null` допустим.
+- Авторизация: admin — любая группа; teacher — только свои
+  `teacher_assignments.group_id`. Валидация: менять можно только `student`;
+  группа должна существовать; `null` допустим.
 - Приоритет: high
-- Статус: open / waiting for backend
-- Примечание: ждёт backend-агента, контракты согласованы, см. коммит `08ff4b0`.
+- Статус: closed
+- Закрыто: коммит `feat: backend MVP, migrations, frontend types`
+  (ветка `feat/teacher-ui`). Для `group_id=null` миграция
+  `004_users_group_optional.sql` ослабляет CHECK у `users`; тесты —
+  `teacher_api_test.go`.
 
 ### [BUG-005] Отсутствует GET /api/users?group_id=/unassigned=
 
@@ -122,20 +121,22 @@ backend-контрактов — отдельная задача, здесь ф�
 - Что видит пользователь: при успешном создании — toast «Студент создан и сразу
   привязан к группе»; при ошибке — inline-ошибка (rose). Отсутствие серверного
   фильтра визуально не проявляется, но список тянется целиком.
-- Ожидаемый контракт (если фильтр нужен): `GET /api/users?group_id={id}` и
+- Ожидаемый контракт: `GET /api/users?group_id={id}` и
   `GET /api/users?unassigned=true` для списка кандидатов; текущий
   `GET /api/users` без параметров оставить для админского списка.
 - Приоритет: low
-- Статус: open / low
-- Примечание: не блокирует: фильтрация кандидатов сейчас на клиенте, но она
-  неполная для больших групп.
+- Статус: closed
+- Закрыто: коммит `feat: backend MVP, migrations, frontend types`
+  (ветка `feat/teacher-ui`). `handleUsersListFiltered` в `teacher_api.go`
+  поддерживает оба фильтра; UI пока продолжает фильтровать кандидатов на
+  клиенте (не блокирует, см. примечание).
 
 ### Сводка
 
 | ID | Контракт | Приоритет | Статус | Блокер мержа? | Влияние на UI |
 |---|---|---|---|---|---|
-| BUG-001 | `GET /api/attachments?submission_id=` | high | open / blocked on spec / out of Sprint 2 scope | нет (gated) | gated: только fallback (`artifact_url` + hash) |
-| BUG-002 | `GET /api/attachments/{id}` | high | open / blocked on spec / out of Sprint 2 scope | нет (gated) | gated: скачивание скрыто, fallback-ссылка |
-| BUG-003 | `POST /api/peer-reviews/{id}/award` | high | open / waiting for backend | да | inline-error в модалке начисления |
-| BUG-004 | `PATCH /api/users/{id}` | high | open / waiting for backend | да | inline-error, состав группы не меняется |
-| BUG-005 | `GET /api/users?group_id=/unassigned=` | low | open / low | нет | не блокирует: фильтрация на клиенте, неполная для больших групп |
+| BUG-001 | `GET /api/attachments?submission_id=` | high | mvp / blocked on full spec | нет | MVP: одна ссылка `artifact-{id}`, fallback на `artifact_url` |
+| BUG-002 | `GET /api/attachments/{id}` | high | mvp / blocked on full spec | нет | MVP: 302 redirect, CORS-fallback в новую вкладку |
+| BUG-003 | `POST /api/peer-reviews/{id}/award` | high | closed | нет | работает: toast + бейдж «бонус +N XP» |
+| BUG-004 | `PATCH /api/users/{id}` | high | closed | нет | работает: перенос/снятие группы, inline-error при 403/422 |
+| BUG-005 | `GET /api/users?group_id=/unassigned=` | low | closed | нет | серверный фильтр готов; UI пока фильтрует кандидатов на клиенте |

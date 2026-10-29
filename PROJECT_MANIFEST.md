@@ -522,6 +522,10 @@ Parta/
 | 9 | `POST /api/peer-reviews/{id}/claim` | student | 200 `{peer_review_id,status,reviewer_id,access_token}` | 403, 404, 409, 422 | `peer_reviews.go` |
 | 10 | `POST /api/peer-reviews/{id}/complete` | student (reviewer) | 200 `{peer_review_id,status,reward_xp,ledger_id}` | 403, 404, 409, 422 | `peer_reviews.go` |
 | 11 | `POST /api/team-slots/{id}/carry-over` | student (своя группа) | 200 `{team_slot_id,assigned_user_id,status,bonus_xp}` | 403, 404, 409, 422 | `team_slots.go` |
+| 12 | `POST /api/peer-reviews/{id}/award` | teacher, admin | 200 `{peer_review_id,reviewer_id,amount,total_xp,ledger_id}` | 403, 404, 409, 422 | `teacher_api.go` |
+| 13 | `PATCH /api/users/{id}` | admin; teacher (свои группы) | 200 `<пользователь>` (формат dev-login) | 403, 404, 422 | `teacher_api.go` |
+| 14 | `GET /api/users?group_id=\|unassigned=true` | admin; teacher (свои группы) | 200 `{items:[{id,email,full_name,role,group_id}]}` | 400, 403, 404, 422 | `teacher_api.go` |
+| 15 | `GET /api/attachments?submission_id=` и `GET /api/attachments/{id}` | автор сдачи, teacher курса, admin | 200 `{items:[…]}`; 302 `Location: artifact_url` | 401, 403, 404, 422 | `teacher_api.go` |
 
 Детали, которых нет в `spec/04_API.md` (реализованы как расширение):
 
@@ -531,6 +535,12 @@ Parta/
   (`scope=peer_review:read`, `peer_review_id`), по `spec/02_FSM.md`.
 - `POST /api/team-slots/{id}/carry-over` возвращает `bonus_xp` = `tasks.base_xp_computed`
   (для `TEAM_PROJECT` это уже SlotBaseXP). Начисление бонуса происходит не здесь, а при приёмке слота.
+- `GET /api/users` без query-параметров сохраняет прежний полный список (только admin):
+  на нём держатся `UsersPanel` и старые тесты. С `?group_id=` или `?unassigned=true`
+  работает фильтрованный контракт BUG-005; оба параметра одновременно → 400.
+- `PATCH /api/users/{id}` с `group_id=null` разрешён миграцией
+  `004_users_group_optional.sql`: CHECK у `users` ослаблен до
+  `group_id IS NULL OR role = 'student'`. Без неё снять студента с группы нельзя.
 
 События канбана (`PATCH .../status`): `START` (TODO→IN_PROGRESS), `SUBMIT` (IN_PROGRESS→REVIEW,
 нужны `artifact_url` + `artifact_hash`), `REOPEN` (REJECTED→IN_PROGRESS).
@@ -626,10 +636,13 @@ economy.StreakFreezePriceXP (=200), SpeedrunMultiplier (1.5), NormalMultiplier (
 7. **Фронтенд — каркас, а не полный UI.** Нет списков из REST, drag&drop, формы создания
    задания, экранов peer-review/слотов; после read-эндпоинтов их нужно наполнить.
    `npm run build` зелёный, dev-сервер проксирует `/api` и `/ws`.
-8. **Attachments: UI реализован, backend-контракта нет.** UI готов в `feat/teacher-ui` и
-   gated через `ATTACHMENTS_ENABLED=false`. Backend-контракт не определён (нет таблицы
-   вложений в `spec/01_SCHEMA.sql`, нет storage-слоя). Требуется отдельное решение по
-   хранению файлов и миграция. См. BUGLOG BUG-001/002.
+8. **Attachments: MVP redirect, полное хранилище — блокировано.** UI готов в
+   `feat/teacher-ui` и включён через `ATTACHMENTS_ENABLED=true`.
+   `GET /api/attachments` отдаёт синтетическое вложение `artifact-{submission_id}`,
+   а `GET /api/attachments/{id}` — 302 на `artifact_url` (без проксирования,
+   SSRF-безопасно). Полноценный backend-контракт не определён: нет таблицы
+   вложений в `spec/01_SCHEMA.sql`, нет storage-слоя и загрузки файлов.
+   Требуется отдельное решение по хранению и миграция. См. BUGLOG BUG-001/002.
 
 ---
 

@@ -4,7 +4,7 @@ import {
   downloadSubmissionAttachment,
   fetchSubmissionAttachments,
 } from '../api';
-import type { SubmissionAttachment } from '../types';
+import type { SubmissionAttachment, ToastData } from '../types';
 import { Badge, Button, Skeleton, cn } from './ui';
 import {
   IconAlert,
@@ -18,16 +18,17 @@ import {
 /**
  * Feature-флаг вложений.
  *
- * false — blocked on backend spec, см. BUGLOG BUG-001/002: в spec/ нет таблицы
- * вложений и storage-слоя, поэтому запросы к /api/attachments не выполняются,
- * а UI показывает только безопасный fallback (artifact_url + hash).
+ * true — MVP: `GET /api/attachments` + 302-редирект на artifact_url.
+ * false — полный fallback без запросов (blocked on full backend spec,
+ * см. BUGLOG BUG-001/002: в spec/ нет таблицы вложений и storage-слоя).
  */
-export const ATTACHMENTS_ENABLED = false;
+export const ATTACHMENTS_ENABLED = true;
 
 interface AttachmentListProps {
   submissionId: number;
   artifactUrl: string;
   artifactHash: string;
+  notify?: (toast: Omit<ToastData, 'id'>) => void;
 }
 
 // formatSize — человекочитаемый размер файла без внешних зависимостей.
@@ -45,6 +46,26 @@ function formatSize(bytes: number): string {
   }
 
   return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
+}
+
+// displayName выбирает человекочитаемое имя: API отдаёт generic "artifact".
+function displayName(attachment: SubmissionAttachment): string {
+  const filename = attachment.filename.trim();
+
+  if (filename !== '' && filename !== 'artifact') {
+    return filename;
+  }
+
+  try {
+    const segment = new URL(attachment.url).pathname.split('/').pop();
+    if (segment) {
+      return decodeURIComponent(segment);
+    }
+  } catch {
+    // Относительный/битый URL — остаётся имя из API.
+  }
+
+  return filename !== '' ? filename : attachment.id;
 }
 
 /**
@@ -106,9 +127,8 @@ function AttachmentFallback({
 /**
  * AttachmentList — точка входа для модалки вердикта.
  *
- * Пока ATTACHMENTS_ENABLED=false, компонент не монтирует загрузчик вложений и
- * не делает сетевых запросов: рендерится только fallback на artifact_url.
- * Включить после мержа backend-контракта из BUGLOG BUG-001/002.
+ * При ATTACHMENTS_ENABLED=false компонент не монтирует загрузчик и не делает
+ * сетевых запросов: рендерится только fallback на artifact_url.
  */
 export function AttachmentList(props: AttachmentListProps) {
   if (!ATTACHMENTS_ENABLED) {
@@ -134,12 +154,13 @@ function EnabledAttachmentList({
   submissionId,
   artifactUrl,
   artifactHash,
+  notify,
 }: AttachmentListProps) {
   const [attachments, setAttachments] = useState<SubmissionAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -163,7 +184,7 @@ function EnabledAttachmentList({
         }
 
         if (cause instanceof ApiError && cause.status === 404) {
-          setError('Сервер пока не отдаёт список файлов через /api/attachments.');
+          setError('Сдача не найдена или вложения недоступны.');
         } else {
           setError(
             cause instanceof ApiError
@@ -185,6 +206,11 @@ function EnabledAttachmentList({
 
     try {
       await downloadSubmissionAttachment(attachment);
+      notify?.({
+        tone: 'success',
+        title: 'Файл скачан',
+        description: displayName(attachment),
+      });
     } catch (cause) {
       setDownloadError(
         cause instanceof ApiError
@@ -260,9 +286,9 @@ function EnabledAttachmentList({
               <div className="min-w-0 flex-1">
                 <p
                   className="truncate text-[11px] font-medium text-slate-200"
-                  title={attachment.filename}
+                  title={displayName(attachment)}
                 >
-                  {attachment.filename}
+                  {displayName(attachment)}
                 </p>
                 <p className="text-[10px] text-slate-500">
                   {formatSize(attachment.sizeBytes)}
@@ -273,7 +299,7 @@ function EnabledAttachmentList({
                 size="sm"
                 onClick={() => void handleDownload(attachment)}
                 loading={downloadingId === attachment.id}
-                aria-label={`Скачать ${attachment.filename}`}
+                aria-label={`Скачать ${displayName(attachment)}`}
               >
                 <IconDownload className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Скачать</span>

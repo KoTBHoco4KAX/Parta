@@ -10,7 +10,6 @@ export type {
   InboxSubmission,
   PeerReview,
   PeerReviewStatus,
-  ReviewerAwardResult,
   ReviewInboxItem,
   SubmissionAttachment,
   SubmissionStatus,
@@ -19,10 +18,11 @@ export type {
   VerdictResult,
 } from './types';
 export {
-  awardReviewerXP,
+  awardPeerReview,
   downloadSubmissionAttachment,
   fetchPeerReviewSessions,
   fetchReviewInbox,
   fetchSubmissionAttachments,
   issueVerdict,
 } from './api';
+export type { AwardPeerReviewBody, AwardPeerReviewResult } from './api';

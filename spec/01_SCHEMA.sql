@@ -25,10 +25,9 @@ CREATE TABLE users (
     streak_freezes      INTEGER NOT NULL DEFAULT 0 CHECK (streak_freezes >= 0),
     created_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
     updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-    CHECK (
-        (role = 'student' AND group_id IS NOT NULL)
-        OR (role IN ('admin','teacher') AND group_id IS NULL)
-    )
+    -- 004: студента можно снять с группы (PATCH /api/users/{id}, group_id=null);
+    -- непустой group_id по-прежнему разрешён только студенту.
+    CHECK (group_id IS NULL OR role = 'student')
 ) STRICT;
 
 CREATE TABLE disciplines (

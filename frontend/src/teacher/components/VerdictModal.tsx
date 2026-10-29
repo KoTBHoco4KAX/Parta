@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReviewInboxItem, Verdict, VerdictResult } from '../types';
+import type { ReviewInboxItem, ToastData, Verdict, VerdictResult } from '../types';
 import {
   formatDateTime,
   formatDeadline,
@@ -30,10 +30,12 @@ export function VerdictModal({
   item,
   onClose,
   onIssued,
+  notify,
 }: {
   item: ReviewInboxItem;
   onClose: () => void;
   onIssued: (result: VerdictResult, item: ReviewInboxItem) => void;
+  notify?: (toast: Omit<ToastData, 'id'>) => void;
 }) {
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const [comment, setComment] = useState('');
@@ -180,6 +182,7 @@ export function VerdictModal({
               submissionId={item.id}
               artifactUrl={item.artifactUrl}
               artifactHash={item.artifactHash}
+              notify={notify}
             />
           </div>
         </section>

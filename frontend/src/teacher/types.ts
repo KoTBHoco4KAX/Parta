@@ -120,25 +120,19 @@ export type PeerReviewFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
 
 /**
  * Вложение, прикреплённое студентом к сдаче.
- * Контракт: `GET /api/attachments?submission_id={id}` (список) и
- * `GET /api/attachments/{id}` (поток файла).
+ * Контракт MVP: `GET /api/attachments?submission_id={id}` (список) и
+ * `GET /api/attachments/{id}` (302 на artifact_url).
  */
 export interface SubmissionAttachment {
-  id: number;
+  /** Синтетический id вида `artifact-{submission_id}`. */
+  id: string;
   submissionId: number;
   filename: string;
   sizeBytes: number;
   contentType: string;
   createdAt: string;
-}
-
-/** Результат `POST /api/peer-reviews/{id}/award` — бонус рецензенту. */
-export interface ReviewerAwardResult {
-  peerReviewId: number;
-  reviewerId: number;
-  xpAwarded: number;
-  ledgerId: number;
-  xpBalance: number | null;
+  /** Внешний artifact_url — fallback, если redirect закрыт CORS. */
+  url: string;
 }
 
 /** Тост, которым приложение сообщает о результате действия. */

@@ -37,16 +37,17 @@ import TeacherApp from './teacher';
   `issueVerdict` (`POST /api/submissions/{id}/verdict`),
   `fetchPeerReviewSessions` (`GET /api/peer-reviews`). Ошибки — общий `ApiError`.
 - Вложения: `fetchSubmissionAttachments` (`GET /api/attachments?submission_id={id}`)
-  и `downloadSubmissionAttachment` (`GET /api/attachments/{id}`). Ответ списка
-  принимается как массив или `{attachments|items|data}`; файл скачивается fetch-ом
-  с `Authorization`, поэтому имя сохраняется через object URL.
-- Attachments gated behind `ATTACHMENTS_ENABLED=false` до появления
-  backend-спеки. Включить после мержа backend-контракта из BUGLOG BUG-001/002.
-  При выключенном флаге `AttachmentList.tsx` не делает запросов и показывает
-  только fallback: `artifact_url` + `artifact_hash`.
-- P2P-бонус: `awardReviewerXP` (`POST /api/peer-reviews/{id}/award`,
+  и `downloadSubmissionAttachment` (`GET /api/attachments/{id}`). Ответ списка —
+  `{items:[…]}` (принимается и массив); download идёт fetch-ом с JWT и следует
+  302-редиректу на `artifact_url`.
+- `ATTACHMENTS_ENABLED=true` включает MVP вложений. Полное хранилище файлов ещё
+  ждёт отдельную спеку (BUGLOG BUG-001/002); при выключенном флаге
+  `AttachmentList.tsx` не делает запросов и показывает fallback
+  `artifact_url` + `artifact_hash`.
+- P2P-бонус: `awardPeerReview` (`POST /api/peer-reviews/{id}/award`,
   body `{reviewer_id, amount, comment}`) — только для `COMPLETED`-сессии.
-  Ответ: `{peer_review_id, reviewer_id, xp_awarded, ledger_id, xp_balance?}`.
+  Ответ: `{peer_review_id, reviewer_id, amount, total_xp, ledger_id}`; `api.ts`
+  нормализует его в `{amount, totalXp, ledgerId}` (DESIGN_SPEC §4.2).
 - `verdict` повторяет `POST /api/submissions/{id}/verdict`: `ACCEPT` → `DONE` + XP,
   `REJECT` → `REJECTED` + обязательный комментарий.
 - `FinalXP` в предпросмотре считается по `spec/03_MATH.md` §2: `submitted_at` против
@@ -69,9 +70,10 @@ import TeacherApp from './teacher';
 1. Для реалтайма подписаться на `teacher:{id}` и обрабатывать `review.inbox.created`,
    `submission.verdict.issued`, `peer_review.state_changed`; дедупликация по `event_id`.
 2. При появлении `GET /api/reviews/inbox` заменить текущую выборку в `api.ts`.
-3. Эндпоинты `/api/attachments` и `POST /api/peer-reviews/{id}/award` описаны в
-   `api.ts`; пока backend их не отдаёт, UI показывает inline-ошибку и fallback-ссылку
-   на `artifact_url`.
+3. `POST /api/peer-reviews/{id}/award`, `PATCH /api/users/{id}` и
+   `GET /api/attachments` уже реализованы на backend. Вложения остаются MVP:
+   redirect на `artifact_url`, полное хранилище файлов — отдельная спека
+   (BUGLOG BUG-001/002).
 
 ## Проверка
 

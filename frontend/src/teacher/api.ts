@@ -12,7 +12,6 @@ import type {
 import type {
   InboxSubmission,
   PeerReview,
-  ReviewerAwardResult,
   ReviewInboxItem,
   SubmissionAttachment,
   Verdict,
@@ -228,15 +227,23 @@ function normalizeAttachment(value: unknown): SubmissionAttachment | null {
     return null;
   }
 
-  const id = firstNumber(record.id, record.attachment_id);
-  if (id <= 0) {
+  const rawID = record.id ?? record.attachment_id;
+  let id = '';
+
+  if (typeof rawID === 'string') {
+    id = rawID.trim();
+  } else if (typeof rawID === 'number' && Number.isFinite(rawID) && rawID > 0) {
+    id = String(rawID);
+  }
+
+  if (id === '') {
     return null;
   }
 
   return {
     id,
     submissionId: firstNumber(record.submission_id),
-    filename: firstString(record, ['filename', 'file_name', 'name'], `Файл #${id}`),
+    filename: firstString(record, ['filename', 'file_name', 'name'], 'artifact'),
     sizeBytes: firstNumber(record.size_bytes, record.size, record.bytes),
     contentType: firstString(
       record,
@@ -244,6 +251,7 @@ function normalizeAttachment(value: unknown): SubmissionAttachment | null {
       'application/octet-stream',
     ),
     createdAt: firstString(record, ['created_at', 'uploaded_at'], ''),
+    url: firstString(record, ['url', 'artifact_url'], ''),
   };
 }
 
@@ -284,10 +292,12 @@ export async function fetchSubmissionAttachments(
 }
 
 /**
- * GET /api/attachments/{id} — скачивание файла.
+ * GET /api/attachments/{id} — скачивание через 302 на artifact_url.
  *
- * Файл отдаётся с JWT, поэтому обычный `<a href>` не подходит: запрос идёт
- * через fetch, а результат сохраняется объектным URL с именем из вложения.
+ * Backend отдаёт redirect, поэтому fetch следует по нему и получает уже файл
+ * (если внешний хост отдаёт CORS). Авторизация — JWT на первом запросе.
+ * Если внешний artifact_url закрыт CORS, открываем его в новой вкладке: это
+ * MVP-поведение до появления полноценного хранилища (BUGLOG BUG-001/002).
  */
 export async function downloadSubmissionAttachment(
   attachment: SubmissionAttachment,
@@ -299,7 +309,23 @@ export async function downloadSubmissionAttachment(
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const response = await fetch(`/api/attachments/${attachment.id}`, { headers });
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `/api/attachments/${encodeURIComponent(attachment.id)}`,
+      { headers },
+    );
+  } catch {
+    // CORS/сетевой барьер на внешнем artifact_url — безопасный fallback.
+    if (attachment.url.trim() !== '') {
+      window.open(attachment.url, '_blank', 'noopener,noreferrer');
+
+      return;
+    }
+
+    throw new ApiError(0, 'network', 'Не удалось скачать файл. Проверьте соединение.');
+  }
 
   if (!response.ok) {
     let code = 'download_failed';
@@ -324,11 +350,31 @@ export async function downloadSubmissionAttachment(
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
-  link.download = attachment.filename.trim() !== '' ? attachment.filename : `attachment-${attachment.id}`;
+  link.download = attachmentFilename(attachment);
   document.body.appendChild(link);
   link.click();
   link.remove();
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
+// attachmentFilename выбирает имя для сохранения: имя из API, иначе из URL.
+function attachmentFilename(attachment: SubmissionAttachment): string {
+  const filename = attachment.filename.trim();
+
+  if (filename !== '' && filename !== 'artifact') {
+    return filename;
+  }
+
+  try {
+    const segment = new URL(attachment.url).pathname.split('/').pop();
+    if (segment) {
+      return decodeURIComponent(segment);
+    }
+  } catch {
+    // URL относительный или битый — используем синтетическое имя.
+  }
+
+  return filename !== '' ? filename : `attachment-${attachment.id}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -397,30 +443,5 @@ export async function awardPeerReview(
       response.reward_xp,
     ),
     ledgerId: ledgerIdOf(response.ledger_id),
-  };
-}
-
-/**
- * @deprecated Оставлен для обратной совместимости экспорта модуля.
- * Используйте `awardPeerReview()`: он возвращает `amount` / `totalXp` / `ledgerId`.
- */
-export async function awardReviewerXP(input: {
-  peerReviewId: number;
-  reviewerId: number;
-  amount: number;
-  comment: string;
-}): Promise<ReviewerAwardResult> {
-  const result = await awardPeerReview(input.peerReviewId, {
-    reviewerId: input.reviewerId,
-    amount: input.amount,
-    comment: input.comment,
-  });
-
-  return {
-    peerReviewId: input.peerReviewId,
-    reviewerId: input.reviewerId,
-    xpAwarded: result.amount,
-    ledgerId: Number(result.ledgerId) || 0,
-    xpBalance: result.totalXp > 0 ? result.totalXp : null,
   };
 }

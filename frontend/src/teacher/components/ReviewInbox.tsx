@@ -423,6 +423,7 @@ export function ReviewInbox({
           item={selected}
           onClose={() => setSelected(null)}
           onIssued={handleIssued}
+          notify={notify}
         />
       ) : null}
     </div>
