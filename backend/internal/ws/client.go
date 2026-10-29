@@ -62,6 +62,13 @@ func (c *client) close(code websocket.StatusCode, reason string) {
 
 // writeLoop сериализует все записи в сокет и шлёт keep-alive ping.
 func (c *client) writeLoop() {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("ws: panic in write loop user=%d: %v", c.userID, recovered)
+			c.close(websocket.StatusInternalError, "internal error")
+		}
+	}()
+
 	ticker := time.NewTicker(pingInterval)
 	defer ticker.Stop()
 
@@ -94,8 +101,15 @@ func (c *client) writeLoop() {
 }
 
 // readLoop читает команды подписки и завершает соединение при ошибке.
+// Паника хендлера команды не должна ронять процесс: соединение закрывается,
+// остальные клиенты продолжают работать.
 func (c *client) readLoop() {
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			log.Printf("ws: panic in read loop user=%d: %v", c.userID, recovered)
+			c.close(websocket.StatusInternalError, "internal error")
+		}
+
 		c.server.hub.remove(c)
 		c.close(websocket.StatusNormalClosure, "bye")
 
@@ -137,7 +151,15 @@ func (c *client) handleMessage(data []byte) {
 		return
 	}
 
-	if msg.Action != "subscribe" && msg.Action != "unsubscribe" {
+	switch msg.Action {
+	case "ping":
+		// Прикладной heartbeat: браузер не умеет отвечать на control-frame ping
+		// из JS, поэтому клиент шлёт ping сам и ждёт pong.
+		c.reply(ackMessage{Type: "pong"})
+
+		return
+	case "subscribe", "unsubscribe":
+	default:
 		c.reply(ackMessage{Type: "error", Error: "unknown action"})
 
 		return

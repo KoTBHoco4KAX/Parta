@@ -80,40 +80,67 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 
 // Handler собирает маршруты, middleware и публичный /api.
 func (s *Server) Handler() http.Handler {
+	// Роли проверяются на уровне маршрута, до входа в хендлер: даже если
+	// проверка внутри хендлера будет забыта, чужую ручку вызвать нельзя.
+	adminOnly := s.roleGuard(RoleAdmin)
+	teacherOnly := s.roleGuard(RoleTeacher)
+	staffOnly := s.roleGuard(RoleTeacher, RoleAdmin)
+	studentOnly := s.roleGuard(RoleStudent)
+
 	public := http.NewServeMux()
 	public.Handle("POST /api/auth/login", http.HandlerFunc(s.handleLogin))
 	public.Handle("POST /api/auth/dev-login", http.HandlerFunc(s.handleDevLogin))
 
 	protected := http.NewServeMux()
 	protected.Handle("GET /api/tasks", http.HandlerFunc(s.handleListTasks))
-	protected.Handle("POST /api/tasks", http.HandlerFunc(s.handleCreateTask))
+	protected.Handle("POST /api/tasks", teacherOnly(http.HandlerFunc(s.handleCreateTask)))
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
-	protected.Handle("POST /api/submissions", http.HandlerFunc(s.handleCreateSubmission))
-	protected.Handle("GET /api/wagers", http.HandlerFunc(s.handleListWagers))
-	protected.Handle("GET /api/peer-reviews", http.HandlerFunc(s.handleListPeerReviews))
-	protected.Handle("GET /api/assignments", http.HandlerFunc(s.handleListAssignments))
-	protected.Handle("GET /api/users", http.HandlerFunc(s.handleListUsers))
-	protected.Handle("POST /api/users", http.HandlerFunc(s.handleCreateUser))
-	protected.Handle("DELETE /api/users/{id}", http.HandlerFunc(s.handleDeleteUser))
-	protected.Handle("GET /api/groups", http.HandlerFunc(s.handleListGroups))
-	protected.Handle("POST /api/groups", http.HandlerFunc(s.handleCreateGroup))
-	protected.Handle("DELETE /api/groups/{id}", http.HandlerFunc(s.handleDeleteGroup))
-	protected.Handle("PATCH /api/submissions/{id}/status", http.HandlerFunc(s.handleSubmissionStatus))
-	protected.Handle("POST /api/submissions/{id}/verdict", http.HandlerFunc(s.handleVerdict))
-	protected.Handle("POST /api/users/me/streak-freezes/purchase", http.HandlerFunc(s.handlePurchaseFreezes))
-	protected.Handle("POST /api/wagers", http.HandlerFunc(s.handleCreateWager))
-	protected.Handle("POST /api/peer-reviews", http.HandlerFunc(s.handleCreatePeerReview))
-	protected.Handle("POST /api/peer-reviews/{id}/claim", http.HandlerFunc(s.handleClaimPeerReview))
-	protected.Handle("POST /api/peer-reviews/{id}/complete", http.HandlerFunc(s.handleCompletePeerReview))
-	protected.Handle("POST /api/team-slots/{id}/carry-over", http.HandlerFunc(s.handleCarryOver))
+	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
+	protected.Handle("GET /api/wagers", studentOnly(http.HandlerFunc(s.handleListWagers)))
+	protected.Handle("GET /api/peer-reviews", staffOnly(http.HandlerFunc(s.handleListPeerReviews)))
+	protected.Handle("GET /api/assignments", staffOnly(http.HandlerFunc(s.handleListAssignments)))
+	protected.Handle("GET /api/users", adminOnly(http.HandlerFunc(s.handleListUsers)))
+	protected.Handle("POST /api/users", adminOnly(http.HandlerFunc(s.handleCreateUser)))
+	protected.Handle("DELETE /api/users/{id}", adminOnly(http.HandlerFunc(s.handleDeleteUser)))
+	protected.Handle("GET /api/groups", adminOnly(http.HandlerFunc(s.handleListGroups)))
+	protected.Handle("POST /api/groups", adminOnly(http.HandlerFunc(s.handleCreateGroup)))
+	protected.Handle("DELETE /api/groups/{id}", adminOnly(http.HandlerFunc(s.handleDeleteGroup)))
+	protected.Handle("PATCH /api/submissions/{id}/status", studentOnly(http.HandlerFunc(s.handleSubmissionStatus)))
+	protected.Handle("POST /api/submissions/{id}/verdict", staffOnly(http.HandlerFunc(s.handleVerdict)))
+	protected.Handle("POST /api/users/me/streak-freezes/purchase", studentOnly(http.HandlerFunc(s.handlePurchaseFreezes)))
+	protected.Handle("POST /api/wagers", studentOnly(http.HandlerFunc(s.handleCreateWager)))
+	protected.Handle("POST /api/peer-reviews", studentOnly(http.HandlerFunc(s.handleCreatePeerReview)))
+	protected.Handle("POST /api/peer-reviews/{id}/claim", studentOnly(http.HandlerFunc(s.handleClaimPeerReview)))
+	protected.Handle("POST /api/peer-reviews/{id}/complete", studentOnly(http.HandlerFunc(s.handleCompletePeerReview)))
+	protected.Handle("POST /api/team-slots/{id}/carry-over", studentOnly(http.HandlerFunc(s.handleCarryOver)))
 	protected.Handle("/", http.HandlerFunc(s.handleNotFound))
 
 	public.Handle("/api/", s.authenticate(protected))
+	// Неизвестные пути тоже отвечают JSON-конвертом, а не текстом net/http.
+	public.Handle("/", http.HandlerFunc(s.handleNotFound))
 
 	return s.recoverer(s.logging(public))
 }
 
-// handleNotFound отвечает 404 в общем JSON-формате для неизвестных /api-маршрутов.
+// roleGuard проверяет JWT-роль маршрута до вызова хендлера.
+func (s *Server) roleGuard(roles ...string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ok := s.principalOr401(w, r)
+			if !ok {
+				return
+			}
+
+			if !requireRole(w, p, roles...) {
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// handleNotFound отвечает 404 в общем JSON-формате для неизвестных маршрутов.
 func (s *Server) handleNotFound(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, domainerrors.ErrNotFound)
 }

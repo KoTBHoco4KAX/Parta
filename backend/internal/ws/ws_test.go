@@ -545,3 +545,34 @@ func TestHubCloseDisconnects(t *testing.T) {
 		}
 	}
 }
+
+// TestWSApplicationPingPong проверяет прикладной heartbeat: клиент шлёт ping,
+// сервер отвечает pong, не требуя списка комнат.
+func TestWSApplicationPingPong(t *testing.T) {
+	f := newFixture(t)
+
+	conn, _, err := f.dial(t, f.token(t, f.student1, ws.RoleStudent))
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close(websocket.StatusNormalClosure, "")
+
+	expectReady(t, conn, events.RoomUser(f.student1), events.RoomGroup(f.group21))
+
+	payload, err := json.Marshal(map[string]any{"action": "ping"})
+	if err != nil {
+		t.Fatalf("marshal ping: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := conn.Write(ctx, websocket.MessageText, payload); err != nil {
+		t.Fatalf("write ping: %v", err)
+	}
+
+	message := readJSON(t, conn)
+	if message["type"] != "pong" {
+		t.Fatalf("response = %v, want pong", message)
+	}
+}

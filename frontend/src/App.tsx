@@ -11,6 +11,7 @@ import BetsPage from './student/pages/BetsPage';
 import TeacherApp from './teacher';
 import AdminApp from './admin';
 import { AppShell } from './components/AppShell';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const NAV = [
   { path: '/', label: 'Главная' },
@@ -60,9 +61,11 @@ export default function App() {
   }, []);
 
   return (
-    <AuthProvider>
-      <Shell />
-    </AuthProvider>
+    <ErrorBoundary fullScreen>
+      <AuthProvider>
+        <Shell />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -76,11 +79,19 @@ function Shell() {
 
   // Кабинеты преподавателя и админа используют тот же AppShell, что и студент.
   if (role === 'teacher') {
-    return <TeacherApp />;
+    return (
+      <ErrorBoundary>
+        <TeacherApp />
+      </ErrorBoundary>
+    );
   }
 
   if (role === 'admin') {
-    return <AdminApp />;
+    return (
+      <ErrorBoundary>
+        <AdminApp />
+      </ErrorBoundary>
+    );
   }
 
   return (
@@ -113,14 +124,16 @@ function Shell() {
         </nav>
       }
     >
-      {route === '/kanban' ? <KanbanPage /> : null}
-      {route === '/inbox' ? <InboxPage /> : null}
-      {route === '/economy' ? <EconomyPage /> : null}
-      {route === '/gamification' ? <GamificationPage /> : null}
-      {route === '/bets' ? <BetsPage /> : null}
-      {route === '/' || !NAV.some((item) => item.path === route) ? (
-        <DashboardPage navigate={navigate} />
-      ) : null}
+      <ErrorBoundary key={route}>
+        {route === '/kanban' ? <KanbanPage /> : null}
+        {route === '/inbox' ? <InboxPage /> : null}
+        {route === '/economy' ? <EconomyPage /> : null}
+        {route === '/gamification' ? <GamificationPage /> : null}
+        {route === '/bets' ? <BetsPage /> : null}
+        {route === '/' || !NAV.some((item) => item.path === route) ? (
+          <DashboardPage navigate={navigate} />
+        ) : null}
+      </ErrorBoundary>
     </AppShell>
   );
 }

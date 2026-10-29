@@ -28,6 +28,11 @@ const (
 	RoleStudent = "student"
 )
 
+// validRole принимает только роли, известные RBAC.
+func validRole(role string) bool {
+	return role == RoleAdmin || role == RoleTeacher || role == RoleStudent
+}
+
 // UserDirectory — чтение пользователя для проверки прав на комнаты.
 type UserDirectory interface {
 	GetByID(ctx context.Context, id int64) (*storage.User, error)
@@ -86,7 +91,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	claims, err := s.tokens.Parse(raw)
-	if err != nil || claims.Role == "" {
+	if err != nil || !validRole(claims.Role) || claims.Scope != "" {
 		writeWSError(w, http.StatusUnauthorized, "invalid or expired token", "unauthorized")
 
 		return
