@@ -3,7 +3,6 @@ import { AuthProvider, useAuth } from './core/auth';
 import { initMaxBridge } from './core/max';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { InboxPage } from './pages/InboxPage';
 import { EconomyPage } from './pages/EconomyPage';
 import KanbanPage from './student/pages/KanbanPage';
 import GamificationPage from './student/pages/GamificationPage';
@@ -16,7 +15,6 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 const NAV = [
   { path: '/', label: 'Главная' },
   { path: '/kanban', label: 'Канбан' },
-  { path: '/inbox', label: 'Инбокс' },
   { path: '/economy', label: 'Экономика' },
   { path: '/gamification', label: 'XP' },
   { path: '/bets', label: 'Пари' },
@@ -126,12 +124,11 @@ function Shell() {
     >
       <ErrorBoundary key={route}>
         {route === '/kanban' ? <KanbanPage /> : null}
-        {route === '/inbox' ? <InboxPage /> : null}
         {route === '/economy' ? <EconomyPage /> : null}
         {route === '/gamification' ? <GamificationPage /> : null}
         {route === '/bets' ? <BetsPage /> : null}
         {route === '/' || !NAV.some((item) => item.path === route) ? (
-          <DashboardPage navigate={navigate} />
+          <DashboardPage />
         ) : null}
       </ErrorBoundary>
     </AppShell>

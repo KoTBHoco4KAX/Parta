@@ -1,14 +1,10 @@
-import { Button } from '../components/Button';
 import { useAuth } from '../core/auth';
 import type { WsEvent } from '../core/types';
 
-interface Props {
-  navigate: (path: string) => void;
-}
-
 // DashboardPage — профиль и живые события: проверка WS-канала без чтения REST.
-export function DashboardPage({ navigate }: Props) {
-  const { user, role, connection, events, logout } = useAuth();
+// Навигация живёт в нижнем меню, поэтому дублирующих кнопок здесь нет.
+export function DashboardPage() {
+  const { user, role, connection, events } = useAuth();
 
   if (!user) {
     return null;
@@ -44,21 +40,6 @@ export function DashboardPage({ navigate }: Props) {
         </dl>
       </section>
 
-      <section className="grid grid-cols-2 gap-3">
-        <Button variant="secondary" onClick={() => navigate('/kanban')}>
-          Канбан
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/inbox')}>
-          Инбокс
-        </Button>
-        <Button variant="secondary" onClick={() => navigate('/economy')}>
-          Экономика
-        </Button>
-        <Button variant="ghost" onClick={logout}>
-          Выйти
-        </Button>
-      </section>
-
       <section className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium uppercase tracking-widest text-slate-500">Живая лента</h2>
@@ -80,7 +61,7 @@ export function DashboardPage({ navigate }: Props) {
 
       <p className="text-xs leading-relaxed text-slate-600">
         Профиль обновляется по событиям <code>xp.ledger.posted</code> и <code>streak.updated</code>. Чтение
-        списков (задания, карточки, инбокс) появится в Фазе 7 — сейчас экраны работают как каркас.
+        списков (задания, карточки) появится в Фазе 7 — сейчас экраны работают как каркас.
       </p>
     </div>
   );
