@@ -22,6 +22,7 @@ const (
 	TypeWagerResolved           = "wager.resolved"
 	TypePeerReviewStateChanged  = "peer_review.state_changed"
 	TypeTeamSlotStateChanged    = "team_slot.state_changed"
+	TypeTaskCreated             = "task.created"
 )
 
 // TimestampFormat — формат поля timestamp конверта (RFC3339 с миллисекундами).

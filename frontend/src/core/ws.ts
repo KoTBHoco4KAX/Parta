@@ -5,6 +5,7 @@ import type { ConnectionStatus, WsEvent } from './types';
 export const WS_EVENT_SUBMISSION_CARD_MOVED = 'submission.card.moved';
 export const WS_EVENT_SUBMISSION_VERDICT_ISSUED = 'submission.verdict.issued';
 export const WS_EVENT_REVIEW_INBOX_CREATED = 'review.inbox.created';
+export const WS_EVENT_TASK_CREATED = 'task.created';
 
 // Payload конверта submission.card.moved (spec/00_ARCHITECTURE.md §V).
 export interface SubmissionCardMovedPayload {
@@ -25,11 +26,13 @@ export interface SubmissionVerdictIssuedPayload {
   reviewed_at: string;
 }
 
-// isSubmissionBoardEvent — true для событий, меняющих канбан студента.
+// isSubmissionBoardEvent — true для событий, меняющих канбан студента:
+// смена статуса, вердикт и появление нового задания.
 export function isSubmissionBoardEvent(event: Pick<WsEvent, 'event_type'>): boolean {
   return (
     event.event_type === WS_EVENT_SUBMISSION_CARD_MOVED ||
-    event.event_type === WS_EVENT_SUBMISSION_VERDICT_ISSUED
+    event.event_type === WS_EVENT_SUBMISSION_VERDICT_ISSUED ||
+    event.event_type === WS_EVENT_TASK_CREATED
   );
 }
 

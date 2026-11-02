@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ApiError, fetchSubmissions, fetchTasks, moveSubmission } from '../../core/api';
-import { useAuth } from '../../core/auth';
-import { isSubmissionBoardEvent } from '../../core/ws';
+import { useMemo, useState } from 'react';
+import { ApiError, moveSubmission } from '../../core/api';
 import type { Submission, Task } from '../../core/types';
-import { Button } from '../../components/Button';
 import TaskDetailsModal from '../components/TaskDetailsModal';
+import { useKanbanBoard } from '../hooks/useKanbanBoard';
 import type { TaskStatus } from '../types';
 
 const columns: { id: TaskStatus; title: string }[] = [
@@ -32,47 +30,11 @@ function statusFromSubmission(status: Submission['status'] | undefined): TaskSta
 // KanbanPage — доска студента без drag-n-drop: клик по карточке открывает
 // задание, а карточка TODO/REJECTED сразу переводится в работу.
 export default function KanbanPage() {
-  const { subscribe } = useAuth();
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [submissions, setSubmissions] = useState<Submission[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { tasks, submissions, loading, error: loadError, reload } = useKanbanBoard();
   const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const load = useCallback(async () => {
-    setError(null);
-
-    try {
-      const [nextTasks, nextSubmissions] = await Promise.all([
-        fetchTasks(),
-        fetchSubmissions(),
-      ]);
-
-      setTasks(nextTasks);
-      setSubmissions(nextSubmissions);
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить доску.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Реалтайм: сдача работы студентом и вердикт преподавателя приходят по WS.
-  // Перечитываем доску с сервера, а не правим локальную копию «на глаз».
-  useEffect(
-    () =>
-      subscribe((event) => {
-        if (isSubmissionBoardEvent(event)) {
-          void load();
-        }
-      }),
-    [load, subscribe],
-  );
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
 
   const submissionByTask = useMemo(() => {
     const map = new Map<number, Submission>();
@@ -112,7 +74,7 @@ export default function KanbanPage() {
     const submission = card?.submission ?? null;
 
     if (!submission) {
-      setError('Карточка ещё не создана сервером. Обновите доску.');
+      setActionError('Карточка ещё не создана сервером. Подождите — доска обновится автоматически.');
       return;
     }
 
@@ -124,13 +86,13 @@ export default function KanbanPage() {
     }
 
     setBusy(true);
-    setError(null);
+    setActionError(null);
 
     try {
       await moveSubmission(submission.id, submission.status === 'TODO' ? 'START' : 'REOPEN');
-      await load();
+      reload();
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось взять задание в работу.');
+      setActionError(cause instanceof ApiError ? cause.message : 'Не удалось взять задание в работу.');
     } finally {
       setBusy(false);
     }
@@ -142,16 +104,11 @@ export default function KanbanPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Нажмите на карточку: откроется задание, а входящая сразу перейдёт в работу.
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
-          Обновить
-        </Button>
+      <div className="mb-4">
+        <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
+        <p className="mt-0.5 text-xs text-slate-400">
+          Нажмите на карточку: откроется задание, а входящая сразу перейдёт в работу.
+        </p>
       </div>
 
       {error ? (
@@ -230,7 +187,7 @@ export default function KanbanPage() {
           onClose={() => setSelectedTaskId(null)}
           onSubmitted={() => {
             setSelectedTaskId(null);
-            void load();
+            reload();
           }}
         />
       ) : null}
