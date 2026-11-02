@@ -69,6 +69,7 @@ func newHarnessWith(t *testing.T, env string, opts ...httpapi.Option) *harness {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "parta_http.db")
+	uploadDir := filepath.Join(t.TempDir(), "uploads")
 
 	db, err := storage.Open(path)
 	if err != nil {
@@ -79,7 +80,12 @@ func newHarnessWith(t *testing.T, env string, opts ...httpapi.Option) *harness {
 		t.Fatalf("storage.Migrate: %v", err)
 	}
 
-	cfg := config.Config{JWTSecret: testJWTSecret, Env: env, DBPath: path}
+	cfg := config.Config{
+		JWTSecret: testJWTSecret,
+		Env:       env,
+		DBPath:    path,
+		UploadDir: uploadDir,
+	}
 
 	server := httptest.NewServer(httpapi.New(cfg, db, opts...).Handler())
 

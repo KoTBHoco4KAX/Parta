@@ -39,6 +39,10 @@ func main() {
 
 	log.Println("migrations applied")
 
+	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
+		log.Fatalf("uploads: %v", err)
+	}
+
 	// Один сервис токенов на REST и WS: второго JWT-парсера нет.
 	tokens := auth.NewTokenService(cfg.JWTSecret, time.Now)
 
@@ -61,6 +65,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.Handle("/ws", realtime)
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadDir))))
 	mux.Handle("/", api)
 
 	server := &http.Server{

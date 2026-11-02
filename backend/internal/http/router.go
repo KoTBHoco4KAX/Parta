@@ -96,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("POST /api/tasks", teacherOnly(http.HandlerFunc(s.handleCreateTask)))
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
 	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
+	protected.Handle("POST /api/submissions/{id}/submit", studentOnly(http.HandlerFunc(s.handleSubmitFile)))
 	protected.Handle("GET /api/wagers", studentOnly(http.HandlerFunc(s.handleListWagers)))
 	protected.Handle("GET /api/peer-reviews", staffOnly(http.HandlerFunc(s.handleListPeerReviews)))
 	protected.Handle("GET /api/assignments", staffOnly(http.HandlerFunc(s.handleListAssignments)))

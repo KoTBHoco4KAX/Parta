@@ -18,15 +18,15 @@ export interface AppShellProps {
 /**
  * AppShell — единый мобильный каркас для всех ролей.
  *
- * Контент всегда центрирован в колонке max-w-md; на широком экране по бокам
- * остаётся тёмный фон. Шапка с профилем и выходом есть на каждом экране.
+ * Контент всегда центрирован в колонке max-w-md; фон тянется на всю ширину
+ * экрана. Шапка с профилем и выходом есть на каждом экране.
  */
 export function AppShell({ subtitle, children, bottomNav }: AppShellProps) {
   const { user, role, connection, logout } = useAuth();
 
   return (
-    <div className="flex min-h-screen justify-center bg-black">
-      <div className="flex min-h-screen w-full max-w-md flex-col bg-slate-950 text-slate-100 shadow-2xl shadow-black/60">
+    <div className="flex min-h-screen justify-center bg-slate-950">
+      <div className="flex min-h-screen w-full max-w-md flex-col bg-slate-950 text-slate-100 shadow-2xl shadow-black/40">
         <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/95 px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-2">
             <button

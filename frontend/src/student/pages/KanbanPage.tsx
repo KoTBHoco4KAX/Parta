@@ -4,7 +4,7 @@ import { useAuth } from '../../core/auth';
 import { isSubmissionBoardEvent } from '../../core/ws';
 import type { Submission, Task } from '../../core/types';
 import { Button } from '../../components/Button';
-import SubmitWorkModal from '../components/SubmitWorkModal';
+import TaskDetailsModal from '../components/TaskDetailsModal';
 import type { TaskStatus } from '../types';
 
 const columns: { id: TaskStatus; title: string }[] = [
@@ -29,16 +29,15 @@ function statusFromSubmission(status: Submission['status'] | undefined): TaskSta
   }
 }
 
-// KanbanPage — реальная доска студента: GET /api/tasks + /api/submissions,
-// движения через POST /api/submissions и PATCH /api/submissions/{id}/status.
+// KanbanPage — доска студента без drag-n-drop: клик по карточке открывает
+// задание, а карточка TODO/REJECTED сразу переводится в работу.
 export default function KanbanPage() {
   const { subscribe } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draggedTaskId, setDraggedTaskId] = useState<number | null>(null);
-  const [selected, setSelected] = useState<Submission | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -94,11 +93,33 @@ export default function KanbanPage() {
     [tasks, submissionByTask],
   );
 
-  async function handleDrop(task: Task, target: TaskStatus) {
-    const submission = submissionByTask.get(task.id) ?? null;
-    const current = statusFromSubmission(submission?.status);
+  const selectedCard = useMemo(() => {
+    const card = cards.find((candidate) => candidate.task.id === selectedTaskId);
 
-    if (busy || current === target) {
+    if (!card || !card.submission) {
+      return null;
+    }
+
+    return { task: card.task, submission: card.submission };
+  }, [cards, selectedTaskId]);
+
+  async function handleCardClick(task: Task) {
+    if (busy) {
+      return;
+    }
+
+    const card = cards.find((candidate) => candidate.task.id === task.id);
+    const submission = card?.submission ?? null;
+
+    if (!submission) {
+      setError('Карточка ещё не создана сервером. Обновите доску.');
+      return;
+    }
+
+    setSelectedTaskId(task.id);
+
+    // Первый клик по входящей карточке — это и есть «взять в работу».
+    if (submission.status !== 'TODO' && submission.status !== 'REJECTED') {
       return;
     }
 
@@ -106,34 +127,12 @@ export default function KanbanPage() {
     setError(null);
 
     try {
-      if (!submission) {
-        setError('Карточка ещё не создана сервером. Обновите доску.');
-        return;
-      }
-
-      if (target === 'in-progress') {
-        if (submission.status === 'TODO') {
-          await moveSubmission(submission.id, 'START');
-        } else if (submission.status === 'REJECTED') {
-          await moveSubmission(submission.id, 'REOPEN');
-        }
-      } else if (target === 'review') {
-        // Сдавать можно из TODO или IN_PROGRESS: сначала START, затем модалка.
-        if (submission.status === 'TODO') {
-          await moveSubmission(submission.id, 'START');
-        }
-
-        if (submission.status === 'TODO' || submission.status === 'IN_PROGRESS') {
-          setSelected(submission);
-        }
-      }
-
+      await moveSubmission(submission.id, submission.status === 'TODO' ? 'START' : 'REOPEN');
       await load();
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось переместить карточку.');
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось взять задание в работу.');
     } finally {
       setBusy(false);
-      setDraggedTaskId(null);
     }
   }
 
@@ -146,7 +145,9 @@ export default function KanbanPage() {
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
-          <p className="mt-0.5 text-xs text-slate-400">Перетащите карточку, чтобы сменить статус.</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Нажмите на карточку: откроется задание, а входящая сразу перейдёт в работу.
+          </p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load()}>
           Обновить
@@ -171,13 +172,6 @@ export default function KanbanPage() {
             return (
               <section
                 key={column.id}
-                onDrop={() => {
-                  const task = tasks.find((candidate) => candidate.id === draggedTaskId);
-                  if (task) {
-                    void handleDrop(task, column.id);
-                  }
-                }}
-                onDragOver={(event) => event.preventDefault()}
                 className="rounded-xl border border-slate-800 bg-slate-900/60 p-3"
               >
                 <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
@@ -185,17 +179,20 @@ export default function KanbanPage() {
                 </h2>
 
                 <div className="space-y-2">
-                  {columnCards.map(({ task, submission, status }) => (
+                  {columnCards.map(({ task, submission }) => (
                     <article
                       key={task.id}
-                      draggable
-                      onDragStart={() => setDraggedTaskId(task.id)}
-                      onClick={() => {
-                        if (submission?.status === 'IN_PROGRESS') {
-                          setSelected(submission);
+                      role="button"
+                      tabIndex={0}
+                      aria-busy={busy || undefined}
+                      onClick={() => void handleCardClick(task)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          void handleCardClick(task);
                         }
                       }}
-                      className="cursor-move rounded-lg border border-slate-800 bg-slate-950 p-3 hover:border-slate-700"
+                      className="cursor-pointer rounded-lg border border-slate-800 bg-slate-950 p-3 transition hover:border-emerald-500/40 hover:bg-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                     >
                       <h3 className="text-sm font-medium text-slate-100">{task.title}</h3>
                       <p className="mt-1 line-clamp-2 text-xs text-slate-400">{task.description_md}</p>
@@ -207,7 +204,13 @@ export default function KanbanPage() {
                         {submission?.status === 'REJECTED' ? (
                           <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-rose-300">доработка</span>
                         ) : null}
-                        {status === 'in-progress' ? (
+                        {submission?.status === 'TODO' ? (
+                          <span className="text-emerald-400">нажмите, чтобы взять в работу</span>
+                        ) : null}
+                        {submission?.status === 'REJECTED' ? (
+                          <span className="text-amber-400">нажмите, чтобы вернуть в работу</span>
+                        ) : null}
+                        {submission?.status === 'IN_PROGRESS' ? (
                           <span className="text-emerald-400">нажмите, чтобы сдать</span>
                         ) : null}
                       </div>
@@ -220,15 +223,13 @@ export default function KanbanPage() {
         </div>
       )}
 
-      {selected ? (
-        <SubmitWorkModal
-          submissionId={selected.id}
-          taskTitle={selected.task_title}
-          initialUrl={selected.artifact_url}
-          initialHash={selected.artifact_hash}
-          onClose={() => setSelected(null)}
+      {selectedCard ? (
+        <TaskDetailsModal
+          task={selectedCard.task}
+          submission={selectedCard.submission}
+          onClose={() => setSelectedTaskId(null)}
           onSubmitted={() => {
-            setSelected(null);
+            setSelectedTaskId(null);
             void load();
           }}
         />
