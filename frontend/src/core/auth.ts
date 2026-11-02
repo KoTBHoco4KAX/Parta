@@ -14,13 +14,6 @@ import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
 import type { ConnectionStatus, Role, User, WsEvent } from './types';
 
-// ROLE_EMAILS — dev-аккаунты сида (PROJECT_MANIFEST.md §4.3).
-export const ROLE_EMAILS: Record<Role, string> = {
-  admin: 'admin@parta.dev',
-  teacher: 'teacher@parta.dev',
-  student: 'student1@parta.dev',
-};
-
 const STORAGE_KEY = AUTH_STORAGE_KEY;
 const EVENT_LIMIT = 100;
 
@@ -37,7 +30,7 @@ interface AuthContextValue {
   error: string | null;
   connection: ConnectionStatus;
   events: WsEvent[];
-  login: (email: string, password: string, role: Role) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   // subscribe регистрирует слушателя всех WS-событий сессии.
   // Возвращённая функция снимает подписку (её нужно вернуть из useEffect).
@@ -86,12 +79,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string, role: Role) => {
+  const login = useCallback(async (email: string, password: string) => {
     setBusy(true);
     setError(null);
 
     try {
-      const response = await loginWithPassword(email, password, role);
+      const response = await loginWithPassword(email, password);
       const next = { token: response.token, user: response.user };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));

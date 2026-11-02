@@ -41,6 +41,42 @@ func TestLoginChecksRole(t *testing.T) {
 	}
 }
 
+func TestLoginWithoutRoleUsesProfileRole(t *testing.T) {
+	h := newHarness(t)
+
+	cases := []struct {
+		email string
+		role  string
+	}{
+		{"student1@parta.dev", "student"},
+		{"teacher@parta.dev", "teacher"},
+		{"admin@parta.dev", "admin"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.role, func(t *testing.T) {
+			// Новый экран входа не отправляет role: сервер обязан взять её
+			// из профиля пользователя.
+			status, body := h.request(t, http.MethodPost, "/api/auth/login", "", map[string]any{
+				"email":    tc.email,
+				"password": "anything",
+			})
+			if status != http.StatusOK {
+				t.Fatalf("login status = %d, want 200 (%v)", status, body)
+			}
+
+			user, ok := body["user"].(map[string]any)
+			if !ok {
+				t.Fatalf("user missing in %v", body)
+			}
+
+			if user["role"] != tc.role {
+				t.Fatalf("role = %v, want %q", user["role"], tc.role)
+			}
+		})
+	}
+}
+
 func TestCreateTaskAutoCreatesTodoSubmissions(t *testing.T) {
 	h := newHarness(t)
 	ids := h.seed()

@@ -104,16 +104,16 @@ export function devLogin(email: string): Promise<DevLoginResponse> {
   });
 }
 
-// loginWithPassword — POST /api/auth/login: email + пароль (любой) + роль.
+// loginWithPassword — POST /api/auth/login: email + пароль. Роль определяет
+// сервер по пользователю, клиент её не выбирает.
 export function loginWithPassword(
   email: string,
   password: string,
-  role: Role,
 ): Promise<DevLoginResponse> {
   return apiFetch<DevLoginResponse>('/auth/login', {
     method: 'POST',
     token: null,
-    body: { email, password, role },
+    body: { email, password },
   });
 }
 
