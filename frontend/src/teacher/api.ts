@@ -4,6 +4,7 @@ import type {
   Assignment as AssignmentDto,
   CreateTaskResponse as CreateTaskResponseDto,
   PeerReview as PeerReviewDto,
+  Role,
   Submission,
   Task,
   TaskType,
@@ -444,4 +445,56 @@ export async function awardPeerReview(
     ),
     ledgerId: ledgerIdOf(response.ledger_id),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Загрузка данных кабинета: сдачи целиком, состав групп, вложения.
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/submissions — все карточки преподавателя без фильтра по статусу.
+ *
+ * Инбоксу нужен только REVIEW, но обзору нагрузки и аудиту команд — вся
+ * выборка, поэтому экраны читают один список и фильтруют его локально.
+ */
+export function fetchAllSubmissions(): Promise<Submission[]> {
+  return apiFetch<Submission[]>('/submissions');
+}
+
+/** Участник потока из фильтрованного списка пользователей. */
+export interface GroupMember {
+  id: number;
+  email: string;
+  fullName: string;
+  role: Role;
+  groupId: number | null;
+}
+
+/** Ответ GET /api/users?group_id= (контракт BUG-005). */
+interface FilteredUsersResponse {
+  items: {
+    id: number;
+    email: string;
+    full_name: string;
+    role: Role;
+    group_id: number | null;
+  }[];
+}
+
+/**
+ * GET /api/users?group_id={id} — студенты конкретного потока.
+ *
+ * Доступен преподавателю только по его группам (backend сверяет
+ * teacher_assignments), поэтому экраны не дублируют проверку прав.
+ */
+export async function fetchGroupMembers(groupId: number): Promise<GroupMember[]> {
+  const response = await apiFetch<FilteredUsersResponse>(`/users?group_id=${groupId}`);
+
+  return (response.items ?? []).map((item) => ({
+    id: item.id,
+    email: item.email,
+    fullName: item.full_name,
+    role: item.role,
+    groupId: item.group_id,
+  }));
 }

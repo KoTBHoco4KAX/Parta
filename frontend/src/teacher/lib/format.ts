@@ -12,10 +12,23 @@ const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
+const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'short',
+});
+
+const dateFullFormatter = new Intl.DateTimeFormat('ru-RU', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
 const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
 });
+
+const weekdayFormatter = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });
 
 /** «27 окт., 18:00» в локальной зоне браузера. */
 export function formatDateTime(iso: string): string {
@@ -27,6 +40,26 @@ export function formatDateTime(iso: string): string {
   return dateTimeFormatter.format(date);
 }
 
+/** «27 окт.» — компактная дата для списков. */
+export function formatDate(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return dateFormatter.format(date);
+}
+
+/** «27 октября 2026 г.» — для итоговых карточек. */
+export function formatDateFull(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return dateFullFormatter.format(date);
+}
+
 /** «18:00» — для журнала вердиктов за сессию. */
 export function formatTime(iso: string): string {
   const date = new Date(iso);
@@ -35,6 +68,42 @@ export function formatTime(iso: string): string {
   }
 
   return timeFormatter.format(date);
+}
+
+/** «пт» — короткий день недели для графика нагрузки. */
+export function formatWeekday(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  return weekdayFormatter.format(date).replace('.', '');
+}
+
+/** «сегодня», «завтра», иначе «27 окт.». */
+export function formatDayLabel(iso: string, now: number = Date.now()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) {
+    return '—';
+  }
+
+  const diffDays = Math.round(
+    (startOfDay(date).getTime() - startOfDay(new Date(now)).getTime()) / 86_400_000,
+  );
+
+  if (diffDays === 0) {
+    return 'сегодня';
+  }
+
+  if (diffDays === 1) {
+    return 'завтра';
+  }
+
+  if (diffDays === -1) {
+    return 'вчера';
+  }
+
+  return dateFormatter.format(date);
 }
 
 /** «3 ч 05 мин», «2 дн 4 ч», «48 мин». */
@@ -76,6 +145,29 @@ export function formatDeadline(deadlineIso: string, now: number): string {
   return `дедлайн прошёл ${formatDuration(-diffSeconds)} назад`;
 }
 
+/**
+ * formatCountdown — короткий отсчёт до момента: «2 дн 4 ч», «47 мин»,
+ * для прошедшего момента — «просрочено на 3 ч».
+ */
+export function formatCountdown(targetIso: string | Date, now: number = Date.now()): string {
+  const target = new Date(targetIso).getTime();
+  if (Number.isNaN(target)) {
+    return '—';
+  }
+
+  const diffSeconds = Math.round((target - now) / 1000);
+
+  if (diffSeconds <= 0) {
+    return `просрочено на ${formatDuration(-diffSeconds)}`;
+  }
+
+  if (diffSeconds < 60) {
+    return 'меньше минуты';
+  }
+
+  return formatDuration(diffSeconds);
+}
+
 /** Цвет ожидания: чем дольше висит работа, тем тревожнее бейдж. */
 export function waitingTone(waitingSeconds: number): 'neutral' | 'warning' | 'danger' {
   if (waitingSeconds >= 48 * 3_600) {
@@ -89,20 +181,26 @@ export function waitingTone(waitingSeconds: number): 'neutral' | 'warning' | 'da
   return 'neutral';
 }
 
-/** Склонение: 1 работа / 2 работы / 5 работ. */
-export function pluralWorks(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
+/** Русское склонение по числу: pluralize(3, ['работа', 'работы', 'работ']). */
+export function pluralize(count: number, forms: [string, string, string]): string {
+  const abs = Math.abs(count);
+  const mod10 = abs % 10;
+  const mod100 = abs % 100;
 
   if (mod10 === 1 && mod100 !== 11) {
-    return 'работа';
+    return forms[0];
   }
 
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return 'работы';
+    return forms[1];
   }
 
-  return 'работ';
+  return forms[2];
+}
+
+/** Склонение: 1 работа / 2 работы / 5 работ. */
+export function pluralWorks(count: number): string {
+  return pluralize(count, ['работа', 'работы', 'работ']);
 }
 
 /** Инициалы для аватара: «Артём Кузнецов» → «АК». */
@@ -133,4 +231,43 @@ export function shortHash(hash: string): string {
   }
 
   return `${hash.slice(0, 12)}…${hash.slice(-6)}`;
+}
+
+/** «1 250» — разряды через неразрывный пробел. */
+export function formatNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return '—';
+  }
+
+  return new Intl.NumberFormat('ru-RU').format(Math.round(value));
+}
+
+/** «1 250 XP» — сумма опыта. */
+export function formatXP(value: number): string {
+  return `${formatNumber(value)} XP`;
+}
+
+/** «42%» — доля с защитой от деления на ноль. */
+export function formatPercent(part: number, total: number): string {
+  if (total <= 0) {
+    return '0%';
+  }
+
+  return `${Math.round((part / total) * 100)}%`;
+}
+
+/** daysBetween — целое число суток между датами (для группировки по дням). */
+export function daysBetween(from: string | Date, to: string | Date): number {
+  const a = startOfDay(new Date(from)).getTime();
+  const b = startOfDay(new Date(to)).getTime();
+
+  return Math.round((b - a) / 86_400_000);
+}
+
+/** startOfDay — локальная полночь указанной даты. */
+export function startOfDay(date: Date): Date {
+  const copy = new Date(date);
+  copy.setHours(0, 0, 0, 0);
+
+  return copy;
 }

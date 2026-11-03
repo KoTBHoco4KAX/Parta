@@ -154,3 +154,140 @@ export function IconSparkles(props: IconProps) {
     </svg>
   );
 }
+
+export function IconChart(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3 20.25h18M6.75 20.25V12m5.25 8.25V6.75m5.25 13.5v-5.25" />
+    </svg>
+  );
+}
+
+export function IconClipboard(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M9 3.75h6a1.5 1.5 0 0 1 1.5 1.5v.75h1.5A2.25 2.25 0 0 1 20.25 8.25v10.5A2.25 2.25 0 0 1 18 21H6a2.25 2.25 0 0 1-2.25-2.25V8.25A2.25 2.25 0 0 1 6 6h1.5v-.75a1.5 1.5 0 0 1 1.5-1.5Z" />
+      <path d="M9 3.75v2.25h6V3.75M8.25 12h7.5m-7.5 4.5h4.5" />
+    </svg>
+  );
+}
+
+export function IconBolt(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m13.5 3-9 10.5h6l-1.5 7.5 9-10.5h-6l1.5-7.5Z" />
+    </svg>
+  );
+}
+
+export function IconCalendar(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5A2.25 2.25 0 0 1 5.25 5.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25A2.25 2.25 0 0 1 18.75 21H5.25A2.25 2.25 0 0 1 3 18.75Zm0-6.75h18" />
+    </svg>
+  );
+}
+
+export function IconSearch(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m21 21-4.35-4.35M17.25 10.5a6.75 6.75 0 1 1-13.5 0 6.75 6.75 0 0 1 13.5 0Z" />
+    </svg>
+  );
+}
+
+export function IconChevronDown(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m4.5 8.25 7.5 7.5 7.5-7.5" />
+    </svg>
+  );
+}
+
+export function IconChevronLeft(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m15.75 4.5-7.5 7.5 7.5 7.5" />
+    </svg>
+  );
+}
+
+export function IconArrowRight(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M4.5 12h15m0 0-6-6m6 6-6 6" />
+    </svg>
+  );
+}
+
+export function IconCheckCircle(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+    </svg>
+  );
+}
+
+export function IconSend(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M6 12 3.27 3.18a.75.75 0 0 1 1.01-.9l16.1 7.9a.75.75 0 0 1 0 1.34l-16.1 7.9a.75.75 0 0 1-1.01-.9L6 12Zm0 0h6.75" />
+    </svg>
+  );
+}
+
+export function IconGift(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M21 11.25v8.25a1.5 1.5 0 0 1-1.5 1.5h-15a1.5 1.5 0 0 1-1.5-1.5v-8.25M12 21V7.5m0 0H8.25a2.25 2.25 0 1 1 0-4.5C11.25 3 12 7.5 12 7.5Zm0 0h3.75a2.25 2.25 0 1 0 0-4.5C12.75 3 12 7.5 12 7.5Zm-9 3.75h18" />
+    </svg>
+  );
+}
+
+export function IconTrend(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M2.25 18 9 11.25l4.306 4.307a11.95 11.95 0 0 1 5.814-5.518l2.74-1.22m0 0-5.94-2.281m5.94 2.28-2.28 5.941" />
+    </svg>
+  );
+}
+
+export function IconSliders(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6h3m3.75 12h9.75m-9.75 0a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 18h3m9.75-6h3.75m-3.75 0a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 12h9.75" />
+    </svg>
+  );
+}
+
+export function IconBook(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+    </svg>
+  );
+}
+
+export function IconFlag(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="M3 3v18m0-13.5h13.5l-2.25 4.5 2.25 4.5H3" />
+    </svg>
+  );
+}
+
+export function IconLayers(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m12 2.25 8.25 4.5L12 11.25 3.75 6.75 12 2.25ZM3.75 12 12 16.5l8.25-4.5M3.75 17.25 12 21.75l8.25-4.5" />
+    </svg>
+  );
+}
+
+export function IconTrash(props: IconProps) {
+  return (
+    <svg {...defaults} {...props}>
+      <path d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673A2.25 2.25 0 0 1 15.916 21.75H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+    </svg>
+  );
+}
