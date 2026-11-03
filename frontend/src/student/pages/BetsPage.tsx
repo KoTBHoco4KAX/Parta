@@ -13,10 +13,10 @@ const STATUS_LABEL: Record<Wager['status'], string> = {
 };
 
 const STATUS_CLASS: Record<Wager['status'], string> = {
-  PLACED: 'bg-sky-500/15 text-sky-300',
-  WON: 'bg-emerald-500/15 text-emerald-300',
-  LOST: 'bg-rose-500/15 text-rose-300',
-  CANCELLED: 'bg-slate-700 text-slate-300',
+  PLACED: 'bg-brandSoft text-brand',
+  WON: 'bg-brandSoft text-brand',
+  LOST: 'bg-badSoft text-bad',
+  CANCELLED: 'bg-line2 text-ink2',
 };
 
 function toLocalInput(iso: string): string {
@@ -109,8 +109,8 @@ export default function BetsPage() {
     <div>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-100">Пари</h1>
-          <p className="mt-0.5 text-xs text-slate-400">Ставка XP на собственный результат.</p>
+          <h1 className="text-lg font-bold text-ink">Пари</h1>
+          <p className="mt-0.5 text-xs text-ink3">Ставка XP на собственный результат.</p>
         </div>
         <Button size="sm" onClick={openCreate} disabled={tasks.length === 0}>
           Создать пари
@@ -118,33 +118,33 @@ export default function BetsPage() {
       </div>
 
       {error ? (
-        <p role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+        <p role="alert" className="mb-3 rounded-lg border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <p className="py-8 text-center text-sm text-slate-400">Загружаем пари…</p>
+        <p className="py-8 text-center text-sm text-ink3">Загружаем пари…</p>
       ) : wagers.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
+        <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-ink0">
           Активных пари нет. Создайте пари на задание, чтобы проверить себя.
         </p>
       ) : (
         <ul className="space-y-2">
           {wagers.map((wager) => (
-            <li key={wager.id} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <li key={wager.id} className="rounded-xl border border-line bg-card p-4">
               <div className="flex items-start justify-between gap-3">
-                <h2 className="text-sm font-medium text-slate-100">{wager.task_title}</h2>
+                <h2 className="text-sm font-medium text-ink">{wager.task_title}</h2>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[wager.status]}`}>
                   {STATUS_LABEL[wager.status]}
                 </span>
               </div>
-              <p className="mt-1 text-xs text-slate-400">Ставка: {wager.stake_amount} XP</p>
-              <p className="mt-0.5 text-[11px] text-slate-500">
+              <p className="mt-1 text-xs text-ink3">Ставка: {wager.stake_amount} XP</p>
+              <p className="mt-0.5 text-[11px] text-ink0">
                 Дедлайн пари: {new Date(wager.deadline_at).toLocaleString()}
               </p>
               {wager.resolution_note ? (
-                <p className="mt-1 text-[11px] text-slate-400">{wager.resolution_note}</p>
+                <p className="mt-1 text-[11px] text-ink3">{wager.resolution_note}</p>
               ) : null}
             </li>
           ))}
@@ -169,7 +169,7 @@ export default function BetsPage() {
         >
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-task">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-task">
                 Задание
               </label>
               <select
@@ -183,7 +183,7 @@ export default function BetsPage() {
                     setDeadline(toLocalInput(task.deadline_at));
                   }
                 }}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
               >
                 {tasks.map((task) => (
                   <option key={task.id} value={task.id}>
@@ -194,7 +194,7 @@ export default function BetsPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-stake">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-stake">
                 Ставка, XP
               </label>
               <input
@@ -203,12 +203,12 @@ export default function BetsPage() {
                 min={1}
                 value={stake}
                 onChange={(event) => setStake(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-deadline">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-deadline">
                 Дедлайн пари
               </label>
               <input
@@ -217,7 +217,7 @@ export default function BetsPage() {
                 value={deadline}
                 max={selectedTask ? toLocalInput(selectedTask.deadline_at) : undefined}
                 onChange={(event) => setDeadline(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none"
               />
             </div>
           </div>

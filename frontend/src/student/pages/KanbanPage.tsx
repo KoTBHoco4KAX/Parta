@@ -123,15 +123,15 @@ export default function KanbanPage() {
   }
 
   if (loading) {
-    return <p className="py-10 text-center text-sm text-slate-400">Загружаем доску…</p>;
+    return <p className="py-10 text-center text-sm text-ink3">Загружаем доску…</p>;
   }
 
   return (
     <div>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
-          <p className="mt-0.5 text-xs text-slate-400">Перетащите карточку, чтобы сменить статус.</p>
+          <h1 className="text-lg font-bold text-ink">Канбан-доска</h1>
+          <p className="mt-0.5 text-xs text-ink3">Перетащите карточку, чтобы сменить статус.</p>
         </div>
         <Button variant="secondary" size="sm" onClick={() => void load()}>
           Обновить
@@ -139,13 +139,13 @@ export default function KanbanPage() {
       </div>
 
       {error ? (
-        <p role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+        <p role="alert" className="mb-3 rounded-lg border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}
         </p>
       ) : null}
 
       {tasks.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
+        <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-ink0">
           Заданий пока нет. Они появятся, когда преподаватель опубликует работу.
         </p>
       ) : (
@@ -163,9 +163,9 @@ export default function KanbanPage() {
                   }
                 }}
                 onDragOver={(event) => event.preventDefault()}
-                className="rounded-xl border border-slate-800 bg-slate-900/60 p-3"
+                className="rounded-xl border border-line bg-muted p-3"
               >
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">
                   {column.title} · {columnCards.length}
                 </h2>
 
@@ -180,20 +180,20 @@ export default function KanbanPage() {
                           setSelected(submission);
                         }
                       }}
-                      className="cursor-move rounded-lg border border-slate-800 bg-slate-950 p-3 hover:border-slate-700"
+                      className="cursor-move rounded-lg border border-line bg-page p-3 hover:border-line2"
                     >
-                      <h3 className="text-sm font-medium text-slate-100">{task.title}</h3>
-                      <p className="mt-1 line-clamp-2 text-xs text-slate-400">{task.description_md}</p>
+                      <h3 className="text-sm font-medium text-ink">{task.title}</h3>
+                      <p className="mt-1 line-clamp-2 text-xs text-ink3">{task.description_md}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
-                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-slate-300">
+                        <span className="rounded-full bg-sunken px-2 py-0.5 text-ink2">
                           {task.task_type}
                         </span>
-                        <span className="text-slate-500">до {new Date(task.deadline_at).toLocaleDateString()}</span>
+                        <span className="text-ink0">до {new Date(task.deadline_at).toLocaleDateString()}</span>
                         {submission?.status === 'REJECTED' ? (
-                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-rose-300">доработка</span>
+                          <span className="rounded-full bg-badSoft px-2 py-0.5 text-bad">доработка</span>
                         ) : null}
                         {status === 'in-progress' ? (
-                          <span className="text-emerald-400">нажмите, чтобы сдать</span>
+                          <span className="text-brand">нажмите, чтобы сдать</span>
                         ) : null}
                       </div>
                     </article>

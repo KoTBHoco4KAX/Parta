@@ -31,7 +31,7 @@ export function InboxPage() {
 
   if (role !== 'teacher' && role !== 'admin') {
     return (
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-5 text-sm text-slate-400">
+      <div className="rounded-xl border border-line bg-card p-5 text-sm text-ink3">
         Инбокс доступен преподавателю и администратору. Смените роль на экране входа.
       </div>
     );
@@ -60,8 +60,8 @@ export function InboxPage() {
     <div className="space-y-4">
       <header className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-50">Инбокс</h1>
-          <p className="text-sm text-slate-400">Работы, ожидающие вердикта</p>
+          <h1 className="text-xl font-semibold text-ink">Инбокс</h1>
+          <p className="text-sm text-ink3">Работы, ожидающие вердикта</p>
         </div>
         <Button size="sm" onClick={() => setOpen(true)}>
           Вердикт
@@ -69,17 +69,17 @@ export function InboxPage() {
       </header>
 
       {message ? (
-        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+        <p className="rounded-lg border border-brandLine bg-brandSoft p-3 text-sm text-brandStrong">
           {message}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>
+        <p className="rounded-lg border border-badLine bg-badSoft p-3 text-sm text-bad">{error}</p>
       ) : null}
 
       {inbox.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">
+        <p className="rounded-xl border border-dashed border-line p-4 text-sm text-ink0">
           Новых работ нет. Сюда приходят события <code>review.inbox.created</code> в комнату
           <code> teacher:…</code>.
         </p>
@@ -91,17 +91,17 @@ export function InboxPage() {
             return (
               <li
                 key={event.event_id}
-                className="rounded-xl border border-slate-800 bg-slate-900 p-4"
+                className="rounded-xl border border-line bg-card p-4"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-medium text-slate-100">
+                  <span className="text-sm font-medium text-ink">
                     Работа #{payload.submission_id ?? '—'}
                   </span>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-ink0">
                     ожидание {payload.waiting_seconds ?? 0} с
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">
+                <p className="mt-1 text-xs text-ink3">
                   задание {payload.task_id ?? '—'} · студент {payload.student_id ?? '—'} · группа{' '}
                   {payload.group_id ?? '—'}
                 </p>
@@ -143,12 +143,12 @@ export function InboxPage() {
         }
       >
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-wide text-slate-500">ID карточки</span>
+          <span className="text-xs uppercase tracking-wide text-ink0">ID карточки</span>
           <input
             type="number"
             value={submissionId}
             onChange={(event) => setSubmissionId(event.target.value)}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink"
           />
         </label>
 
@@ -170,14 +170,14 @@ export function InboxPage() {
         </div>
 
         <label className="block space-y-1">
-          <span className="text-xs uppercase tracking-wide text-slate-500">
+          <span className="text-xs uppercase tracking-wide text-ink0">
             Комментарий {verdict === 'REJECT' ? '(обязателен)' : '(необязателен)'}
           </span>
           <textarea
             value={comment}
             onChange={(event) => setComment(event.target.value)}
             rows={3}
-            className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink"
           />
         </label>
       </Modal>

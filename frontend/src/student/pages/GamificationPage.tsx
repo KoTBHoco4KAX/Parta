@@ -57,8 +57,8 @@ export default function GamificationPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-lg font-bold text-slate-100">Геймификация</h1>
-        <p className="mt-0.5 text-xs text-slate-400">XP и стрик обновляются сервером по событиям.</p>
+        <h1 className="text-lg font-bold text-ink">Геймификация</h1>
+        <p className="mt-0.5 text-xs text-ink3">XP и стрик обновляются сервером по событиям.</p>
       </div>
 
       <div className="grid grid-cols-3 gap-2">
@@ -67,35 +67,35 @@ export default function GamificationPage() {
         <Stat label="Заморозки" value={`❄️ ${freezes}`} />
       </div>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <section className="rounded-xl border border-line bg-card p-4">
         <div className="mb-2 flex items-baseline justify-between text-xs">
-          <span className="font-medium text-slate-300">Опыт</span>
-          <span className="tabular-nums text-slate-400">
+          <span className="font-medium text-ink2">Опыт</span>
+          <span className="tabular-nums text-ink3">
             {xp % XP_PER_LEVEL} / {XP_PER_LEVEL} XP
           </span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-          <div className="h-full rounded-full bg-emerald-500 transition" style={{ width: `${progress}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-sunken">
+          <div className="h-full rounded-full bg-brand transition" style={{ width: `${progress}%` }} />
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <section className="rounded-xl border border-line bg-card p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-medium text-slate-100">Заморозка стрика</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Сохранит стрик при пропуске. Цена — 200 XP.</p>
+            <h2 className="text-sm font-medium text-ink">Заморозка стрика</h2>
+            <p className="mt-0.5 text-xs text-ink3">Сохранит стрик при пропуске. Цена — 200 XP.</p>
           </div>
           <Button size="sm" onClick={buyFreeze} loading={buying} disabled={xp < 200}>
             Купить
           </Button>
         </div>
         {error ? (
-          <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>
+          <p role="alert" className="mt-2 text-xs text-bad">{error}</p>
         ) : null}
       </section>
 
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Достижения</h2>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">Достижения</h2>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {achievementsFor(xp, streak, freezes).map((achievement) => (
             <div
@@ -103,17 +103,17 @@ export default function GamificationPage() {
               className={[
                 'flex items-center gap-3 rounded-xl border p-3',
                 achievement.unlocked
-                  ? 'border-emerald-500/30 bg-emerald-500/10'
-                  : 'border-slate-800 bg-slate-900/60 opacity-60',
+                  ? 'border-brandLine bg-brandSoft'
+                  : 'border-line bg-muted opacity-60',
               ].join(' ')}
             >
               <span className="text-2xl">{achievement.icon}</span>
               <div className="min-w-0 flex-1">
-                <h3 className="text-xs font-medium text-slate-100">{achievement.title}</h3>
-                <p className="text-[11px] text-slate-400">{achievement.description}</p>
-                <p className="text-[10px] text-emerald-400">+{achievement.xpReward} XP</p>
+                <h3 className="text-xs font-medium text-ink">{achievement.title}</h3>
+                <p className="text-[11px] text-ink3">{achievement.description}</p>
+                <p className="text-[10px] text-brand">+{achievement.xpReward} XP</p>
               </div>
-              {achievement.unlocked ? <span className="text-emerald-400">✓</span> : null}
+              {achievement.unlocked ? <span className="text-brand">✓</span> : null}
             </div>
           ))}
         </div>
@@ -124,9 +124,9 @@ export default function GamificationPage() {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5">
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 text-base font-bold text-slate-100">{value}</p>
+    <div className="rounded-xl border border-line bg-card px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-ink0">{label}</p>
+      <p className="mt-0.5 text-base font-bold text-ink">{value}</p>
     </div>
   );
 }
