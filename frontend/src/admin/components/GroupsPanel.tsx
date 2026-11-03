@@ -1,214 +1,465 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ApiError } from '../../core/api';
 import type { Group, User } from '../../core/types';
-import { Button } from '../../components/Button';
-import { createGroup, deleteGroup, fetchGroups, fetchUsers } from '../api';
+import {
+  createGroup,
+  deleteGroup,
+  fetchGroups,
+  fetchUsers,
+  updateUserGroup,
+} from '../api';
 import type { ToastData } from '../types';
-import { GroupMembersModal } from './GroupMembersModal';
-import { Badge, EmptyState, Skeleton, inputClass } from './ui';
-import { IconAlert, IconLayers, IconPlus, IconUsers } from './icons';
+import {
+  Avatar,
+  Badge,
+  Button,
+  Callout,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Modal,
+  ScreenHeader,
+  SelectInput,
+  SkeletonList,
+  TextInput,
+} from '../../teacher/components/ui';
+import { pluralize } from '../../teacher/lib/format';
+import {
+  IconAlert,
+  IconChevronDown,
+  IconLayers,
+  IconPlus,
+  IconTrash,
+  IconUsers,
+} from '../../teacher/components/icons';
 
-// GroupsPanel — учебные группы: создание, удаление и состав студентов.
+/**
+ * GroupsPanel — учебные группы и их состав.
+ *
+ * Состав правится точечно: студента можно перевести в другую группу или убрать
+ * из неё (PATCH /api/users/{id} с group_id). Список «без группы» помогает
+ * разобрать новых студентов после импорта.
+ */
 export function GroupsPanel({
   notify,
+  reloadSignal = 0,
 }: {
   notify: (toast: Omit<ToastData, 'id'>) => void;
+  reloadSignal?: number;
 }) {
   const [groups, setGroups] = useState<Group[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [code, setCode] = useState('');
-  const [title, setTitle] = useState('');
-  const [membersGroup, setMembersGroup] = useState<Group | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const load = useCallback(async () => {
-    setError(null);
-
-    try {
-      const [nextGroups, nextUsers] = await Promise.all([
-        fetchGroups(),
-        fetchUsers(),
-      ]);
-      setGroups(nextGroups);
-      setUsers(nextUsers);
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить группы.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState<Group | null>(null);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [pendingUserId, setPendingUserId] = useState<number | null>(null);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+    setLoading(true);
     setError(null);
 
-    if (!code.trim() || !title.trim()) {
-      setError('Заполните код и название группы.');
+    Promise.all([fetchGroups(), fetchUsers()])
+      .then(([nextGroups, nextUsers]) => {
+        if (cancelled) {
+          return;
+        }
+
+        setGroups(nextGroups);
+        setUsers(nextUsers);
+        setLoading(false);
+      })
+      .catch((cause: unknown) => {
+        if (cancelled) {
+          return;
+        }
+
+        setError(
+          cause instanceof ApiError ? cause.message : 'Не удалось загрузить группы.',
+        );
+        setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey, reloadSignal]);
+
+  const byGroup = useMemo(() => {
+    const map = new Map<number, User[]>();
+
+    for (const user of users) {
+      if (user.role !== 'student' || user.group_id === null) {
+        continue;
+      }
+
+      const list = map.get(user.group_id) ?? [];
+      list.push(user);
+      map.set(user.group_id, list);
+    }
+
+    return map;
+  }, [users]);
+
+  const unassigned = useMemo(
+    () => users.filter((user) => user.role === 'student' && user.group_id === null),
+    [users],
+  );
+
+  async function moveUser(user: User, groupId: number | null) {
+    setPendingUserId(user.id);
+
+    try {
+      const updated = await updateUserGroup(user.id, groupId);
+      setUsers((previous) =>
+        previous.map((candidate) => (candidate.id === updated.id ? updated : candidate)),
+      );
+      notify({
+        tone: 'success',
+        title: groupId === null ? 'Студент вне группы' : 'Студент переведён',
+        description: updated.display_name,
+      });
+    } catch (cause) {
+      notify({
+        tone: 'error',
+        title: 'Не удалось обновить состав',
+        description: cause instanceof ApiError ? cause.message : 'Проверьте соединение.',
+      });
+    } finally {
+      setPendingUserId(null);
+    }
+  }
+
+  async function handleDelete(group: Group) {
+    try {
+      await deleteGroup(group.id);
+      setGroups((previous) => previous.filter((candidate) => candidate.id !== group.id));
+      setDeleting(null);
+      notify({ tone: 'success', title: 'Группа удалена', description: group.code });
+    } catch (cause) {
+      const blocked =
+        cause instanceof ApiError && (cause.status === 422 || cause.code === 'guard_failed');
+
+      notify({
+        tone: 'error',
+        title: blocked ? 'Группу нельзя удалить' : 'Не удалось удалить группу',
+        description: blocked
+          ? `${group.code}: есть назначения, задания или студенты. Переведите студентов и дождитесь закрытия заданий.`
+          : cause instanceof ApiError
+            ? cause.message
+            : 'Проверьте соединение.',
+      });
+    }
+  }
+
+  return (
+    <div>
+      <ScreenHeader
+        eyebrow="Потоки"
+        title="Группы"
+        description={`${groups.length} ${pluralize(groups.length, ['группа', 'группы', 'групп'])} · ${users.filter((user) => user.role === 'student').length} ${pluralize(users.filter((user) => user.role === 'student').length, ['студент', 'студента', 'студентов'])}`}
+        action={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <IconPlus className="h-4 w-4" />
+            Группа
+          </Button>
+        }
+      />
+
+      {loading ? <SkeletonList rows={3} /> : null}
+
+      {!loading && error ? (
+        <ErrorState message={error} onRetry={() => setReloadKey((key) => key + 1)} />
+      ) : null}
+
+      {!loading && !error ? (
+        <div className="space-y-3">
+          {groups.length === 0 ? (
+            <EmptyState
+              icon={<IconLayers className="h-5 w-5" />}
+              title="Групп ещё нет"
+              description="Создайте поток, чтобы назначать на него преподавателей и выдавать задания."
+              action={<Button onClick={() => setCreating(true)}>Создать группу</Button>}
+            />
+          ) : null}
+
+          {groups.map((group) => {
+            const members = (byGroup.get(group.id) ?? []).slice().sort((a, b) =>
+              a.display_name.localeCompare(b.display_name, 'ru'),
+            );
+            const open = expanded === group.id;
+
+            return (
+              <Card key={group.id} className="p-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brandSoft text-brandStrong">
+                    <IconLayers className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-semibold text-ink">
+                      {group.code}
+                    </p>
+                    <p className="truncate text-[10px] text-ink3">{group.title}</p>
+                  </div>
+                  <Badge tone="slate">
+                    <IconUsers className="h-3 w-3" />
+                    {members.length}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-ink3 hover:bg-badSoft hover:text-bad"
+                    aria-label={`Удалить группу ${group.code}`}
+                    onClick={() => setDeleting(group)}
+                  >
+                    <IconTrash className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-ink3 hover:bg-sunken"
+                    aria-label={open ? 'Свернуть состав' : 'Показать состав'}
+                    onClick={() => setExpanded(open ? null : group.id)}
+                  >
+                    <IconChevronDown
+                      className={
+                        open
+                          ? 'h-4 w-4 rotate-180 transition'
+                          : 'h-4 w-4 transition'
+                      }
+                    />
+                  </Button>
+                </div>
+
+                {open ? (
+                  <div className="mt-3 space-y-2">
+                    {members.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-line2 px-3 py-2 text-[11px] text-ink3">
+                        В группе нет студентов.
+                      </p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {members.map((member) => (
+                          <li key={member.id} className="flex items-center gap-2">
+                            <Avatar name={member.display_name} size="sm" />
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] font-medium text-ink2">
+                                {member.display_name}
+                              </p>
+                              <p className="truncate text-[10px] text-ink3">
+                                {member.external_id} · {member.xp_balance} XP
+                              </p>
+                            </div>
+                            <SelectInput
+                              aria-label={`Группа ${member.display_name}`}
+                              className="w-auto min-w-[92px] py-1.5 text-[11px]"
+                              value={String(group.id)}
+                              disabled={pendingUserId === member.id}
+                              onChange={(event) =>
+                                void moveUser(
+                                  member,
+                                  event.target.value === 'none'
+                                    ? null
+                                    : Number(event.target.value),
+                                )
+                              }
+                            >
+                              {groups.map((candidate) => (
+                                <option key={candidate.id} value={candidate.id}>
+                                  {candidate.code}
+                                </option>
+                              ))}
+                              <option value="none">Без группы</option>
+                            </SelectInput>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {unassigned.length > 0 ? (
+                      <div className="rounded-lg border border-line bg-muted p-2.5">
+                        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-ink3">
+                          Добавить из списка без группы
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {unassigned.slice(0, 6).map((student) => (
+                            <Button
+                              key={student.id}
+                              size="sm"
+                              variant="outline"
+                              loading={pendingUserId === student.id}
+                              onClick={() => void moveUser(student, group.id)}
+                            >
+                              <IconPlus className="h-3 w-3" />
+                              {student.display_name}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </Card>
+            );
+          })}
+
+          {unassigned.length > 0 ? (
+            <Callout
+              tone="amber"
+              icon={<IconAlert className="h-4 w-4" />}
+              title={`${unassigned.length} ${pluralize(unassigned.length, ['студент без группы', 'студента без группы', 'студентов без группы'])}`}
+            >
+              Раскройте нужную группу и добавьте студента кнопкой или переведите через
+              выпадающий список в составе.
+            </Callout>
+          ) : null}
+        </div>
+      ) : null}
+
+      {creating ? (
+        <CreateGroupModal
+          notify={notify}
+          onClose={() => setCreating(false)}
+          onCreated={(group) => {
+            setGroups((previous) => [...previous, group]);
+            setCreating(false);
+            setExpanded(group.id);
+          }}
+        />
+      ) : null}
+
+      {deleting ? (
+        <Modal
+          open
+          onClose={() => setDeleting(null)}
+          title="Удалить группу?"
+          size="md"
+          footer={
+            <div className="flex w-full gap-2">
+              <Button variant="ghost" block onClick={() => setDeleting(null)}>
+                Отмена
+              </Button>
+              <Button variant="danger" block onClick={() => void handleDelete(deleting)}>
+                Удалить группу
+              </Button>
+            </div>
+          }
+        >
+          <p className="text-[12px] leading-relaxed text-ink2">
+            {deleting.code} · {deleting.title}. В группе{' '}
+            {(byGroup.get(deleting.id) ?? []).length}{' '}
+            {pluralize((byGroup.get(deleting.id) ?? []).length, ['студент', 'студента', 'студентов'])}.
+            Удаление возможно только если у группы нет назначений и карточек.
+          </p>
+        </Modal>
+      ) : null}
+    </div>
+  );
+}
+
+/** CreateGroupModal — создание потока: код и расшифровка. */
+function CreateGroupModal({
+  notify,
+  onClose,
+  onCreated,
+}: {
+  notify: (toast: Omit<ToastData, 'id'>) => void;
+  onClose: () => void;
+  onCreated: (group: Group) => void;
+}) {
+  const [code, setCode] = useState('');
+  const [title, setTitle] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+
+  const codeError = submitted && code.trim().length < 2;
+  const titleError = submitted && title.trim().length < 3;
+
+  async function handleSubmit() {
+    setSubmitted(true);
+    setError(null);
+
+    if (code.trim().length < 2 || title.trim().length < 3) {
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const created = await createGroup({ code: code.trim(), title: title.trim() });
+      const group = await createGroup({ code: code.trim(), title: title.trim() });
       notify({
         tone: 'success',
-        title: `Группа ${created.code} создана`,
-        description: created.title,
+        title: 'Группа создана',
+        description: `${group.code} · ${group.title}`,
       });
-      setCode('');
-      setTitle('');
-      await load();
+      onCreated(group);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось создать группу.');
+      setError(
+        cause instanceof ApiError ? cause.message : 'Не удалось создать группу.',
+      );
     } finally {
       setSubmitting(false);
     }
   }
 
-  async function handleDelete(group: Group) {
-    if (!window.confirm(`Удалить группу ${group.code}?`)) {
-      return;
-    }
-
-    setError(null);
-
-    try {
-      await deleteGroup(group.id);
-      notify({ tone: 'success', title: `Группа ${group.code} удалена` });
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof ApiError
-          ? cause.message
-          : 'Не удалось удалить группу: возможно, в ней есть студенты.',
-      );
-    }
-  }
-
   return (
-    <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <div className="flex items-center gap-2">
-          <IconLayers className="h-4 w-4 text-emerald-400" />
-          <h2 className="text-sm font-semibold text-slate-100">Новая группа</h2>
-        </div>
-
-        <input
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-          placeholder="Код, например IS-23"
-          className={inputClass}
-        />
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="Название группы"
-          className={inputClass}
-        />
-
-        <Button type="submit" block loading={submitting}>
-          <IconPlus className="h-4 w-4" />
-          Создать группу
-        </Button>
-      </form>
-
-      {error ? (
-        <p role="alert" className="flex items-start gap-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-          <IconAlert className="mt-0.5 h-4 w-4 shrink-0" />
-          {error}
-        </p>
-      ) : null}
-
-      <section>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Группы</h2>
-          <Badge tone="slate">{groups.length}</Badge>
-        </div>
-
-        {loading ? (
-          <div className="space-y-2">
-            {[0, 1].map((index) => (
-              <div key={index} className="rounded-xl border border-slate-800 bg-slate-900 p-3">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="mt-2 h-3 w-1/2" />
-              </div>
-            ))}
+    <Modal
+      open
+      onClose={onClose}
+      title="Новая группа"
+      subtitle="Код потока и расшифровка"
+      size="md"
+      footer={
+        <div className="flex w-full flex-col gap-2">
+          {error ? (
+            <p role="alert" className="text-[11px] text-bad">
+              {error}
+            </p>
+          ) : null}
+          <div className="flex gap-2">
+            <Button variant="ghost" block onClick={onClose} disabled={submitting}>
+              Отмена
+            </Button>
+            <Button block loading={submitting} onClick={() => void handleSubmit()}>
+              Создать
+            </Button>
           </div>
-        ) : groups.length === 0 ? (
-          <EmptyState
-            icon={<IconLayers className="h-5 w-5" />}
-            title="Групп нет"
-            description="Создайте группу, чтобы добавлять в неё студентов."
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <Field
+          label="Код"
+          htmlFor="group-code"
+          error={codeError ? 'Минимум 2 символа' : null}
+          hint="Как в расписании: IS-23, P-21."
+        >
+          <TextInput
+            id="group-code"
+            value={code}
+            onChange={(event) => setCode(event.target.value.toUpperCase())}
+            placeholder="IS-23"
+            invalid={Boolean(codeError)}
           />
-        ) : (
-          <ul className="space-y-2">
-            {groups.map((group) => {
-              const memberCount = users.filter(
-                (user) => user.role === 'student' && user.group_id === group.id,
-              ).length;
+        </Field>
 
-              return (
-                <li
-                  key={group.id}
-                  className="rounded-xl border border-slate-800 bg-slate-900 p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-800 text-[11px] font-semibold text-emerald-300">
-                      {group.code.slice(0, 4)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-100">
-                        {group.code}
-                      </p>
-                      <p className="truncate text-[11px] text-slate-400">
-                        {group.title} · {memberCount} студентов
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-2 flex gap-2">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      className="flex-1"
-                      onClick={() => setMembersGroup(group)}
-                      aria-label={`Студенты группы ${group.code}`}
-                    >
-                      <IconUsers className="h-4 w-4" />
-                      Студенты · {memberCount}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => void handleDelete(group)}
-                      aria-label={`Удалить ${group.code}`}
-                    >
-                      Удалить
-                    </Button>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
-
-      {membersGroup ? (
-        <GroupMembersModal
-          group={membersGroup}
-          users={users}
-          notify={notify}
-          onClose={() => setMembersGroup(null)}
-          onChanged={load}
-        />
-      ) : null}
-    </div>
+        <Field label="Расшифровка" htmlFor="group-title" error={titleError ? 'Минимум 3 символа' : null}>
+          <TextInput
+            id="group-title"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="ИС-23 Информационные системы"
+            invalid={Boolean(titleError)}
+          />
+        </Field>
+      </div>
+    </Modal>
   );
 }
