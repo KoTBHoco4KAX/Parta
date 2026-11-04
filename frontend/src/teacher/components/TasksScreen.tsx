@@ -411,9 +411,10 @@ function IssueTaskModal({
   // Дедлайн — по умолчанию завтра в 08:00 от текущего времени; дата и время
   // можно выбрать самому, тогда подставится выбранное значение.
   const [deadline, setDeadline] = useState(() => defaultDeadlineLocal());
-  // Бонус до и XP: пустое поле — значение предлагается автоматически,
-  // а вписанное значение — уже решение преподавателя.
+  // Бонус до: пока преподаватель не трогал поле, показывается автоматическая
+  // дата (дедлайн − 48 ч). Как только поле тронуто, действует введённое значение.
   const [bonusUntilLocal, setBonusUntilLocal] = useState('');
+  const [bonusTouched, setBonusTouched] = useState(false);
   const [xpOverride, setXpOverride] = useState('');
   const [teamSize, setTeamSize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
@@ -448,14 +449,17 @@ function IssueTaskModal({
   // Дата бонуса — авто: дедлайн − 48 часов; преподаватель может её изменить.
   const autoBonusEnd =
     deadlineDate !== null ? speedrunEndsAt(deadlineDate, DEFAULT_BONUS_HOURS) : null;
-  const bonusUntilDate = bonusUntilLocal ? parseLocalInput(bonusUntilLocal) : null;
+  const autoBonusValue = autoBonusEnd ? toLocalInput(autoBonusEnd) : '';
+  const bonusValue = bonusTouched ? bonusUntilLocal : autoBonusValue;
+  const bonusUntilDate = bonusValue ? parseLocalInput(bonusValue) : null;
   const bonusUntilValid =
-    bonusUntilDate === null ||
-    (deadlineDate !== null &&
+    !bonusTouched ||
+    (bonusUntilDate !== null &&
+      deadlineDate !== null &&
       bonusUntilDate.getTime() < deadlineDate.getTime() &&
       bonusUntilDate.getTime() > Date.now());
 
-  const bonusEnd = bonusUntilLocal && bonusUntilDate ? bonusUntilDate : autoBonusEnd;
+  const bonusEnd = bonusUntilDate ?? autoBonusEnd;
 
   const xpNumber = Number(xpOverride);
   const xpValid = xpOverride.trim() === '' || (Number.isFinite(xpNumber) && xpNumber > 0);
@@ -497,7 +501,7 @@ function IssueTaskModal({
           deadlineAt: deadlineDate.toISOString(),
           speedrunWindowHours: DEFAULT_BONUS_HOURS,
           speedrunBonusUntil:
-            bonusUntilLocal && bonusUntilValid && bonusUntilDate
+            bonusTouched && bonusUntilValid && bonusUntilDate
               ? bonusUntilDate.toISOString()
               : undefined,
           teamSize: taskType === 'TEAM_PROJECT' ? teamSize : 1,
@@ -717,11 +721,11 @@ function IssueTaskModal({
           error={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : null}
         >
           <DeadlineInput
-            value={
-              bonusUntilLocal ||
-              (autoBonusEnd ? toLocalInput(autoBonusEnd) : '')
-            }
-            onChange={setBonusUntilLocal}
+            value={bonusValue}
+            onChange={(next) => {
+              setBonusTouched(true);
+              setBonusUntilLocal(next);
+            }}
             invalid={submitted && !bonusUntilValid}
           />
         </Field>
