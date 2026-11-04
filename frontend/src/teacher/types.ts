@@ -87,7 +87,7 @@ export interface ChecklistResult {
   passed: boolean;
 }
 
-/** Peer-review sandbox-сессия (spec/04_API.md). */
+/** Взаимопроверка: оценка 1–5 звёзд и короткий комментарий ученика. */
 export interface PeerReview {
   id: number;
   submissionId: number;
@@ -99,17 +99,15 @@ export interface PeerReview {
   reviewerId: number | null;
   reviewerName: string | null;
   status: PeerReviewStatus;
-  escrowAmount: number;
-  rewardAmount: number;
+  /** Оценка рецензента 1–5. */
+  grade: number | null;
+  comment: string;
+  /** XP, который получит рецензент после приёмки работы. */
+  rewardXp: number;
   createdAt: string;
   takenAt: string | null;
   completedAt: string | null;
   expiresAt: string;
-  checklist: ChecklistItem[];
-  checklistResults: ChecklistResult[];
-  summary: string;
-  /** TTL read-only токена в секундах (spec/02_FSM.md §3 — 15 минут). */
-  accessTokenTtlSeconds: number;
 }
 
 /** Сортировка инбокса. */

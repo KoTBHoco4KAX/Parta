@@ -24,7 +24,9 @@ var teamRoles = []storage.TeamSlotSeed{
 
 // createTaskRequest — тело POST /api/tasks (spec/04_API.md).
 type createTaskRequest struct {
-	AssignmentID        int64   `json:"assignment_id"`
+	AssignmentID int64 `json:"assignment_id"`
+	// Topic — короткое ТЗ задания.
+	Topic               string  `json:"topic"`
 	Title               string  `json:"title"`
 	DescriptionMD       string  `json:"description_md"`
 	TaskType            string  `json:"task_type"`
@@ -45,9 +47,10 @@ type createTaskResponse struct {
 	Status             string `json:"status"`
 	SlotsCount         int    `json:"slots_count,omitempty"`
 	SpeedrunBonusUntil string `json:"speedrun_bonus_until,omitempty"`
+	AttachmentsCount   int    `json:"attachments_count,omitempty"`
 }
 
-// handleCreateTask создаёт задание и, для командного проекта, его слоты.
+// handleCreateTask создаёт задание (JSON или multipart с вложениями).
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
 	if !ok {
@@ -58,17 +61,104 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.handleCreateTaskMultipart(w, r, p)
+
+		return
+	}
+
 	var req createTaskRequest
 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 
+	s.createTaskResponse(w, r, p, req, "[]")
+}
+
+// handleCreateTaskMultipart создаёт задание вместе с приложенными файлами.
+// Поля формы: assignment_id, topic, title, description_md, task_type,
+// requirements_count, expected_hours, deadline_at (datetime-local),
+// speedrun_window_hours, speedrun_bonus_until, team_size и файлы file[].
+func (s *Server) handleCreateTaskMultipart(w http.ResponseWriter, r *http.Request, p principal) {
+	if err := r.ParseMultipartForm(4 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Error: "invalid multipart form",
+			Code:  CodeInvalidMultipart,
+		})
+
+		return
+	}
+
+	form := r.MultipartForm
+	if form != nil {
+		defer func() {
+			_ = form.RemoveAll()
+		}()
+	}
+
+	value := func(key string) string {
+		if form == nil {
+			return ""
+		}
+
+		return form.Value[key][0]
+	}
+
+	deadline, ok := formTime(value("deadline_at"))
+	if !ok {
+		writeError(w, domainerrors.ErrInvalidArgument)
+
+		return
+	}
+
+	req := createTaskRequest{
+		AssignmentID:        parseInt64OrZero(value("assignment_id")),
+		Topic:               value("topic"),
+		Title:               value("title"),
+		DescriptionMD:       value("description_md"),
+		TaskType:            value("task_type"),
+		RequirementsCount:   int(parseInt64OrZero(value("requirements_count"))),
+		ExpectedHours:       parseFloatOrZero(value("expected_hours")),
+		DeadlineAt:          deadline.UTC().Format(time.RFC3339),
+		SpeedrunWindowHours: int(parseInt64OrZero(value("speedrun_window_hours"))),
+		SpeedrunBonusUntil:  value("speedrun_bonus_until"),
+		TeamSize:            int(parseInt64OrZero(value("team_size"))),
+	}
+
+	// Дата бонуса из формы (datetime-local) приводится к RFC3339.
+	if req.SpeedrunBonusUntil != "" {
+		if parsed, ok := formTime(req.SpeedrunBonusUntil); ok {
+			req.SpeedrunBonusUntil = parsed.UTC().Format(time.RFC3339)
+		}
+	}
+
+	s.createTaskResponse(w, r, p, req, "")
+}
+
+// createTaskResponse проверяет запрос, сохраняет задание и отвечает 201.
+// attachmentsJSON = "" означает: файлы приходят в multipart-форме.
+func (s *Server) createTaskResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	p principal,
+	req createTaskRequest,
+	attachmentsJSON string,
+) {
 	deadline, bonusUntil, groupID, err := s.validateCreateTask(r, p, &req)
 	if err != nil {
 		writeError(w, err)
 
 		return
+	}
+
+	if attachmentsJSON == "" {
+		var ok bool
+
+		attachmentsJSON, ok = s.uploadTaskAttachments(w, r, groupID)
+		if !ok {
+			return
+		}
 	}
 
 	// Список учеников читается до транзакции: внутри withTx нельзя ходить в *sql.DB.
@@ -92,6 +182,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	in := storage.CreateTaskInput{
 		AssignmentID:       req.AssignmentID,
+		Topic:              req.Topic,
 		Title:              req.Title,
 		DescriptionMD:      req.DescriptionMD,
 		TaskType:           req.TaskType,
@@ -100,6 +191,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		DeadlineAt:         storage.FormatTimestamp(deadline),
 		SpeedrunWindow:     req.SpeedrunWindowHours,
 		SpeedrunBonusUntil: bonusUntil,
+		Attachments:        attachmentsJSON,
 		TeamSize:           req.TeamSize,
 		BaseXP:             baseXP,
 		Status:             "PUBLISHED",
@@ -160,6 +252,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		Status:             "PUBLISHED",
 		SlotsCount:         len(seeds),
 		SpeedrunBonusUntil: formatSpeedrunBonus(deadline, bonusUntil, time.Duration(req.SpeedrunWindowHours)*time.Hour),
+		AttachmentsCount:   len(parseTaskAttachments(attachmentsJSON)),
 	})
 }
 

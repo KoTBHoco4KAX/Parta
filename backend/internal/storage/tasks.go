@@ -19,10 +19,10 @@ func NewTaskRepo(db *sql.DB) *TaskRepo {
 	return &TaskRepo{db: db}
 }
 
-const taskColumns = `t.id, t.assignment_id, t.title, t.description_md, t.task_type,
+const taskColumns = `t.id, t.assignment_id, t.title, t.topic, t.description_md, t.task_type,
 	t.requirements_count, t.expected_hours, t.deadline_at, t.speedrun_window_hours,
-	t.speedrun_bonus_until, t.team_size, t.base_xp_computed, ta.teacher_id, ta.group_id,
-	t.status, t.created_at, t.updated_at`
+	t.speedrun_bonus_until, t.team_size, t.base_xp_computed, t.attachments,
+	ta.teacher_id, ta.group_id, t.status, t.created_at, t.updated_at`
 
 const taskSelect = `SELECT ` + taskColumns + `
 	FROM tasks t
@@ -30,7 +30,9 @@ const taskSelect = `SELECT ` + taskColumns + `
 
 // CreateTaskInput — вход создания задания.
 type CreateTaskInput struct {
-	AssignmentID      int64
+	AssignmentID int64
+	// Topic — короткая тема-ТЗ задания.
+	Topic             string
 	Title             string
 	DescriptionMD     string
 	TaskType          string
@@ -40,9 +42,11 @@ type CreateTaskInput struct {
 	SpeedrunWindow    int
 	// SpeedrunBonusUntil — явная дата окончания бонуса (nil — авто-расчёт).
 	SpeedrunBonusUntil *string
-	TeamSize           int
-	BaseXP             int
-	Status             string
+	// Attachments — JSON-массив вложений преподавателя.
+	Attachments string
+	TeamSize    int
+	BaseXP      int
+	Status      string
 }
 
 // GetByID возвращает задание по идентификатору вместе с назначенным преподавателем.
@@ -116,15 +120,21 @@ func (r *TaskRepo) create(ctx context.Context, q querier, in CreateTaskInput) (i
 		bonusUntil = *in.SpeedrunBonusUntil
 	}
 
+	attachments := in.Attachments
+	if attachments == "" {
+		attachments = "[]"
+	}
+
 	row := q.QueryRowContext(ctx,
-		`INSERT INTO tasks (assignment_id, title, description_md, task_type, requirements_count,
-		                    expected_hours, deadline_at, speedrun_window_hours, speedrun_bonus_until,
-		                    team_size, base_xp_computed, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO tasks (assignment_id, title, topic, description_md, task_type,
+		                    requirements_count, expected_hours, deadline_at,
+		                    speedrun_window_hours, speedrun_bonus_until, team_size,
+		                    base_xp_computed, attachments, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 RETURNING id`,
-		in.AssignmentID, in.Title, in.DescriptionMD, in.TaskType, in.RequirementsCount,
-		in.ExpectedHours, in.DeadlineAt, in.SpeedrunWindow, bonusUntil, in.TeamSize,
-		in.BaseXP, in.Status)
+		in.AssignmentID, in.Title, in.Topic, in.DescriptionMD, in.TaskType,
+		in.RequirementsCount, in.ExpectedHours, in.DeadlineAt, in.SpeedrunWindow,
+		bonusUntil, in.TeamSize, in.BaseXP, attachments, in.Status)
 
 	var id int64
 
@@ -222,6 +232,7 @@ func scanTask(from row) (*submission.Task, error) {
 		deadlineAt           string
 		speedrunHours        int
 		bonusUntil           sql.NullString
+		attachments          string
 		createdAt, updatedAt string
 	)
 
@@ -229,6 +240,7 @@ func scanTask(from row) (*submission.Task, error) {
 		&task.ID,
 		&task.AssignmentID,
 		&task.Title,
+		&task.Topic,
 		&task.DescriptionMD,
 		&task.TaskType,
 		&task.RequirementsCount,
@@ -238,6 +250,7 @@ func scanTask(from row) (*submission.Task, error) {
 		&bonusUntil,
 		&task.TeamSize,
 		&task.BaseXP,
+		&attachments,
 		&task.AssignedTeacherID,
 		&task.GroupID,
 		&task.Status,
@@ -271,6 +284,7 @@ func scanTask(from row) (*submission.Task, error) {
 	}
 
 	task.SpeedrunWindow = time.Duration(speedrunHours) * time.Hour
+	task.Attachments = attachments
 
 	return &task, nil
 }

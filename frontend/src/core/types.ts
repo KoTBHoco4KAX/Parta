@@ -32,6 +32,8 @@ export interface Group {
 
 export interface CreateTaskRequest {
   assignment_id: number;
+  /** Короткое ТЗ задания. */
+  topic?: string;
   title: string;
   description_md: string;
   task_type: 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
@@ -49,6 +51,8 @@ export interface CreateTaskResponse {
   base_xp_computed: number;
   status: string;
   slots_count?: number;
+  speedrun_bonus_until?: string;
+  attachments_count?: number;
 }
 
 export interface CreateSubmissionResponse {
@@ -70,6 +74,9 @@ export interface VerdictResponse {
   xp_awarded?: number;
   streak_after?: number;
   ledger_id?: number;
+  /** Награда рецензенту, если работу проверял другой ученик. */
+  reward_xp?: number;
+  reward_user_id?: number;
 }
 
 export interface PurchaseFreezesResponse {
@@ -149,6 +156,8 @@ export interface Task {
   id: number;
   assignment_id: number;
   title: string;
+  /** Короткое ТЗ задания. */
+  topic?: string;
   description_md: string;
   task_type: TaskType;
   requirements_count: number;
@@ -157,6 +166,8 @@ export interface Task {
   speedrun_window_hours: number;
   /** Фактическая граница бонуса за спидран — от сервера. */
   speedrun_bonus_until: string;
+  /** Файлы, приложенные преподавателем. */
+  attachments?: { name: string; url: string; size: number }[];
   team_size: number;
   base_xp_computed: number;
   group_id: number;
@@ -208,16 +219,16 @@ export interface PeerReview {
   reviewer_id: number | null;
   reviewer_name: string | null;
   status: 'CREATED' | 'IN_REVIEW' | 'COMPLETED' | 'EXPIRED';
-  escrow_amount: number;
-  reward_amount: number;
+  /** Оценка рецензента 1–5 звёзд. */
+  grade: number | null;
+  /** Короткий комментарий (до 100 символов). */
+  comment: string;
   created_at: string;
   taken_at: string | null;
   completed_at: string | null;
   expires_at: string;
-  checklist: ChecklistItem[];
-  checklist_results: ChecklistResult[];
-  summary: string;
-  access_token_ttl_seconds: number;
+  /** Сколько XP получит рецензент после приёмки работы учителем. */
+  reward_xp: number;
 }
 
 export interface Assignment {

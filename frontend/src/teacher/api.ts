@@ -93,7 +93,7 @@ export async function issueVerdict(input: {
   };
 }
 
-/** GET /api/peer-reviews — sandbox-сессии преподавателя. */
+/** GET /api/peer-reviews — взаимопроверки учеников по потокам преподавателя. */
 export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
   const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
 
@@ -108,16 +108,13 @@ export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
     reviewerId: review.reviewer_id,
     reviewerName: review.reviewer_name,
     status: review.status,
-    escrowAmount: review.escrow_amount,
-    rewardAmount: review.reward_amount,
+    grade: review.grade,
+    comment: review.comment,
+    rewardXp: review.reward_xp,
     createdAt: review.created_at,
     takenAt: review.taken_at,
     completedAt: review.completed_at,
     expiresAt: review.expires_at,
-    checklist: review.checklist,
-    checklistResults: review.checklist_results,
-    summary: review.summary,
-    accessTokenTtlSeconds: review.access_token_ttl_seconds,
   }));
 }
 
@@ -150,6 +147,8 @@ export function fetchTeacherTasks(): Promise<Task[]> {
 
 export interface TeacherTaskInput {
   assignmentId: number;
+  /** Короткое ТЗ задания. */
+  topic: string;
   title: string;
   descriptionMD: string;
   taskType: TaskType;
@@ -160,32 +159,72 @@ export interface TeacherTaskInput {
   /** Своя дата окончания бонуса ×1.5; пусто — автоматический расчёт. */
   speedrunBonusUntil?: string;
   teamSize: number;
+  /** Файлы, приложенные преподавателем к заданию. */
+  files?: File[];
 }
 
-/** POST /api/tasks — создание задания преподавателем. */
+/** POST /api/tasks — создание задания (multipart, если есть вложения). */
 export async function createTeacherTask(
   input: TeacherTaskInput,
-): Promise<{ taskId: number; baseXP: number; slotsCount: number }> {
-  const response = await apiFetch<CreateTaskResponseDto>('/tasks', {
-    method: 'POST',
-    body: {
-      assignment_id: input.assignmentId,
-      title: input.title,
-      description_md: input.descriptionMD,
-      task_type: input.taskType,
-      requirements_count: input.requirementsCount,
-      expected_hours: input.expectedHours,
-      deadline_at: input.deadlineAt,
-      speedrun_window_hours: input.speedrunWindowHours,
-      speedrun_bonus_until: input.speedrunBonusUntil,
-      team_size: input.teamSize,
-    },
-  });
+): Promise<{ taskId: number; baseXP: number; slotsCount: number; bonusUntil: string }> {
+  const files = input.files ?? [];
+
+  const fields: Record<string, string> = {
+    topic: input.topic,
+    title: input.title,
+    description_md: input.descriptionMD,
+    task_type: input.taskType,
+    deadline_at: input.deadlineAt,
+    team_size: String(input.teamSize),
+  };
+
+  if (input.speedrunBonusUntil) {
+    fields.speedrun_bonus_until = input.speedrunBonusUntil;
+  }
+
+  let response: CreateTaskResponseDto;
+
+  if (files.length === 0) {
+    response = await apiFetch<CreateTaskResponseDto>('/tasks', {
+      method: 'POST',
+      body: {
+        assignment_id: input.assignmentId,
+        topic: input.topic,
+        title: input.title,
+        description_md: input.descriptionMD,
+        task_type: input.taskType,
+        requirements_count: input.requirementsCount,
+        expected_hours: input.expectedHours,
+        deadline_at: input.deadlineAt,
+        speedrun_window_hours: input.speedrunWindowHours,
+        speedrun_bonus_until: input.speedrunBonusUntil,
+        team_size: input.teamSize,
+      },
+    });
+  } else {
+    const form = new FormData();
+
+    form.append('assignment_id', String(input.assignmentId));
+    form.append('requirements_count', String(input.requirementsCount));
+    form.append('expected_hours', String(input.expectedHours));
+    form.append('speedrun_window_hours', String(input.speedrunWindowHours));
+
+    for (const [key, value] of Object.entries(fields)) {
+      form.append(key, value);
+    }
+
+    for (const file of files) {
+      form.append('file', file, file.name);
+    }
+
+    response = await apiFetch<CreateTaskResponseDto>('/tasks', { method: 'POST', body: form });
+  }
 
   return {
     taskId: response.task_id,
     baseXP: response.base_xp_computed,
     slotsCount: response.slots_count ?? 0,
+    bonusUntil: response.speedrun_bonus_until ?? '',
   };
 }
 
@@ -381,74 +420,6 @@ function attachmentFilename(attachment: SubmissionAttachment): string {
   return filename !== '' ? filename : `attachment-${attachment.id}`;
 }
 
-// ---------------------------------------------------------------------------
-// P2P: бонус рецензенту за качественную проверку.
-// ---------------------------------------------------------------------------
-
-/** Нормализованный ответ POST /api/peer-reviews/{id}/award. */
-export interface AwardPeerReviewResult {
-  amount: number;
-  totalXp: number;
-  ledgerId: string;
-}
-
-/** Тело запроса начисления бонуса рецензенту (UI-модель). */
-export interface AwardPeerReviewBody {
-  reviewerId: number;
-  amount: number;
-  comment?: string;
-}
-
-// ledgerIdOf приводит ledger_id из backend (int64 или строка) к строке.
-function ledgerIdOf(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  return '';
-}
-
-/**
- * POST /api/peer-reviews/{id}/award — начисление бонусного XP рецензенту.
- *
- * Канонический контракт backend:
- * `200 {peer_review_id, reviewer_id, amount, total_xp, ledger_id}`.
- * Вся нормализация snake_case → UI-поля живёт здесь (DESIGN_SPEC §4.2), чтобы
- * компоненты читали только `amount` / `totalXp` / `ledgerId`.
- *
- * Вызывается только для COMPLETED-сессии: преподаватель не завершает ревью за
- * ученика, но может отметить качество проверки.
- */
-export async function awardPeerReview(
-  id: number,
-  body: AwardPeerReviewBody,
-): Promise<{ amount: number; totalXp: number; ledgerId: string }> {
-  const response = await apiFetch<Record<string, unknown>>(
-    `/peer-reviews/${id}/award`,
-    {
-      method: 'POST',
-      body: {
-        reviewer_id: body.reviewerId,
-        amount: body.amount,
-        comment: body.comment?.trim() ?? '',
-      },
-    },
-  );
-
-  return {
-    amount: firstNumber(response.amount, response.xp_awarded, body.amount),
-    totalXp: firstNumber(
-      response.total_xp,
-      response.xp_balance,
-      response.reward_xp,
-    ),
-    ledgerId: ledgerIdOf(response.ledger_id),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // Загрузка данных кабинета: сдачи целиком, состав групп, вложения.

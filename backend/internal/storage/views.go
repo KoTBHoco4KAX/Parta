@@ -157,7 +157,7 @@ func scanSubmissionView(from row) (*SubmissionView, error) {
 	return &view, nil
 }
 
-// PeerReviewView — peer-review вместе с заданием, группой и именами участников.
+// PeerReviewView — взаимопроверка вместе с заданием, группой и именами.
 type PeerReviewView struct {
 	PeerReview
 	TaskID       int64
@@ -168,9 +168,9 @@ type PeerReviewView struct {
 }
 
 const peerReviewViewSelect = `SELECT
-	pr.id, pr.submission_id, pr.author_id, pr.reviewer_id, pr.criteria_checklist,
-	pr.comments, pr.status, pr.escrow_amount, pr.reward_amount,
-	pr.created_at, pr.taken_at, pr.completed_at, pr.expires_at,
+	pr.id, pr.submission_id, pr.author_id, pr.reviewer_id, pr.status, pr.grade,
+	pr.comment, pr.created_at, pr.taken_at, pr.completed_at, pr.expires_at,
+	pr.reward_ledger_id,
 	t.id, t.title, g.code, author.display_name, reviewer.display_name
 	FROM peer_reviews pr
 	JOIN submissions s ON s.id = pr.submission_id
@@ -180,14 +180,33 @@ const peerReviewViewSelect = `SELECT
 	JOIN users author ON author.id = pr.author_id
 	LEFT JOIN users reviewer ON reviewer.id = pr.reviewer_id`
 
-// ListViewsForTeacher возвращает peer-review по назначениям преподавателя.
+// ListOpenForReviewer — свободные проверки в потоках, доступных ученику.
+func (r *PeerReviewRepo) ListOpenForReviewer(ctx context.Context, userID int64) ([]PeerReviewView, error) {
+	return r.listViews(ctx, peerReviewViewSelect+`
+		WHERE pr.status = ? AND pr.author_id != ?
+		  AND s.task_id IN (SELECT t2.id FROM submissions s2
+		                    JOIN tasks t2 ON t2.id = s2.task_id
+		                    JOIN teacher_assignments ta2 ON ta2.id = t2.assignment_id
+		                    JOIN users u ON u.id = ?
+		                    WHERE ta2.group_id = u.group_id)
+		ORDER BY pr.created_at, pr.id`, PeerReviewStatusCreated, userID, userID)
+}
+
+// ListByUser возвращает проверки, где ученик автор или рецензент.
+func (r *PeerReviewRepo) ListByUser(ctx context.Context, userID int64) ([]PeerReviewView, error) {
+	return r.listViews(ctx, peerReviewViewSelect+`
+		WHERE pr.author_id = ? OR pr.reviewer_id = ?
+		ORDER BY pr.created_at DESC, pr.id DESC`, userID, userID)
+}
+
+// ListViewsForTeacher возвращает взаимопроверки по назначениям преподавателя.
 func (r *PeerReviewRepo) ListViewsForTeacher(ctx context.Context, teacherID int64) ([]PeerReviewView, error) {
 	return r.listViews(ctx, peerReviewViewSelect+`
 		WHERE ta.teacher_id = ?
 		ORDER BY pr.created_at DESC, pr.id DESC`, teacherID)
 }
 
-// ListViewsAll возвращает все peer-review (админский обзор).
+// ListViewsAll возвращает все взаимопроверки (админский обзор).
 func (r *PeerReviewRepo) ListViewsAll(ctx context.Context) ([]PeerReviewView, error) {
 	return r.listViews(ctx, peerReviewViewSelect+`
 		ORDER BY pr.created_at DESC, pr.id DESC`)
@@ -204,14 +223,16 @@ func (r *PeerReviewRepo) listViews(ctx context.Context, query string, args ...an
 
 	for rows.Next() {
 		var (
-			view         PeerReviewView
-			reviewerID   sql.NullInt64
-			comments     sql.NullString
-			createdAt    string
-			expiresAt    string
-			takenAt      sql.NullString
-			completedAt  sql.NullString
-			reviewerName sql.NullString
+			view           PeerReviewView
+			reviewerID     sql.NullInt64
+			grade          sql.NullInt64
+			comment        sql.NullString
+			createdAt      string
+			expiresAt      string
+			takenAt        sql.NullString
+			completedAt    sql.NullString
+			rewardLedgerID sql.NullInt64
+			reviewerName   sql.NullString
 		)
 
 		if err := rows.Scan(
@@ -219,15 +240,14 @@ func (r *PeerReviewRepo) listViews(ctx context.Context, query string, args ...an
 			&view.SubmissionID,
 			&view.AuthorID,
 			&reviewerID,
-			&view.CriteriaChecklist,
-			&comments,
 			&view.Status,
-			&view.EscrowAmount,
-			&view.RewardAmount,
+			&grade,
+			&comment,
 			&createdAt,
 			&takenAt,
 			&completedAt,
 			&expiresAt,
+			&rewardLedgerID,
 			&view.TaskID,
 			&view.TaskTitle,
 			&view.GroupCode,
@@ -238,8 +258,14 @@ func (r *PeerReviewRepo) listViews(ctx context.Context, query string, args ...an
 		}
 
 		view.ReviewerID = scanInt64Ptr(reviewerID)
-		view.Comments = scanString(comments)
+		view.RewardLedgerID = scanInt64Ptr(rewardLedgerID)
+		view.Comment = scanString(comment)
 		view.ReviewerName = scanStringPtr(reviewerName)
+
+		if grade.Valid {
+			value := int(grade.Int64)
+			view.Grade = &value
+		}
 
 		if view.CreatedAt, err = parseTime(createdAt); err != nil {
 			return nil, err

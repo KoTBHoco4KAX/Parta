@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -54,6 +56,9 @@ type verdictResponse struct {
 	XPAwarded    int    `json:"xp_awarded,omitempty"`
 	StreakAfter  int    `json:"streak_after,omitempty"`
 	LedgerID     int64  `json:"ledger_id,omitempty"`
+	// RewardXP / RewardUserID — награда рецензенту, если работу проверял ученик.
+	RewardXP     int   `json:"reward_xp,omitempty"`
+	RewardUserID int64 `json:"reward_user_id,omitempty"`
 }
 
 // handleCreateSubmission создаёт карточку TODO идемпотентно.
@@ -462,6 +467,8 @@ func (s *Server) rejectSubmission(w http.ResponseWriter, r *http.Request, sub *s
 }
 
 // acceptSubmission начисляет XP и двигает стрик.
+// Если работу проверил другой ученик, XP автора занижается по его оценке,
+// а рецензент получает награду только теперь — после вердикта учителя.
 func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *submission.Submission, task *submission.Task, now time.Time) {
 	user, err := s.users.GetByID(r.Context(), sub.StudentID)
 	if err != nil {
@@ -476,11 +483,25 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 	}
 
 	// Бонус за спидран считается от границы, назначенной преподавателем, либо авто.
-	finalXP := xp.ComputeFinalXP(task.BaseXP, finalAt, task.DeadlineAt, task.DeadlineAt.Sub(task.SpeedrunBonusDeadline()))
+	baseXPAwarded := xp.ComputeFinalXP(task.BaseXP, finalAt, task.DeadlineAt, task.DeadlineAt.Sub(task.SpeedrunBonusDeadline()))
 	reason := storage.ReasonTaskBase
 
 	if !finalAt.After(task.SpeedrunBonusDeadline()) {
 		reason = storage.ReasonSpeedrunBonus
+	}
+
+	// Завершённая взаимопроверка занижает XP автора в зависимости от оценки.
+	peer, err := s.peerReviews.GetCompletedBySubmission(r.Context(), sub.ID)
+	if err != nil && !errors.Is(err, domainerrors.ErrNotFound) {
+		writeError(w, err)
+
+		return
+	}
+
+	finalXP := baseXPAwarded
+
+	if peer != nil && peer.Grade != nil {
+		finalXP = int(math.Round(float64(baseXPAwarded) * authorXPMultiplier(*peer.Grade)))
 	}
 
 	decision := streak.Decide(streak.UserStreak{
@@ -490,8 +511,23 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 
 	var (
 		ledgerEntry *storage.LedgerEntry
+		rewardEntry *storage.LedgerEntry
 		streakAfter int
+		reviewerID  int64
+		reviewer    *storage.User
+		rewardXP    int
 	)
+
+	if peer != nil && peer.ReviewerID != nil && peer.Grade != nil {
+		reviewerID = *peer.ReviewerID
+
+		reviewer, err = s.users.GetByID(r.Context(), reviewerID)
+		if err != nil {
+			writeError(w, err)
+
+			return
+		}
+	}
 
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		if _, err := s.submissions.UpdateStatus(r.Context(), tx, storage.UpdateStatusInput{
@@ -519,6 +555,18 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		}
 
 		ledgerEntry = entry
+
+		if peer != nil && peer.Grade != nil {
+			reward := reviewerReward(*peer.Grade)
+
+			posted, err := s.peerReviews.RewardReviewer(r.Context(), tx, peer, reward)
+			if err != nil {
+				return err
+			}
+
+			rewardEntry = posted
+			rewardXP = reward
+		}
 
 		if err := applyStreak(r.Context(), tx, s, user.ID, decision); err != nil {
 			return err
@@ -574,12 +622,42 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		},
 	))
 
+	// Награда рецензенту пришла с приёмкой работы — уведомляем его по WS.
+	if rewardEntry != nil && reviewer != nil {
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypeXPLedgerPosted,
+			reviewer.ID,
+			events.RoomUser(reviewer.ID),
+			xpLedgerPostedPayload{
+				LedgerID:     rewardEntry.ID,
+				UserID:       rewardEntry.UserID,
+				Amount:       rewardEntry.Amount,
+				BalanceAfter: rewardEntry.BalanceAfter,
+				Reason:       rewardEntry.Reason,
+			},
+		))
+
+		s.publisher.Publish(r.Context(), events.New(
+			events.TypePeerReviewStateChanged,
+			reviewer.ID,
+			events.RoomUser(reviewer.ID),
+			peerReviewStateChangedPayload{
+				PeerReviewID: peer.ID,
+				Status:       peer.Status,
+				ReviewerID:   reviewer.ID,
+				ExpiresAt:    eventTime(peer.ExpiresAt),
+			},
+		))
+	}
+
 	writeJSON(w, http.StatusOK, verdictResponse{
 		SubmissionID: sub.ID,
 		Status:       string(submission.StatusDone),
 		XPAwarded:    finalXP,
 		StreakAfter:  streakAfter,
 		LedgerID:     ledgerEntry.ID,
+		RewardXP:     rewardXP,
+		RewardUserID: reviewerID,
 	})
 }
 

@@ -18,6 +18,7 @@ import {
   formatDateTime,
   formatNumber,
   pluralize,
+  toLocalInput,
 } from '../lib/format';
 import {
   SLOT_ROLE_ORDER,
@@ -78,13 +79,9 @@ const STATUS_SEGMENTS = STATUS_ORDER.filter((status) => status !== 'REJECTED');
  */
 export function TasksScreen({
   notify,
-  onOpenReviews,
-  onOpenTeams,
   reloadSignal = 0,
 }: {
   notify: (toast: Omit<ToastData, 'id'>) => void;
-  onOpenReviews: (taskId: number) => void;
-  onOpenTeams: (taskId: number | null) => void;
   reloadSignal?: number;
 }) {
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
@@ -248,8 +245,6 @@ export function TasksScreen({
                   counts={item.counts}
                   total={item.total}
                   groupCode={item.groupCode}
-                  onOpenReviews={onOpenReviews}
-                  onOpenTeams={onOpenTeams}
                 />
               ))}
             </div>
@@ -265,8 +260,6 @@ export function TasksScreen({
                   counts={item.counts}
                   total={item.total}
                   groupCode={item.groupCode}
-                  onOpenReviews={onOpenReviews}
-                  onOpenTeams={onOpenTeams}
                   muted
                 />
               ))}
@@ -297,19 +290,15 @@ function TaskCard({
   counts,
   total,
   groupCode,
-  onOpenReviews,
-  onOpenTeams,
   muted = false,
 }: {
   task: Task;
   counts: Record<Submission['status'], number>;
   total: number;
   groupCode: string | null;
-  onOpenReviews: (taskId: number) => void;
-  onOpenTeams: (taskId: number | null) => void;
   muted?: boolean;
 }) {
-  const bonusEnd = speedrunEndsAt(task.deadline_at, task.speedrun_window_hours).toISOString();
+  const bonusEnd = task.speedrun_bonus_until || speedrunEndsAt(task.deadline_at, task.speedrun_window_hours).toISOString();
   const reviewCount = counts.REVIEW;
 
   return (
@@ -383,16 +372,10 @@ function TaskCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="outline" onClick={() => onOpenReviews(task.id)}>
-          Проверка{reviewCount > 0 ? ` · ${reviewCount}` : ''}
-        </Button>
-        {task.task_type === 'TEAM_PROJECT' ? (
-          <Button size="sm" variant="ghost" onClick={() => onOpenTeams(task.id)}>
-            <IconUsers className="h-3.5 w-3.5" />
-            Слоты команды
-          </Button>
-        ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[10px] text-ink3">
+          {reviewCount > 0 ? `На проверке: ${reviewCount}` : 'Проверять пока нечего'}
+        </span>
         <span className="ml-auto self-center text-[10px] text-ink3">
           дедлайн {formatDateTime(task.deadline_at)}
         </span>
@@ -401,7 +384,7 @@ function TaskCard({
   );
 }
 
-/** IssueTaskModal — конструктор пакетной выдачи задания. */
+/** IssueTaskModal — выдача задания: потоки → тип → текст → файлы → дедлайн → бонус → XP. */
 function IssueTaskModal({
   assignments,
   studentsByAssignment,
@@ -418,15 +401,18 @@ function IssueTaskModal({
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
     assignments.length > 0 ? [assignments[0].id] : [],
   );
-  const [title, setTitle] = useState('');
   const [taskType, setTaskType] = useState<TaskType>('LAB_CODE');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const [requirements, setRequirements] = useState('8');
   const [hours, setHours] = useState('4');
   const [deadline, setDeadline] = useState(() => defaultDeadlineLocal());
-  const [speedrunHours, setSpeedrunHours] = useState(24);
-  // Пустая строка — бонус считается автоматически: дедлайн − бонусное окно.
+  const [speedrunHours, setSpeedrunHours] = useState(48);
+  // Бонус до и XP: пустое поле — значение предлагается автоматически,
+  // а вписанное значение — уже решение преподавателя.
   const [bonusUntilLocal, setBonusUntilLocal] = useState('');
+  const [xpOverride, setXpOverride] = useState('');
   const [teamSize, setTeamSize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -471,11 +457,12 @@ function IssueTaskModal({
       deadlineValid &&
       bonusUntilDate.getTime() < deadlineDate.getTime());
 
-  const bonusEnd = !deadlineValid
-    ? null
-    : bonusUntilDate !== null && bonusUntilValid
-      ? bonusUntilDate
-      : speedrunEndsAt(deadlineDate, speedrunHours);
+  const autoBonusEnd = deadlineValid ? speedrunEndsAt(deadlineDate, speedrunHours) : null;
+  const bonusEnd = bonusUntilDate !== null && bonusUntilValid ? bonusUntilDate : autoBonusEnd;
+
+  const xpNumber = Number(xpOverride);
+  const xpValid = xpOverride.trim() === '' || (Number.isFinite(xpNumber) && xpNumber > 0);
+  const finalXP = xpOverride.trim() !== '' && xpValid ? Math.round(xpNumber) : estimatedBaseXP;
 
   const slots = taskType === 'TEAM_PROJECT' ? Array.from({ length: teamSize }, (_, index) => {
     const base = SLOT_ROLE_ORDER[index % SLOT_ROLE_ORDER.length];
@@ -485,7 +472,7 @@ function IssueTaskModal({
       : `${base}_${Math.floor(index / SLOT_ROLE_ORDER.length) + 1}`;
   }) : [];
 
-  const titleError = submitted && title.trim().length < 3 ? 'Введите тему задания' : null;
+  const titleError = submitted && title.trim().length < 3 ? 'Опишите задание' : null;
   const assignmentError =
     submitted && selectedIds.length === 0 ? 'Выберите хотя бы один поток' : null;
   const deadlineError = submitted && !deadlineValid ? 'Дедлайн должен быть в будущем' : null;
@@ -494,7 +481,13 @@ function IssueTaskModal({
     setSubmitted(true);
     setError(null);
 
-    if (title.trim().length < 3 || selectedIds.length === 0 || !deadlineValid) {
+    if (
+      title.trim().length < 3 ||
+      selectedIds.length === 0 ||
+      !deadlineValid ||
+      !bonusUntilValid ||
+      !xpValid
+    ) {
       return;
     }
 
@@ -507,6 +500,7 @@ function IssueTaskModal({
       try {
         const result = await createTeacherTask({
           assignmentId: assignment.id,
+          topic: title.trim(),
           title: title.trim(),
           descriptionMD: description.trim(),
           taskType,
@@ -515,8 +509,11 @@ function IssueTaskModal({
           deadlineAt: deadlineDate.toISOString(),
           speedrunWindowHours: speedrunHours,
           speedrunBonusUntil:
-            bonusUntilLocal && bonusUntilValid ? bonusUntilDate?.toISOString() : undefined,
+            bonusUntilLocal && bonusUntilValid && bonusUntilDate
+              ? bonusUntilDate.toISOString()
+              : undefined,
           teamSize: taskType === 'TEAM_PROJECT' ? teamSize : 1,
+          files,
         });
 
         created.push({ assignment, taskId: result.taskId, slots: result.slotsCount });
@@ -581,9 +578,7 @@ function IssueTaskModal({
               onClick={() => void handleSubmit()}
             >
               <IconBolt className="h-4 w-4" />
-              {selectedIds.length > 1
-                ? `Выдать · ${selectedIds.length}`
-                : 'Выдать задание'}
+              {selectedIds.length > 1 ? `Выдать · ${selectedIds.length}` : 'Выдать задание'}
             </Button>
           </div>
         </div>
@@ -653,51 +648,65 @@ function IssueTaskModal({
           <p className="mt-1 text-[10px] text-ink3">{TASK_TYPE_HINT[taskType]}</p>
         </Field>
 
-        <Field label="Тема" htmlFor="task-title" error={titleError} hint="Коротко и по делу: ученик видит её на карточке.">
-          <TextInput
-            id="task-title"
+        <Field
+          label="Текст задания"
+          htmlFor="task-text"
+          error={titleError}
+          hint="Что нужно сделать — ученик увидит это в карточке."
+        >
+          <TextArea
+            id="task-text"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="Лабораторная №2: индексы и планы запросов"
             invalid={Boolean(titleError)}
+            placeholder="Лабораторная №2: привести схему к 3НФ, описать миграции и отчёт"
           />
         </Field>
 
         <Field
-          label="Методические материалы"
+          label="Подробности (необязательно)"
           htmlFor="task-description"
-          hint="Markdown: требования, ссылки на методички, критерии. Показываются ученику в карточке."
+          hint="Требования, критерии, ссылки на методички."
         >
           <TextArea
             id="task-description"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
-            placeholder={'1. Схема в 3НФ\n2. Миграции\n3. Отчёт с EXPLAIN ANALYZE\n\nМетодичка: https://…'}
+            placeholder={'1. Схема в 3НФ\n2. Миграции\n3. Отчёт с EXPLAIN ANALYZE'}
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Дедлайн" htmlFor="task-deadline" error={deadlineError}>
-            <TextInput
-              id="task-deadline"
-              type="datetime-local"
-              value={deadline}
-              onChange={(event) => setDeadline(event.target.value)}
-              invalid={Boolean(deadlineError)}
-            />
-          </Field>
+        <Field
+          label="Файлы (необязательно)"
+          htmlFor="task-files"
+          hint="Методички, шаблоны, тесты. До 5 файлов по 20 МБ."
+        >
+          <input
+            id="task-files"
+            type="file"
+            multiple
+            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
+          />
+          {files.length > 0 ? (
+            <p className="mt-1 text-[10px] text-ink3">{files.map((file) => file.name).join(', ')}</p>
+          ) : null}
+        </Field>
 
-          <Field label="Требований" htmlFor="task-requirements">
-            <TextInput
-              id="task-requirements"
-              type="number"
-              min={1}
-              max={50}
-              value={requirements}
-              onChange={(event) => setRequirements(event.target.value)}
-            />
-          </Field>
-        </div>
+        <Field
+          label="Дедлайн (24 часа)"
+          htmlFor="task-deadline"
+          error={deadlineError}
+          hint="Время указывается в формате 00–23."
+        >
+          <TextInput
+            id="task-deadline"
+            type="datetime-local"
+            value={deadline}
+            onChange={(event) => setDeadline(event.target.value)}
+            invalid={Boolean(deadlineError)}
+          />
+        </Field>
 
         <div className="flex flex-wrap gap-1.5">
           {[
@@ -717,7 +726,18 @@ function IssueTaskModal({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Ожидаемые часы" htmlFor="task-hours" hint="Влияет на Base XP.">
+          <Field label="Требований" htmlFor="task-requirements">
+            <TextInput
+              id="task-requirements"
+              type="number"
+              min={1}
+              max={50}
+              value={requirements}
+              onChange={(event) => setRequirements(event.target.value)}
+            />
+          </Field>
+
+          <Field label="Ожидаемые часы" htmlFor="task-hours" hint="Влияет на XP.">
             <TextInput
               id="task-hours"
               type="number"
@@ -727,31 +747,53 @@ function IssueTaskModal({
               onChange={(event) => setHours(event.target.value)}
             />
           </Field>
-
-          <Field label="Бонусное окно" htmlFor="task-speedrun" hint="×1.5 за сдачу в первые часы.">
-            <SelectInput
-              id="task-speedrun"
-              value={String(speedrunHours)}
-              onChange={(event) => setSpeedrunHours(Number(event.target.value))}
-            >
-              <option value="24">24 часа</option>
-              <option value="48">48 часов</option>
-              <option value="72">72 часа</option>
-            </SelectInput>
-          </Field>
         </div>
 
         <Field
-          label="Бонус до (необязательно)"
+          label="Бонусное окно"
+          htmlFor="task-speedrun"
+          hint="Сколько часов от дедлайна даёт бонус ×1.5."
+        >
+          <SelectInput
+            id="task-speedrun"
+            value={String(speedrunHours)}
+            onChange={(event) => setSpeedrunHours(Number(event.target.value))}
+          >
+            <option value="24">24 часа</option>
+            <option value="48">48 часов</option>
+            <option value="72">72 часа</option>
+          </SelectInput>
+        </Field>
+
+        <Field
+          label="Бонус до"
           htmlFor="task-bonus-until"
-          hint="Своя дата окончания ×1.5. Пусто — считается автоматически от дедлайна."
+          hint="Дата окончания ×1.5 подставляется сама — её можно переписать."
           error={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : null}
         >
           <TextInput
             id="task-bonus-until"
             type="datetime-local"
-            value={bonusUntilLocal}
+            value={bonusUntilLocal || (autoBonusEnd ? toLocalInput(autoBonusEnd) : '')}
             onChange={(event) => setBonusUntilLocal(event.target.value)}
+          />
+        </Field>
+
+        <Field
+          label="XP за задание"
+          htmlFor="task-xp"
+          hint={`Рассчитано автоматически: ${estimatedBaseXP} XP. Впишите своё значение, чтобы изменить.`}
+          error={submitted && !xpValid ? 'XP должно быть положительным числом' : null}
+        >
+          <TextInput
+            id="task-xp"
+            type="number"
+            min={1}
+            max={100000}
+            value={xpOverride || (estimatedBaseXP > 0 ? String(estimatedBaseXP) : '')}
+            onChange={(event) => setXpOverride(event.target.value)}
+            invalid={submitted && !xpValid}
+            className="tabular-nums"
           />
         </Field>
 
@@ -795,28 +837,30 @@ function IssueTaskModal({
               .
             </li>
             <li>
-              • Base XP ≈ <span className="font-semibold text-brandStrong">{estimatedBaseXP} XP</span>{' '}
-              на человека{taskType === 'TEAM_PROJECT' ? ' за слот' : ''}.
+              • XP за задание:{' '}
+              <span className="font-semibold text-brandStrong">{finalXP} XP</span>
+              {taskType === 'TEAM_PROJECT' ? ' за слот' : ''}.
             </li>
             <li>
               • Бонус ×{SPEEDRUN_MULTIPLIER} действует до{' '}
               {bonusEnd ? formatDateTime(bonusEnd.toISOString()) : '—'}.
             </li>
+            {files.length > 0 ? (
+              <li>
+                • Вложений: {files.length} {pluralize(files.length, ['файл', 'файла', 'файлов'])}.
+              </li>
+            ) : null}
             {taskType === 'TEAM_PROJECT' ? (
-              <li>• Будет создано {teamSize} {pluralize(teamSize, ['слот', 'слота', 'слотов'])} ответственности.</li>
+              <li>
+                • Будет создано {teamSize} {pluralize(teamSize, ['слот', 'слота', 'слотов'])} ответственности.
+              </li>
             ) : null}
           </ul>
-
-          <p className="rounded-lg border border-line bg-muted px-2.5 py-2 text-[10px] leading-relaxed text-ink3">
-            База XP — предварительная оценка по формуле проекта; точное значение
-            фиксирует backend при создании задания.
-          </p>
         </Card>
       </div>
     </Modal>
   );
 }
-
 /** defaultDeadlineLocal возвращает значение для input[type=datetime-local]. */
 function defaultDeadlineLocal(days = 14): string {
   const date = new Date(Date.now() + days * 24 * 3_600_000);

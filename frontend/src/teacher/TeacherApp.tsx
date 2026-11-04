@@ -3,28 +3,18 @@ import { AppShell } from '../components/AppShell';
 import { useAuth } from '../core/auth';
 import type { ToastData } from './types';
 import { fetchAllSubmissions } from './api';
-import { OverviewScreen } from './components/OverviewScreen';
-import { InboxScreen } from './components/InboxScreen';
+import { ProfileScreen } from './components/ProfileScreen';
 import { TasksScreen } from './components/TasksScreen';
-import { TeamsScreen } from './components/TeamsScreen';
-import { PeerReviewScreen } from './components/PeerReviewScreen';
+import { ReviewScreen } from './components/ReviewScreen';
 import { Toast, cn } from './components/ui';
-import {
-  IconChart,
-  IconClipboard,
-  IconInbox,
-  IconShield,
-  IconUsers,
-} from './components/icons';
+import { IconClipboard, IconInbox, IconUser } from './components/icons';
 
-export type TeacherTab = 'overview' | 'review' | 'tasks' | 'teams' | 'peer';
+export type TeacherTab = 'profile' | 'tasks' | 'review';
 
 const TABS: { id: TeacherTab; label: string; icon: typeof IconInbox }[] = [
-  { id: 'overview', label: 'Обзор', icon: IconChart },
-  { id: 'review', label: 'Проверка', icon: IconInbox },
+  { id: 'profile', label: 'Профиль', icon: IconUser },
   { id: 'tasks', label: 'Задания', icon: IconClipboard },
-  { id: 'teams', label: 'Команды', icon: IconUsers },
-  { id: 'peer', label: 'P2P', icon: IconShield },
+  { id: 'review', label: 'Проверка', icon: IconInbox },
 ];
 
 /** События, после которых кабинет перечитывает данные с сервера. */
@@ -32,11 +22,10 @@ const REFRESH_EVENTS = new Set([
   'submission.card.moved',
   'review.inbox.created',
   'submission.verdict.issued',
-  'team_slot.state_changed',
-  'peer_review.state_changed',
+  'task.created',
 ]);
 
-/** tabFromHash читает раздел из адресной строки: #review, #tasks, #teams. */
+/** tabFromHash читает раздел из адресной строки: #tasks, #review. */
 function tabFromHash(fallback: TeacherTab): TeacherTab {
   const raw = window.location.hash.replace(/^#\/?/, '').split('?')[0];
   const found = TABS.find((item) => item.id === raw);
@@ -47,22 +36,14 @@ function tabFromHash(fallback: TeacherTab): TeacherTab {
 /**
  * TeacherApp — кабинет преподавателя ПАРТА.
  *
- * Пять разделов конвейера: обзор нагрузки, сквозная проверка, пакетная выдача
- * заданий, аудит команд и взаимопроверка. Данные — только с backend; новые
- * сдачи прилетают по WebSocket и перечитывают экран без ручного обновления.
+ * Три раздела: карточка профиля, выдача заданий (список + форма) и проверка
+ * работ учеников. Данные — только с backend; новые сдачи приходят по WebSocket
+ * и перечитывают экран без ручного обновления.
  */
 export default function TeacherApp() {
   const { events } = useAuth();
 
-  const [tab, setTab] = useState<TeacherTab>(() => tabFromHash('overview'));
-  const [reviewFocus, setReviewFocus] = useState<{ taskId: number | null; nonce: number }>({
-    taskId: null,
-    nonce: 0,
-  });
-  const [teamFocus, setTeamFocus] = useState<{ taskId: number | null; nonce: number }>({
-    taskId: null,
-    nonce: 0,
-  });
+  const [tab, setTab] = useState<TeacherTab>(() => tabFromHash('profile'));
   const [reviewCount, setReviewCount] = useState(0);
   const [reloadSignal, setReloadSignal] = useState(0);
   const [toasts, setToasts] = useState<ToastData[]>([]);
@@ -118,32 +99,15 @@ export default function TeacherApp() {
   }, [events]);
 
   useEffect(() => {
-    const onHashChange = () => setTab(tabFromHash('overview'));
+    const onHashChange = () => setTab(tabFromHash('profile'));
     window.addEventListener('hashchange', onHashChange);
 
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
-  const navigate = useCallback((next: TeacherTab, taskId?: number | null) => {
+  const navigate = useCallback((next: TeacherTab) => {
     setTab(next);
     window.location.hash = `/${next}`;
-
-    // Фокус передаётся вместе с nonce: экран открывается заново, поэтому
-    // фильтр по заданию не сбрасывается повторным рендером.
-    if (next === 'review') {
-      setReviewFocus((previous) => ({
-        taskId: taskId ?? null,
-        nonce: previous.nonce + 1,
-      }));
-    }
-
-    if (next === 'teams') {
-      setTeamFocus((previous) => ({
-        taskId: taskId ?? null,
-        nonce: previous.nonce + 1,
-      }));
-    }
-
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -188,38 +152,23 @@ export default function TeacherApp() {
         </nav>
       }
     >
-      {tab === 'overview' ? <OverviewScreen onNavigate={navigate} /> : null}
-
-      {tab === 'review' ? (
-        <InboxScreen
-          key={`review-${reviewFocus.nonce}`}
-          notify={notify}
-          initialTaskId={reviewFocus.taskId}
-          reloadSignal={reloadSignal}
-          onReviewed={() => setReviewCount((count) => Math.max(0, count - 1))}
-        />
-      ) : null}
+      {tab === 'profile' ? <ProfileScreen onNavigate={navigate} /> : null}
 
       {tab === 'tasks' ? (
         <TasksScreen
+          key={`tasks-${reloadSignal}`}
           notify={notify}
-          onOpenReviews={(taskId) => navigate('review', taskId)}
-          onOpenTeams={(taskId) => navigate('teams', taskId)}
           reloadSignal={reloadSignal}
         />
       ) : null}
 
-      {tab === 'teams' ? (
-        <TeamsScreen
-          key={`teams-${teamFocus.nonce}`}
+      {tab === 'review' ? (
+        <ReviewScreen
           notify={notify}
-          initialTaskId={teamFocus.taskId}
           reloadSignal={reloadSignal}
           onReviewed={() => setReviewCount((count) => Math.max(0, count - 1))}
         />
       ) : null}
-
-      {tab === 'peer' ? <PeerReviewScreen notify={notify} /> : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20">
         <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2">

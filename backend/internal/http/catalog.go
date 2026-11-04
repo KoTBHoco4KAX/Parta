@@ -14,11 +14,20 @@ import (
 // peerReviewTokenTTLSeconds — TTL read-only токена P2P-ревью в секундах.
 const peerReviewTokenTTLSeconds = 900
 
+// taskAttachment — файл, приложенный преподавателем к заданию.
+type taskAttachment struct {
+	Name string `json:"name"`
+	URL  string `json:"url"`
+	Size int64  `json:"size"`
+}
+
 // taskListView — элемент GET /api/tasks.
 type taskListView struct {
 	ID                  int64   `json:"id"`
 	AssignmentID        int64   `json:"assignment_id"`
 	Title               string  `json:"title"`
+	// Topic — короткое ТЗ задания.
+	Topic               string  `json:"topic"`
 	DescriptionMD       string  `json:"description_md"`
 	TaskType            string  `json:"task_type"`
 	RequirementsCount   int     `json:"requirements_count"`
@@ -29,11 +38,13 @@ type taskListView struct {
 	SpeedrunBonusUntil string `json:"speedrun_bonus_until"`
 	TeamSize           int    `json:"team_size"`
 	BaseXP             int    `json:"base_xp_computed"`
-	GroupID            int64  `json:"group_id"`
-	AssignedTeacherID  int64  `json:"assigned_teacher_id"`
-	Status             string `json:"status"`
-	CreatedAt          string `json:"created_at"`
-	UpdatedAt          string `json:"updated_at"`
+	// Attachments — вложения преподавателя.
+	Attachments       []taskAttachment `json:"attachments"`
+	GroupID           int64            `json:"group_id"`
+	AssignedTeacherID int64            `json:"assigned_teacher_id"`
+	Status            string           `json:"status"`
+	CreatedAt         string           `json:"created_at"`
+	UpdatedAt         string           `json:"updated_at"`
 }
 
 // revisionView — запись журнала доработок в ответе по работам.
@@ -69,28 +80,25 @@ type submissionListView struct {
 	Attempt             int            `json:"attempt"`
 }
 
-// peerReviewListView — элемент GET /api/peer-reviews.
+// peerReviewListView — элемент GET /api/peer-reviews: взаимопроверка учеников.
 type peerReviewListView struct {
-	ID                   int64             `json:"id"`
-	SubmissionID         int64             `json:"submission_id"`
-	TaskID               int64             `json:"task_id"`
-	TaskTitle            string            `json:"task_title"`
-	GroupCode            string            `json:"group_code"`
-	AuthorID             int64             `json:"author_id"`
-	AuthorName           string            `json:"author_name"`
-	ReviewerID           *int64            `json:"reviewer_id"`
-	ReviewerName         *string           `json:"reviewer_name"`
-	Status               string            `json:"status"`
-	EscrowAmount         int               `json:"escrow_amount"`
-	RewardAmount         int               `json:"reward_amount"`
-	CreatedAt            string            `json:"created_at"`
-	TakenAt              *string           `json:"taken_at"`
-	CompletedAt          *string           `json:"completed_at"`
-	ExpiresAt            string            `json:"expires_at"`
-	Checklist            []checklistItem   `json:"checklist"`
-	ChecklistResults     []checklistResult `json:"checklist_results"`
-	Summary              string            `json:"summary"`
-	AccessTokenTTLSecond int               `json:"access_token_ttl_seconds"`
+	ID           int64   `json:"id"`
+	SubmissionID int64   `json:"submission_id"`
+	TaskID       int64   `json:"task_id"`
+	TaskTitle    string  `json:"task_title"`
+	GroupCode    string  `json:"group_code"`
+	AuthorID     int64   `json:"author_id"`
+	AuthorName   string  `json:"author_name"`
+	ReviewerID   *int64  `json:"reviewer_id"`
+	ReviewerName *string `json:"reviewer_name"`
+	Status       string  `json:"status"`
+	Grade        *int    `json:"grade"`
+	Comment      string  `json:"comment"`
+	CreatedAt    string  `json:"created_at"`
+	TakenAt      *string `json:"taken_at"`
+	CompletedAt  *string `json:"completed_at"`
+	ExpiresAt    string  `json:"expires_at"`
+	RewardXP     int     `json:"reward_xp"`
 }
 
 // assignmentListView — элемент GET /api/assignments.
@@ -198,14 +206,11 @@ func (s *Server) handleListSubmissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
-// handleListPeerReviews отдаёт P2P-сессии преподавателя или админа.
+// handleListPeerReviews отдаёт взаимопроверки учеников; преподаватель и админ
+// видят все проверки своих потоков.
 func (s *Server) handleListPeerReviews(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
 	if !ok {
-		return
-	}
-
-	if !requireRole(w, p, RoleTeacher, RoleAdmin) {
 		return
 	}
 
@@ -214,12 +219,37 @@ func (s *Server) handleListPeerReviews(w http.ResponseWriter, r *http.Request) {
 		err   error
 	)
 
-	if p.Role == RoleAdmin {
+	switch p.Role {
+	case RoleStudent:
+		items, err = s.peerReviews.ListByUser(r.Context(), p.UserID)
+	case RoleAdmin:
 		items, err = s.peerReviews.ListViewsAll(r.Context())
-	} else {
+	default:
 		items, err = s.peerReviews.ListViewsForTeacher(r.Context(), p.UserID)
 	}
 
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	views := make([]peerReviewListView, 0, len(items))
+	for _, item := range items {
+		views = append(views, newPeerReviewListView(item))
+	}
+
+	writeJSON(w, http.StatusOK, views)
+}
+
+// handleListOpenPeerReviews отдаёт свободные проверки для ученика.
+func (s *Server) handleListOpenPeerReviews(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.principalOr401(w, r)
+	if !ok {
+		return
+	}
+
+	items, err := s.peerReviews.ListOpenForReviewer(r.Context(), p.UserID)
 	if err != nil {
 		writeError(w, err)
 
@@ -293,6 +323,7 @@ func newTaskListView(task submission.Task) taskListView {
 		ID:                  task.ID,
 		AssignmentID:        task.AssignmentID,
 		Title:               task.Title,
+		Topic:               task.Topic,
 		DescriptionMD:       task.DescriptionMD,
 		TaskType:            task.TaskType,
 		RequirementsCount:   task.RequirementsCount,
@@ -302,12 +333,28 @@ func newTaskListView(task submission.Task) taskListView {
 		SpeedrunBonusUntil:  formatTimestamp(task.SpeedrunBonusDeadline()),
 		TeamSize:            task.TeamSize,
 		BaseXP:              task.BaseXP,
+		Attachments:         parseTaskAttachments(task.Attachments),
 		GroupID:             task.GroupID,
 		AssignedTeacherID:   task.AssignedTeacherID,
 		Status:              task.Status,
 		CreatedAt:           formatTimestamp(task.CreatedAt),
 		UpdatedAt:           formatTimestamp(task.UpdatedAt),
 	}
+}
+
+// parseTaskAttachments разбирает JSON-массив вложений задания.
+func parseTaskAttachments(raw string) []taskAttachment {
+	items := make([]taskAttachment, 0)
+
+	if raw == "" {
+		return items
+	}
+
+	if err := json.Unmarshal([]byte(raw), &items); err != nil {
+		return make([]taskAttachment, 0)
+	}
+
+	return items
 }
 
 // newSubmissionListView собирает DTO карточки работы.
@@ -347,40 +394,30 @@ func newSubmissionListView(item storage.SubmissionView) submissionListView {
 	}
 }
 
-// newPeerReviewListView собирает DTO P2P-сессии и разбирает JSON чек-листа.
+// newPeerReviewListView собирает DTO взаимопроверки.
 func newPeerReviewListView(item storage.PeerReviewView) peerReviewListView {
-	checklist := make([]checklistItem, 0)
-	if err := json.Unmarshal([]byte(item.CriteriaChecklist), &checklist); err != nil {
-		checklist = make([]checklistItem, 0)
-	}
-
-	results := make([]checklistResult, 0)
-	if item.Comments != "" {
-		if err := json.Unmarshal([]byte(item.Comments), &results); err != nil {
-			results = make([]checklistResult, 0)
-		}
+	reward := 0
+	if item.Grade != nil {
+		reward = reviewerReward(*item.Grade)
 	}
 
 	return peerReviewListView{
-		ID:                   item.ID,
-		SubmissionID:         item.SubmissionID,
-		TaskID:               item.TaskID,
-		TaskTitle:            item.TaskTitle,
-		GroupCode:            item.GroupCode,
-		AuthorID:             item.AuthorID,
-		AuthorName:           item.AuthorName,
-		ReviewerID:           item.ReviewerID,
-		ReviewerName:         item.ReviewerName,
-		Status:               item.Status,
-		EscrowAmount:         item.EscrowAmount,
-		RewardAmount:         item.RewardAmount,
-		CreatedAt:            formatTimestamp(item.CreatedAt),
-		TakenAt:              formatTimePtr(item.TakenAt),
-		CompletedAt:          formatTimePtr(item.CompletedAt),
-		ExpiresAt:            formatTimestamp(item.ExpiresAt),
-		Checklist:            checklist,
-		ChecklistResults:     results,
-		Summary:              "",
-		AccessTokenTTLSecond: peerReviewTokenTTLSeconds,
+		ID:           item.ID,
+		SubmissionID: item.SubmissionID,
+		TaskID:       item.TaskID,
+		TaskTitle:    item.TaskTitle,
+		GroupCode:    item.GroupCode,
+		AuthorID:     item.AuthorID,
+		AuthorName:   item.AuthorName,
+		ReviewerID:   item.ReviewerID,
+		ReviewerName: item.ReviewerName,
+		Status:       item.Status,
+		Grade:        item.Grade,
+		Comment:      item.Comment,
+		CreatedAt:    formatTimestamp(item.CreatedAt),
+		TakenAt:      formatTimePtr(item.TakenAt),
+		CompletedAt:  formatTimePtr(item.CompletedAt),
+		ExpiresAt:    formatTimestamp(item.ExpiresAt),
+		RewardXP:     reward,
 	}
 }

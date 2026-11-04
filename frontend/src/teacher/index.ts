@@ -1,17 +1,12 @@
 export { default, default as TeacherApp } from './TeacherApp';
 export type { TeacherTab } from './TeacherApp';
 
-export { OverviewScreen } from './components/OverviewScreen';
-export { InboxScreen } from './components/InboxScreen';
+export { ProfileScreen } from './components/ProfileScreen';
 export { TasksScreen } from './components/TasksScreen';
-export { TeamsScreen } from './components/TeamsScreen';
-export { PeerReviewScreen } from './components/PeerReviewScreen';
+export { ReviewScreen } from './components/ReviewScreen';
 export { AttachmentsPanel } from './components/AttachmentsPanel';
-export { ReviewerAwardModal } from './components/ReviewerAwardModal';
 
 export type {
-  ChecklistItem,
-  ChecklistResult,
   InboxSort,
   PeerReview,
   PeerReviewStatus,
@@ -25,7 +20,6 @@ export type {
 } from './types';
 
 export {
-  awardPeerReview,
   createTeacherTask,
   fetchAllSubmissions,
   fetchGroupMembers,
@@ -38,8 +32,6 @@ export {
 } from './api';
 
 export type {
-  AwardPeerReviewBody,
-  AwardPeerReviewResult,
   GroupMember,
   TeacherAssignment,
   TeacherTaskInput,

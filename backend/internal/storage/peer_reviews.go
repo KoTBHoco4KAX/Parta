@@ -6,22 +6,24 @@ import (
 	"time"
 )
 
-// PeerReview — sandbox-ревью работы другого студента.
+// maxPeerCommentRunes — длина комментария рецензента в рунах.
+const maxPeerCommentRunes = 100
+
+// PeerReview — взаимопроверка работы другого ученика: оценка 1–5 и короткий
+// комментарий. Без файлов и без escrow: автор не платит XP за проверку.
 type PeerReview struct {
-	ID                int64
-	SubmissionID      int64
-	AuthorID          int64
-	ReviewerID        *int64
-	CriteriaChecklist string
-	Comments          string
-	Status            string
-	EscrowAmount      int
-	RewardAmount      int
-	CreatedAt         time.Time
-	TakenAt           *time.Time
-	CompletedAt       *time.Time
-	ExpiresAt         time.Time
-	EscrowLedgerID    int64
+	ID             int64
+	SubmissionID   int64
+	AuthorID       int64
+	ReviewerID     *int64
+	Status         string
+	Grade          *int
+	Comment        string
+	CreatedAt      time.Time
+	TakenAt        *time.Time
+	CompletedAt    *time.Time
+	ExpiresAt      time.Time
+	RewardLedgerID *int64
 }
 
 // Состояния peer-review (CHECK в peer_reviews.status).
@@ -38,60 +40,35 @@ type PeerReviewRepo struct {
 	ledger *XPLedgerRepo
 }
 
-// NewPeerReviewRepo создаёт репозиторий peer-review.
+// NewPeerReviewRepo создаёт репозиторий взаимопроверки.
 func NewPeerReviewRepo(db *sql.DB) *PeerReviewRepo {
 	return &PeerReviewRepo{db: db, ledger: NewXPLedgerRepo(db)}
 }
 
-// CreatePeerReviewInput — параметры вызова peer-review.
+// CreatePeerReviewInput — параметры запроса на взаимопроверку.
 type CreatePeerReviewInput struct {
-	SubmissionID      int64
-	AuthorID          int64
-	EscrowAmount      int
-	ExpiresAt         time.Time
-	CriteriaChecklist string
+	SubmissionID int64
+	AuthorID     int64
+	ExpiresAt    time.Time
 }
 
-const peerReviewColumns = `id, submission_id, author_id, reviewer_id, criteria_checklist,
-	comments, status, escrow_amount, reward_amount, created_at, taken_at, completed_at,
-	expires_at`
+const peerReviewColumns = `id, submission_id, author_id, reviewer_id, status, grade,
+	comment, created_at, taken_at, completed_at, expires_at, reward_ledger_id`
 
-// Create заводит peer-review и удерживает escrow автора.
-// reward_amount приравнивается к escrow_amount: иной формулы в spec нет.
+// Create заводит запрос на взаимопроверку без списаний XP.
 func (r *PeerReviewRepo) Create(ctx context.Context, tx *sql.Tx, in CreatePeerReviewInput) (*PeerReview, error) {
 	row := tx.QueryRowContext(ctx,
-		`INSERT INTO peer_reviews (submission_id, author_id, criteria_checklist, status,
-		                           escrow_amount, reward_amount, expires_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO peer_reviews (submission_id, author_id, status, expires_at)
+		 VALUES (?, ?, ?, ?)
 		 RETURNING `+peerReviewColumns,
-		in.SubmissionID, in.AuthorID, in.CriteriaChecklist, PeerReviewStatusCreated,
-		in.EscrowAmount, in.EscrowAmount, formatTime(in.ExpiresAt))
+		in.SubmissionID, in.AuthorID, PeerReviewStatusCreated, formatTime(in.ExpiresAt))
 
 	review, err := scanPeerReview(row)
-	if err != nil {
-		return nil, MapSQLError(err)
-	}
 
-	sourceID := review.ID
-
-	entry, err := r.ledger.Post(ctx, tx, PostLedgerInput{
-		UserID:         in.AuthorID,
-		Amount:         -in.EscrowAmount,
-		Reason:         ReasonPenalty,
-		SourceType:     SourcePeerReview,
-		SourceID:       &sourceID,
-		IdempotencyKey: peerEscrowKey(review.ID),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	review.EscrowLedgerID = entry.ID
-
-	return review, nil
+	return review, MapSQLError(err)
 }
 
-// GetByID возвращает peer-review по идентификатору.
+// GetByID возвращает запрос на взаимопроверку по идентификатору.
 func (r *PeerReviewRepo) GetByID(ctx context.Context, id int64) (*PeerReview, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT `+peerReviewColumns+` FROM peer_reviews WHERE id = ?`, id)
@@ -101,7 +78,7 @@ func (r *PeerReviewRepo) GetByID(ctx context.Context, id int64) (*PeerReview, er
 	return review, MapSQLError(err)
 }
 
-// Claim закрепляет ревью за рецензентом, если оно ещё свободно и не истекло.
+// Claim закрепляет проверку за рецензентом, если она ещё свободна.
 func (r *PeerReviewRepo) Claim(ctx context.Context, tx *sql.Tx, reviewID, reviewerID int64) (*PeerReview, error) {
 	row := tx.QueryRowContext(ctx,
 		`UPDATE peer_reviews
@@ -111,32 +88,49 @@ func (r *PeerReviewRepo) Claim(ctx context.Context, tx *sql.Tx, reviewID, review
 		reviewerID, PeerReviewStatusInReview, reviewID, PeerReviewStatusCreated)
 
 	review, err := scanPeerReview(row)
-	if err != nil {
-		return nil, MapSQLError(err)
-	}
 
-	return review, nil
+	return review, MapSQLError(err)
 }
 
-// Complete закрывает ревью и выплачивает вознаграждение рецензенту.
-func (r *PeerReviewRepo) Complete(ctx context.Context, tx *sql.Tx, reviewID, reviewerID int64, results string) (*PeerReview, error) {
+// Complete закрывает проверку: фиксирует оценку и комментарий. XP рецензенту
+// пока не начисляется — награда приходит после вердикта преподавателя.
+func (r *PeerReviewRepo) Complete(
+	ctx context.Context,
+	tx *sql.Tx,
+	reviewID, reviewerID int64,
+	grade int,
+	comment string,
+) (*PeerReview, error) {
 	row := tx.QueryRowContext(ctx,
 		`UPDATE peer_reviews
-		 SET status = ?, comments = ?, completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+		 SET status = ?, grade = ?, comment = ?,
+		     completed_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
 		 WHERE id = ? AND status = ? AND reviewer_id = ?
 		 RETURNING `+peerReviewColumns,
-		PeerReviewStatusCompleted, results, reviewID, PeerReviewStatusInReview, reviewerID)
+		PeerReviewStatusCompleted, grade, comment, reviewID, PeerReviewStatusInReview, reviewerID)
 
 	review, err := scanPeerReview(row)
-	if err != nil {
-		return nil, MapSQLError(err)
+
+	return review, MapSQLError(err)
+}
+
+// RewardReviewer начисляет рецензенту награду после того, как преподаватель
+// принял работу. Идемпотентно: повторный вызов возвращает уже выписанную награду.
+func (r *PeerReviewRepo) RewardReviewer(
+	ctx context.Context,
+	tx *sql.Tx,
+	review *PeerReview,
+	amount int,
+) (*LedgerEntry, error) {
+	if review.RewardLedgerID != nil {
+		return r.ledger.GetByID(ctx, tx, *review.RewardLedgerID)
 	}
 
 	sourceID := review.ID
 
 	entry, err := r.ledger.Post(ctx, tx, PostLedgerInput{
-		UserID:         reviewerID,
-		Amount:         review.RewardAmount,
+		UserID:         *review.ReviewerID,
+		Amount:         amount,
 		Reason:         ReasonPeerReviewReward,
 		SourceType:     SourcePeerReview,
 		SourceID:       &sourceID,
@@ -146,12 +140,18 @@ func (r *PeerReviewRepo) Complete(ctx context.Context, tx *sql.Tx, reviewID, rev
 		return nil, err
 	}
 
-	review.EscrowLedgerID = entry.ID
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE peer_reviews SET reward_ledger_id = ? WHERE id = ?`,
+		entry.ID, review.ID); err != nil {
+		return nil, MapSQLError(err)
+	}
 
-	return review, nil
+	review.RewardLedgerID = &entry.ID
+
+	return entry, nil
 }
 
-// Expire закрывает просроченное ревью и возвращает escrow автору.
+// Expire закрывает просроченную проверку без выплат.
 func (r *PeerReviewRepo) Expire(ctx context.Context, tx *sql.Tx, reviewID int64) (*PeerReview, error) {
 	row := tx.QueryRowContext(ctx,
 		`UPDATE peer_reviews
@@ -161,30 +161,11 @@ func (r *PeerReviewRepo) Expire(ctx context.Context, tx *sql.Tx, reviewID int64)
 		PeerReviewStatusExpired, reviewID, PeerReviewStatusCreated, PeerReviewStatusInReview)
 
 	review, err := scanPeerReview(row)
-	if err != nil {
-		return nil, MapSQLError(err)
-	}
 
-	sourceID := review.ID
-
-	entry, err := r.ledger.Post(ctx, tx, PostLedgerInput{
-		UserID:         review.AuthorID,
-		Amount:         review.EscrowAmount,
-		Reason:         ReasonAdminAdjustment,
-		SourceType:     SourcePeerReview,
-		SourceID:       &sourceID,
-		IdempotencyKey: peerRefundKey(review.ID),
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	review.EscrowLedgerID = entry.ID
-
-	return review, nil
+	return review, MapSQLError(err)
 }
 
-// CountActiveByReviewer считает ревью рецензента, взятые и ещё не закрытые.
+// CountActiveByReviewer считает проверки рецензента, взятые и ещё не закрытые.
 func (r *PeerReviewRepo) CountActiveByReviewer(ctx context.Context, reviewerID int64) (int, error) {
 	row := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(1) FROM peer_reviews WHERE reviewer_id = ? AND status = ?`,
@@ -199,14 +180,62 @@ func (r *PeerReviewRepo) CountActiveByReviewer(ctx context.Context, reviewerID i
 	return count, nil
 }
 
+// CountCompletedByReviewer считает завершённые проверки рецензента.
+func (r *PeerReviewRepo) CountCompletedByReviewer(ctx context.Context, reviewerID int64) (int, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM peer_reviews WHERE reviewer_id = ? AND status = ?`,
+		reviewerID, PeerReviewStatusCompleted)
+
+	var count int
+
+	if err := row.Scan(&count); err != nil {
+		return 0, MapSQLError(err)
+	}
+
+	return count, nil
+}
+
+// GetCompletedBySubmission возвращает завершённую проверку работы. Чтение идёт
+// через *sql.DB — вызывать строго до BeginTx: пул ограничен одним соединением.
+func (r *PeerReviewRepo) GetCompletedBySubmission(ctx context.Context, submissionID int64) (*PeerReview, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT `+peerReviewColumns+`
+		 FROM peer_reviews
+		 WHERE submission_id = ? AND status = ?
+		 ORDER BY id DESC
+		 LIMIT 1`, submissionID, PeerReviewStatusCompleted)
+
+	review, err := scanPeerReview(row)
+
+	return review, MapSQLError(err)
+}
+
+// HasCompletedForSubmission сообщает, есть ли у работы завершённая проверка.
+func (r *PeerReviewRepo) HasCompletedForSubmission(ctx context.Context, submissionID int64) (bool, error) {
+	var exists int
+
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM peer_reviews WHERE submission_id = ? AND status = ?`,
+		submissionID, PeerReviewStatusCompleted).Scan(&exists)
+	if err != nil {
+		return false, MapSQLError(err)
+	}
+
+	return exists > 0, nil
+}
+
 // scanPeerReview читает строку peer_reviews из row или rows.
 func scanPeerReview(from row) (*PeerReview, error) {
 	var (
-		review               PeerReview
-		reviewerID           sql.NullInt64
-		comments             sql.NullString
-		createdAt, expiresAt string
-		takenAt, completedAt sql.NullString
+		review         PeerReview
+		reviewerID     sql.NullInt64
+		grade          sql.NullInt64
+		comment        sql.NullString
+		createdAt      string
+		expiresAt      string
+		takenAt        sql.NullString
+		completedAt    sql.NullString
+		rewardLedgerID sql.NullInt64
 	)
 
 	if err := from.Scan(
@@ -214,21 +243,26 @@ func scanPeerReview(from row) (*PeerReview, error) {
 		&review.SubmissionID,
 		&review.AuthorID,
 		&reviewerID,
-		&review.CriteriaChecklist,
-		&comments,
 		&review.Status,
-		&review.EscrowAmount,
-		&review.RewardAmount,
+		&grade,
+		&comment,
 		&createdAt,
 		&takenAt,
 		&completedAt,
 		&expiresAt,
+		&rewardLedgerID,
 	); err != nil {
 		return nil, err
 	}
 
 	review.ReviewerID = scanInt64Ptr(reviewerID)
-	review.Comments = scanString(comments)
+	review.RewardLedgerID = scanInt64Ptr(rewardLedgerID)
+	review.Comment = scanString(comment)
+
+	if grade.Valid {
+		value := int(grade.Int64)
+		review.Grade = &value
+	}
 
 	var err error
 
@@ -249,4 +283,14 @@ func scanPeerReview(from row) (*PeerReview, error) {
 	}
 
 	return &review, nil
+}
+
+// ValidPeerGrade проверяет оценку взаимопроверки.
+func ValidPeerGrade(grade int) bool {
+	return grade >= 1 && grade <= 5
+}
+
+// ValidPeerComment проверяет комментарий: непустой и не длиннее лимита.
+func ValidPeerComment(comment string) bool {
+	return len([]rune(comment)) > 0 && len([]rune(comment)) <= maxPeerCommentRunes
 }

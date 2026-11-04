@@ -8,52 +8,25 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/submission"
-	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
-// teacher_api.go — MVP-эндпоинты кабинета преподавателя и админки, которых не
-// было в backend на Спринте 2:
-//   - POST /api/peer-reviews/{id}/award — бонус рецензенту (BUG-003);
-//   - PATCH /api/users/{id} — перенос студента между группами (BUG-004);
+// teacher_api.go — MVP-эндпоинты кабинета преподавателя и админки:
+//   - PATCH /api/users/{id} — перенос ученика между группами (BUG-004);
 //   - GET /api/users?group_id=|?unassigned= — фильтр пользователей (BUG-005);
 //   - GET /api/attachments + /{id} — MVP вложений через redirect (BUG-001/002).
 //
-// Полноценное хранилище вложений — отдельная спека: сейчас backend не хранит
-// файлы, поэтому download отдаёт 302 на artifact_url и ничего не проксирует
-// (SSRF-безопасно). См. BUGLOG BUG-001/002.
+// Взаимопроверка принадлежит ученикам: награда рецензенту приходит сама
+// после вердикта преподавателя. Полноценное хранилище вложений — отдельная
+// спека: download отдаёт 302 на artifact_url и ничего не проксирует.
 
 const (
-	// awardReason — причина проводки бонуса рецензенту.
-	awardReason = storage.ReasonPeerReviewReward
-	// awardMin/awardMax — границы бонуса из контракта BUG-003.
-	awardMin = 1
-	awardMax = 1_000
-	// awardCommentLimit — максимальная длина комментария в рунах.
-	awardCommentLimit = 500
 	// attachmentIDPrefix — префикс синтетического id вложения.
 	attachmentIDPrefix = "artifact-"
 )
-
-// peerReviewAwardRequest — тело POST /api/peer-reviews/{id}/award.
-type peerReviewAwardRequest struct {
-	ReviewerID int64  `json:"reviewer_id"`
-	Amount     int    `json:"amount"`
-	Comment    string `json:"comment"`
-}
-
-// peerReviewAwardResponse — ответ начисления бонуса.
-type peerReviewAwardResponse struct {
-	PeerReviewID int64 `json:"peer_review_id"`
-	ReviewerID   int64 `json:"reviewer_id"`
-	Amount       int   `json:"amount"`
-	TotalXP      int   `json:"total_xp"`
-	LedgerID     int64 `json:"ledger_id"`
-}
 
 // filteredUserItem — элемент GET /api/users?group_id= / ?unassigned=true.
 type filteredUserItem struct {
@@ -81,105 +54,6 @@ type attachmentItem struct {
 // attachmentListResponse — конверт списка вложений.
 type attachmentListResponse struct {
 	Items []attachmentItem `json:"items"`
-}
-
-// handlePeerReviewAward начисляет бонусный XP рецензенту завершённой P2P-сессии.
-func (s *Server) handlePeerReviewAward(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.principalOr401(w, r)
-	if !ok {
-		return
-	}
-
-	if !requireRole(w, p, RoleTeacher, RoleAdmin) {
-		return
-	}
-
-	id, err := parsePathID(r, "id")
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	var req peerReviewAwardRequest
-
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-
-	if req.ReviewerID <= 0 || req.Amount < awardMin || req.Amount > awardMax ||
-		utf8.RuneCountInString(req.Comment) > awardCommentLimit {
-		writeError(w, domainerrors.ErrInvalidArgument)
-
-		return
-	}
-
-	// Чтения — строго до BeginTx: пул ограничен одним соединением.
-	review, err := s.peerReviews.GetByID(r.Context(), id)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	if review.Status != storage.PeerReviewStatusCompleted {
-		writeError(w, domainerrors.ErrInvalidTransition)
-
-		return
-	}
-
-	if review.ReviewerID == nil || *review.ReviewerID != req.ReviewerID {
-		writeError(w, domainerrors.ErrGuardFailed)
-
-		return
-	}
-
-	sourceID := review.ID
-
-	var entry *storage.LedgerEntry
-
-	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
-		var postErr error
-
-		entry, postErr = s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
-			UserID:         req.ReviewerID,
-			Amount:         req.Amount,
-			Reason:         awardReason,
-			SourceType:     storage.SourcePeerReview,
-			SourceID:       &sourceID,
-			IdempotencyKey: fmt.Sprintf("peer_review:%d:award", review.ID),
-		})
-
-		return postErr
-	})
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	// WS — только после Commit: событие уведомляет, но не является источником истины.
-	s.publishPeerReviewState(r.Context(), review, req.ReviewerID)
-	s.publisher.Publish(r.Context(), events.New(
-		events.TypeXPLedgerPosted,
-		req.ReviewerID,
-		events.RoomUser(req.ReviewerID),
-		xpLedgerPostedPayload{
-			LedgerID:     entry.ID,
-			UserID:       entry.UserID,
-			Amount:       entry.Amount,
-			BalanceAfter: entry.BalanceAfter,
-			Reason:       entry.Reason,
-		},
-	))
-
-	writeJSON(w, http.StatusOK, peerReviewAwardResponse{
-		PeerReviewID: review.ID,
-		ReviewerID:   req.ReviewerID,
-		Amount:       entry.Amount,
-		TotalXP:      entry.BalanceAfter,
-		LedgerID:     entry.ID,
-	})
 }
 
 // handleUserGroupPatch переносит студента в другую группу или убирает из группы.

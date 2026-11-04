@@ -27,7 +27,6 @@ func TestStudentCannotCallStaffEndpoints(t *testing.T) {
 		{http.MethodGet, "/api/groups", nil},
 		{http.MethodPost, "/api/groups", map[string]any{}},
 		{http.MethodDelete, "/api/groups/1", nil},
-		{http.MethodGet, "/api/peer-reviews", nil},
 		{http.MethodGet, "/api/assignments", nil},
 		{http.MethodPost, "/api/submissions/1/verdict", map[string]any{"verdict": "ACCEPT"}},
 	}

@@ -120,6 +120,16 @@ func (r *XPLedgerRepo) GetByIdempotencyKey(ctx context.Context, tx *sql.Tx, key 
 	return entry, MapSQLError(err)
 }
 
+// GetByID возвращает проводку по идентификатору внутри транзакции.
+func (r *XPLedgerRepo) GetByID(ctx context.Context, tx *sql.Tx, id int64) (*LedgerEntry, error) {
+	row := tx.QueryRowContext(ctx,
+		`SELECT `+ledgerColumns+` FROM xp_ledger WHERE id = ?`, id)
+
+	entry, err := scanLedgerEntry(row)
+
+	return entry, MapSQLError(err)
+}
+
 // ListByUser возвращает проводки пользователя от новых к старым.
 func (r *XPLedgerRepo) ListByUser(ctx context.Context, tx *sql.Tx, userID int64) ([]LedgerEntry, error) {
 	rows, err := tx.QueryContext(ctx,

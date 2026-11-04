@@ -12,37 +12,23 @@ func TestPeerReviewRepoFullCycle(t *testing.T) {
 	db := testDB(t)
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
-	submissions := NewSubmissionRepo(db)
-
-	topUpXP(t, db, ids.student1, 500)
 
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
 
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	if created.Status != PeerReviewStatusCreated {
 		t.Fatalf("Status = %q, want CREATED", created.Status)
 	}
 
-	if created.EscrowAmount != 80 || created.RewardAmount != 80 {
-		t.Fatalf("escrow/reward = %d/%d, want 80/80", created.EscrowAmount, created.RewardAmount)
-	}
-
-	if created.EscrowLedgerID == 0 {
-		t.Fatal("EscrowLedgerID must reference the escrow hold")
-	}
-
+	// Взаимопроверка больше не списывает XP у автора.
 	author, err := NewUserRepo(db).GetByID(context.Background(), ids.student1)
 	if err != nil {
 		t.Fatalf("GetByID(author): %v", err)
 	}
 
-	if author.XPBalance != 420 {
-		t.Fatalf("author balance = %d, want 420 after escrow", author.XPBalance)
-	}
-
-	if _, err := submissions.GetByID(context.Background(), sub.ID); err != nil {
-		t.Fatalf("submission must remain readable: %v", err)
+	if author.XPBalance != 0 {
+		t.Fatalf("author balance = %d, want 0 (no escrow)", author.XPBalance)
 	}
 
 	// CREATED → IN_REVIEW
@@ -69,17 +55,24 @@ func TestPeerReviewRepoFullCycle(t *testing.T) {
 		t.Fatalf("commit claim: %v", err)
 	}
 
-	// IN_REVIEW → COMPLETED
+	// IN_REVIEW → COMPLETED: только оценка и комментарий.
 	tx2 := testTx(t, db)
 
-	completed, err := repo.Complete(context.Background(), tx2, created.ID, ids.student3,
-		`[{"code":"C1","passed":true}]`)
+	completed, err := repo.Complete(context.Background(), tx2, created.ID, ids.student3, 4, "Хорошая работа, но не хватает тестов")
 	if err != nil {
 		t.Fatalf("Complete: %v", err)
 	}
 
 	if completed.Status != PeerReviewStatusCompleted {
 		t.Fatalf("Status = %q, want COMPLETED", completed.Status)
+	}
+
+	if completed.Grade == nil || *completed.Grade != 4 {
+		t.Fatalf("Grade = %v, want 4", completed.Grade)
+	}
+
+	if completed.Comment == "" {
+		t.Fatal("Comment must be stored")
 	}
 
 	if completed.CompletedAt == nil {
@@ -90,38 +83,76 @@ func TestPeerReviewRepoFullCycle(t *testing.T) {
 		t.Fatalf("commit complete: %v", err)
 	}
 
+	// Награда рецензенту появляется только после приёмки работы учителем.
 	reviewer, err := NewUserRepo(db).GetByID(context.Background(), ids.student3)
 	if err != nil {
 		t.Fatalf("GetByID(reviewer): %v", err)
 	}
 
-	if reviewer.XPBalance != 80 {
-		t.Fatalf("reviewer balance = %d, want reward 80", reviewer.XPBalance)
+	if reviewer.XPBalance != 0 {
+		t.Fatalf("reviewer balance = %d, want 0 before teacher verdict", reviewer.XPBalance)
+	}
+
+	tx3 := testTx(t, db)
+
+	if _, err := repo.RewardReviewer(context.Background(), tx3, completed, 40); err != nil {
+		t.Fatalf("RewardReviewer: %v", err)
+	}
+
+	if err := tx3.Commit(); err != nil {
+		t.Fatalf("commit reward: %v", err)
+	}
+
+	reviewer, err = NewUserRepo(db).GetByID(context.Background(), ids.student3)
+	if err != nil {
+		t.Fatalf("GetByID(reviewer): %v", err)
+	}
+
+	if reviewer.XPBalance != 40 {
+		t.Fatalf("reviewer balance = %d, want reward 40", reviewer.XPBalance)
+	}
+
+	// Повторная награда идемпотентна: completed уже знает reward_ledger_id.
+	tx4 := testTx(t, db)
+
+	if _, err := repo.RewardReviewer(context.Background(), tx4, completed, 40); err != nil {
+		t.Fatalf("RewardReviewer repeat: %v", err)
+	}
+
+	if err := tx4.Commit(); err != nil {
+		t.Fatalf("commit repeat: %v", err)
+	}
+
+	reviewer, err = NewUserRepo(db).GetByID(context.Background(), ids.student3)
+	if err != nil {
+		t.Fatalf("GetByID(reviewer): %v", err)
+	}
+
+	if reviewer.XPBalance != 40 {
+		t.Fatalf("reviewer balance = %d, want 40 after repeat reward", reviewer.XPBalance)
 	}
 }
 
-func TestPeerReviewRepoCreateWithoutXP(t *testing.T) {
+func TestPeerReviewRepoCreateIsFree(t *testing.T) {
 	db := testDB(t)
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
 
-	tx := testTx(t, db)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
-	_, err := repo.Create(context.Background(), tx, CreatePeerReviewInput{
-		SubmissionID:      sub.ID,
-		AuthorID:          ids.student1,
-		EscrowAmount:      80,
-		ExpiresAt:         time.Date(2027, 12, 20, 18, 0, 0, 0, time.UTC),
-		CriteriaChecklist: `[]`,
-	})
-	if !domainerrors.IsSentinel(err, domainerrors.ErrInsufficientXP) {
-		t.Fatalf("err = %v, want ErrInsufficientXP", err)
+	if created.ID <= 0 {
+		t.Fatalf("created id = %d", created.ID)
 	}
 
-	if err := tx.Rollback(); err != nil {
-		t.Fatalf("rollback: %v", err)
+	var ledgerCount int
+	if err := db.QueryRow(`SELECT COUNT(1) FROM xp_ledger`).Scan(&ledgerCount); err != nil {
+		t.Fatalf("count ledger: %v", err)
+	}
+
+	if ledgerCount != 0 {
+		t.Fatalf("ledger rows = %d, want 0: взаимопроверка без списаний", ledgerCount)
 	}
 }
 
@@ -130,10 +161,8 @@ func TestPeerReviewRepoClaimTwiceFails(t *testing.T) {
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
-	topUpXP(t, db, ids.student1, 500)
-
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	claimReview(t, db, repo, created.ID, ids.student3)
 
@@ -149,29 +178,25 @@ func TestPeerReviewRepoClaimByWrongReviewerFails(t *testing.T) {
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
-	topUpXP(t, db, ids.student1, 500)
-
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	claimReview(t, db, repo, created.ID, ids.student3)
 
 	tx := testTx(t, db)
 
-	if _, err := repo.Complete(context.Background(), tx, created.ID, ids.student2, `[]`); !domainerrors.IsSentinel(err, domainerrors.ErrNotFound) {
+	if _, err := repo.Complete(context.Background(), tx, created.ID, ids.student2, 5, "чужой рецензент"); !domainerrors.IsSentinel(err, domainerrors.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound when another student completes", err)
 	}
 }
 
-func TestPeerReviewRepoExpireRefundsAuthor(t *testing.T) {
+func TestPeerReviewRepoExpireWithoutRefund(t *testing.T) {
 	db := testDB(t)
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
-	topUpXP(t, db, ids.student1, 500)
-
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	tx := testTx(t, db)
 
@@ -193,8 +218,8 @@ func TestPeerReviewRepoExpireRefundsAuthor(t *testing.T) {
 		t.Fatalf("GetByID(author): %v", err)
 	}
 
-	if author.XPBalance != 500 {
-		t.Fatalf("author balance = %d, want 500 after refund", author.XPBalance)
+	if author.XPBalance != 0 {
+		t.Fatalf("author balance = %d, want 0", author.XPBalance)
 	}
 }
 
@@ -203,10 +228,8 @@ func TestPeerReviewRepoExpireTerminalFails(t *testing.T) {
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
-	topUpXP(t, db, ids.student1, 500)
-
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	expireReview(t, db, repo, created.ID)
 
@@ -222,10 +245,8 @@ func TestPeerReviewRepoCountActiveByReviewer(t *testing.T) {
 	ids := seed(t, db)
 	repo := NewPeerReviewRepo(db)
 
-	topUpXP(t, db, ids.student1, 500)
-
 	sub := createSubmission(t, db, ids.taskLab, ids.student2)
-	created := createPeerReview(t, db, repo, sub.ID, ids.student1, 80)
+	created := createPeerReview(t, db, repo, sub.ID, ids.student1)
 
 	count, err := repo.CountActiveByReviewer(context.Background(), ids.student3)
 	if err != nil {
@@ -248,18 +269,43 @@ func TestPeerReviewRepoCountActiveByReviewer(t *testing.T) {
 	}
 }
 
-// createPeerReview заводит peer-review в отдельной транзакции.
-func createPeerReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, submissionID, authorID int64, escrow int) *PeerReview {
+func TestPeerGradeAndCommentValidation(t *testing.T) {
+	if ValidPeerGrade(0) || ValidPeerGrade(6) {
+		t.Fatal("grade must be 1..5")
+	}
+
+	if !ValidPeerGrade(3) {
+		t.Fatal("grade 3 must be valid")
+	}
+
+	if ValidPeerComment("") {
+		t.Fatal("empty comment must be rejected")
+	}
+
+	if !ValidPeerComment("коротко и по делу") {
+		t.Fatal("short comment must be valid")
+	}
+
+	long := make([]rune, 101)
+	for i := range long {
+		long[i] = 'а'
+	}
+
+	if ValidPeerComment(string(long)) {
+		t.Fatal("comment longer than 100 runes must be rejected")
+	}
+}
+
+// createPeerReview заводит взаимопроверку в отдельной транзакции.
+func createPeerReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, submissionID, authorID int64) *PeerReview {
 	t.Helper()
 
 	tx := testTx(t, db)
 
 	review, err := repo.Create(context.Background(), tx, CreatePeerReviewInput{
-		SubmissionID:      submissionID,
-		AuthorID:          authorID,
-		EscrowAmount:      escrow,
-		ExpiresAt:         time.Date(2027, 12, 20, 18, 0, 0, 0, time.UTC),
-		CriteriaChecklist: `[{"code":"C1","title":"Компилируется","weight":1}]`,
+		SubmissionID: submissionID,
+		AuthorID:     authorID,
+		ExpiresAt:    time.Date(2027, 12, 20, 18, 0, 0, 0, time.UTC),
 	})
 	if err != nil {
 		t.Fatalf("Create peer review: %v", err)
@@ -272,7 +318,7 @@ func createPeerReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, submissionI
 	return review
 }
 
-// claimReview закрепляет ревью за рецензентом в отдельной транзакции.
+// claimReview закрепляет проверку за рецензентом в отдельной транзакции.
 func claimReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, reviewID, reviewerID int64) *PeerReview {
 	t.Helper()
 
@@ -290,7 +336,7 @@ func claimReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, reviewID, review
 	return review
 }
 
-// expireReview закрывает ревью по сроку в отдельной транзакции.
+// expireReview закрывает проверку по сроку в отдельной транзакции.
 func expireReview(t *testing.T, db *sqlDB, repo *PeerReviewRepo, reviewID int64) *PeerReview {
 	t.Helper()
 

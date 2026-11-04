@@ -30,6 +30,8 @@ type Task struct {
 	ID                int64
 	AssignmentID      int64
 	Title             string
+	// Topic — короткое ТЗ задания, которое видит ученик.
+	Topic             string
 	DescriptionMD     string
 	TaskType          string
 	RequirementsCount int
@@ -38,7 +40,9 @@ type Task struct {
 	// SpeedrunBonusUntil — назначенная преподавателем граница бонуса за спидран.
 	// nil означает автоматический расчёт: DeadlineAt - SpeedrunWindow.
 	SpeedrunBonusUntil *time.Time
-	SpeedrunWindow    time.Duration
+	SpeedrunWindow     time.Duration
+	// Attachments — JSON-массив вложений, приложенных преподавателем.
+	Attachments       string
 	TeamSize          int
 	BaseXP            int
 	AssignedTeacherID int64
