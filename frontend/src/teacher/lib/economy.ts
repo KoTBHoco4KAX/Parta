@@ -48,6 +48,64 @@ export function speedrunEndsAt(deadlineAt: string | Date, windowHours: number): 
   return new Date(deadline.getTime() - windowMs);
 }
 
+/**
+ * autoSpeedrunEnd — автоматическая граница бонуса ×1.5.
+ *
+ * Правило подобрано под реальные сроки выдачи:
+ *  - задание на следующий день: бонус до 18:00 дня выдачи (а если 18:00 уже
+ *    прошло — до середины оставшегося до дедлайна времени);
+ *  - задание на несколько дней: бонус до 21:00 следующего дня. Например,
+ *    выдали в понедельник до четверга — бонус до 21:00 вторника.
+ * Бонус всегда остаётся в будущем и строго раньше дедлайна.
+ */
+export function autoSpeedrunEnd(deadlineAt: Date, now = new Date()): Date {
+  const deadline = toDate(deadlineAt);
+  const remaining = deadline.getTime() - now.getTime();
+
+  // Совсем короткий срок: бонус — середина окна, иначе он окажется в прошлом.
+  if (remaining <= 2 * 3_600_000) {
+    return new Date(now.getTime() + Math.max(60_000, remaining / 2));
+  }
+
+  const dayAfter = new Date(now);
+  dayAfter.setDate(dayAfter.getDate() + 1);
+  dayAfter.setHours(21, 0, 0, 0);
+
+  const sameDayEvening = new Date(now);
+  sameDayEvening.setHours(18, 0, 0, 0);
+
+  let candidate: Date;
+
+  if (deadline.getTime() <= dayAfter.getTime()) {
+    // Дедлайн наступит раньше вечера следующего дня: бонус — сегодняшний вечер,
+    // а если он уже прошёл, то середина оставшегося времени.
+    candidate =
+      sameDayEvening.getTime() > now.getTime()
+        ? sameDayEvening
+        : new Date(now.getTime() + remaining / 2);
+  } else {
+    candidate = dayAfter;
+  }
+
+  // Оставляем хотя бы час на сдачу и не позволяем бонусу дойти до дедлайна.
+  const earliest = new Date(now.getTime() + 3_600_000);
+  const latest = new Date(deadline.getTime() - 3_600_000);
+
+  if (earliest.getTime() > latest.getTime()) {
+    return new Date(now.getTime() + remaining / 2);
+  }
+
+  if (candidate.getTime() < earliest.getTime()) {
+    return earliest;
+  }
+
+  if (candidate.getTime() > latest.getTime()) {
+    return latest;
+  }
+
+  return candidate;
+}
+
 /** submissionWindow определяет, в какое окно попала сдача. */
 export function submissionWindow(
   submittedAt: string | Date | null,

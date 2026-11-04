@@ -11,6 +11,7 @@ import {
 import type { ToastData } from '../types';
 import {
   SPEEDRUN_MULTIPLIER,
+  autoSpeedrunEnd,
   estimateBaseXP,
   speedrunEndsAt,
 } from '../lib/economy';
@@ -446,9 +447,10 @@ function IssueTaskModal({
     0,
   );
 
-  // Дата бонуса — авто: дедлайн − 48 часов; преподаватель может её изменить.
-  const autoBonusEnd =
-    deadlineDate !== null ? speedrunEndsAt(deadlineDate, DEFAULT_BONUS_HOURS) : null;
+  // Дата бонуса считается динамически от дедлайна (см. autoSpeedrunEnd):
+  // на следующий день — сегодняшний вечер, на несколько дней — вечер
+  // следующего дня. Преподаватель может переписать её вручную.
+  const autoBonusEnd = deadlineDate !== null ? autoSpeedrunEnd(deadlineDate) : null;
   const autoBonusValue = autoBonusEnd ? toLocalInput(autoBonusEnd) : '';
   const bonusValue = bonusTouched ? bonusUntilLocal : autoBonusValue;
   const bonusUntilDate = bonusValue ? parseLocalInput(bonusValue) : null;
@@ -461,6 +463,12 @@ function IssueTaskModal({
 
   const bonusEnd = bonusUntilDate ?? autoBonusEnd;
 
+  // Окно бонуса в часах: сервер хранит его для формул и старых клиентов.
+  const bonusWindowHours =
+    bonusUntilDate !== null
+      ? Math.max(1, Math.round((bonusUntilDate.getTime() - Date.now()) / 3_600_000))
+      : DEFAULT_BONUS_HOURS;
+
   const xpNumber = Number(xpOverride);
   const xpValid = xpOverride.trim() === '' || (Number.isFinite(xpNumber) && xpNumber > 0);
   const finalXP = xpOverride.trim() !== '' && xpValid ? Math.round(xpNumber) : estimatedBaseXP;
@@ -469,6 +477,12 @@ function IssueTaskModal({
   const assignmentError =
     submitted && selectedIds.length === 0 ? 'Выберите хотя бы один поток' : null;
   const deadlineError = submitted && !deadlineValid ? 'Дедлайн должен быть в будущем' : null;
+
+  // Смена дедлайна пересчитывает бонус заново: он всегда «привязан» к сроку.
+  function changeDeadline(next: string) {
+    setDeadline(next);
+    setBonusTouched(false);
+  }
 
   async function handleSubmit() {
     setSubmitted(true);
@@ -499,11 +513,8 @@ function IssueTaskModal({
           descriptionMD: '',
           taskType,
           deadlineAt: deadlineDate.toISOString(),
-          speedrunWindowHours: DEFAULT_BONUS_HOURS,
-          speedrunBonusUntil:
-            bonusTouched && bonusUntilValid && bonusUntilDate
-              ? bonusUntilDate.toISOString()
-              : undefined,
+          speedrunWindowHours: bonusWindowHours,
+          speedrunBonusUntil: bonusUntilDate ? bonusUntilDate.toISOString() : undefined,
           teamSize: taskType === 'TEAM_PROJECT' ? teamSize : 1,
           xp: finalXP,
           files,
@@ -692,7 +703,7 @@ function IssueTaskModal({
         >
           <DeadlineInput
             value={deadline}
-            onChange={setDeadline}
+            onChange={changeDeadline}
             invalid={Boolean(deadlineError)}
           />
         </Field>
@@ -708,7 +719,7 @@ function IssueTaskModal({
               key={preset.label}
               size="sm"
               variant="outline"
-              onClick={() => setDeadline(defaultDeadlineLocal(preset.days))}
+              onClick={() => changeDeadline(defaultDeadlineLocal(preset.days))}
             >
               {preset.label}
             </Button>
@@ -717,7 +728,13 @@ function IssueTaskModal({
 
         <Field
           label="Бонус до (спидран)"
-          hint={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : undefined}
+          hint={
+            submitted && !bonusUntilValid
+              ? 'Дата должна быть в будущем и раньше дедлайна'
+              : !bonusTouched && autoBonusEnd
+                ? `Автоматически: ${formatDeadline24(autoBonusEnd)} — можно изменить`
+                : undefined
+          }
           error={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : null}
         >
           <DeadlineInput
