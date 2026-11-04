@@ -34,6 +34,7 @@ type Server struct {
 	submissions *storage.SubmissionRepo
 	ledger      *storage.XPLedgerRepo
 	peerReviews *storage.PeerReviewRepo
+	answers     *storage.AnswerRepo
 	teamSlots   *storage.TeamSlotRepo
 }
 
@@ -66,6 +67,7 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		submissions: storage.NewSubmissionRepo(db),
 		ledger:      storage.NewXPLedgerRepo(db),
 		peerReviews: storage.NewPeerReviewRepo(db),
+		answers:     storage.NewAnswerRepo(db),
 		teamSlots:   storage.NewTeamSlotRepo(db),
 	}
 
@@ -98,6 +100,11 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
 	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
 	protected.Handle("POST /api/submissions/{id}/submit", studentOnly(http.HandlerFunc(s.handleSubmitFile)))
+	protected.Handle("GET /api/answers", studentOnly(http.HandlerFunc(s.handleAnswersOverview)))
+	protected.Handle("GET /api/answers/queue/next", studentOnly(http.HandlerFunc(s.handleNextAnswerDraft)))
+	protected.Handle("POST /api/answers/drafts", studentOnly(http.HandlerFunc(s.handleCreateAnswerDraft)))
+	protected.Handle("POST /api/answers/drafts/{id}/comments", studentOnly(http.HandlerFunc(s.handleAddAnswerComment)))
+	protected.Handle("POST /api/answers/comments/{id}/reaction", studentOnly(http.HandlerFunc(s.handleAnswerReaction)))
 	protected.Handle("GET /api/peer-reviews", anyRole(http.HandlerFunc(s.handleListPeerReviews)))
 	protected.Handle("GET /api/peer-reviews/open", studentOnly(http.HandlerFunc(s.handleListOpenPeerReviews)))
 	protected.Handle("GET /api/assignments", staffOnly(http.HandlerFunc(s.handleListAssignments)))
@@ -113,9 +120,7 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("PATCH /api/submissions/{id}/status", studentOnly(http.HandlerFunc(s.handleSubmissionStatus)))
 	protected.Handle("POST /api/submissions/{id}/verdict", staffOnly(http.HandlerFunc(s.handleVerdict)))
 	protected.Handle("POST /api/users/me/streak-freezes/purchase", studentOnly(http.HandlerFunc(s.handlePurchaseFreezes)))
-	protected.Handle("POST /api/peer-reviews", studentOnly(http.HandlerFunc(s.handleCreatePeerReview)))
-	protected.Handle("POST /api/peer-reviews/{id}/claim", studentOnly(http.HandlerFunc(s.handleClaimPeerReview)))
-	protected.Handle("POST /api/peer-reviews/{id}/complete", studentOnly(http.HandlerFunc(s.handleCompletePeerReview)))
+
 	protected.Handle("POST /api/team-slots/{id}/carry-over", studentOnly(http.HandlerFunc(s.handleCarryOver)))
 	protected.Handle("/", http.HandlerFunc(s.handleNotFound))
 

@@ -23,9 +23,9 @@ type taskAttachment struct {
 
 // taskListView — элемент GET /api/tasks.
 type taskListView struct {
-	ID                  int64   `json:"id"`
-	AssignmentID        int64   `json:"assignment_id"`
-	Title               string  `json:"title"`
+	ID           int64  `json:"id"`
+	AssignmentID int64  `json:"assignment_id"`
+	Title        string `json:"title"`
 	// Topic — короткое ТЗ задания.
 	Topic               string  `json:"topic"`
 	DescriptionMD       string  `json:"description_md"`
@@ -396,11 +396,6 @@ func newSubmissionListView(item storage.SubmissionView) submissionListView {
 
 // newPeerReviewListView собирает DTO взаимопроверки.
 func newPeerReviewListView(item storage.PeerReviewView) peerReviewListView {
-	reward := 0
-	if item.Grade != nil {
-		reward = reviewerReward(*item.Grade)
-	}
-
 	return peerReviewListView{
 		ID:           item.ID,
 		SubmissionID: item.SubmissionID,
@@ -418,6 +413,6 @@ func newPeerReviewListView(item storage.PeerReviewView) peerReviewListView {
 		TakenAt:      formatTimePtr(item.TakenAt),
 		CompletedAt:  formatTimePtr(item.CompletedAt),
 		ExpiresAt:    formatTimestamp(item.ExpiresAt),
-		RewardXP:     reward,
+		RewardXP:     0,
 	}
 }

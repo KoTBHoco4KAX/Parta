@@ -60,9 +60,11 @@ func TestTeacherCannotCallStudentEndpoints(t *testing.T) {
 		{http.MethodPost, "/api/submissions/1/submit", nil},
 		{http.MethodPatch, "/api/submissions/1/status", map[string]any{}},
 		{http.MethodPost, "/api/users/me/streak-freezes/purchase", map[string]any{}},
-		{http.MethodPost, "/api/peer-reviews", map[string]any{}},
-		{http.MethodPost, "/api/peer-reviews/1/claim", nil},
-		{http.MethodPost, "/api/peer-reviews/1/complete", map[string]any{}},
+		{http.MethodGet, "/api/answers", nil},
+		{http.MethodGet, "/api/answers/queue/next", nil},
+		{http.MethodPost, "/api/answers/drafts", map[string]any{}},
+		{http.MethodPost, "/api/answers/drafts/1/comments", map[string]any{}},
+		{http.MethodPost, "/api/answers/comments/1/reaction", map[string]any{}},
 		{http.MethodPost, "/api/team-slots/1/carry-over", nil},
 	}
 

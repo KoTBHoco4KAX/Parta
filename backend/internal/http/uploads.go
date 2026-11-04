@@ -115,8 +115,18 @@ func (s *Server) handleSubmitFile(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// storeUpload сохраняет файл под уникальным именем и возвращает URL, хеш и путь.
+// storeUpload сохраняет файл сдачи под уникальным именем.
 func (s *Server) storeUpload(src io.Reader, originalName string, submissionID int64) (string, string, string, error) {
+	return s.storeUploadPrefixed(src, originalName, fmt.Sprintf("submission-%d", submissionID))
+}
+
+// storeAnswerUpload сохраняет файл черновика «Ответов».
+func (s *Server) storeAnswerUpload(src io.Reader, originalName string) (string, string, string, error) {
+	return s.storeUploadPrefixed(src, originalName, "answer")
+}
+
+// storeUploadPrefixed сохраняет файл под именем `{prefix}-{nano}-{name}`.
+func (s *Server) storeUploadPrefixed(src io.Reader, originalName, prefix string) (string, string, string, error) {
 	dir := s.cfg.UploadDir
 	if dir == "" {
 		dir = "./uploads"
@@ -127,8 +137,8 @@ func (s *Server) storeUpload(src io.Reader, originalName string, submissionID in
 	}
 
 	name := fmt.Sprintf(
-		"submission-%d-%d-%s",
-		submissionID,
+		"%s-%d-%s",
+		prefix,
 		time.Now().UnixNano(),
 		sanitizeUploadName(originalName),
 	)

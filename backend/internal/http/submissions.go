@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	answerdomain "github.com/parta/backend/internal/domain/answers"
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/streak"
 	"github.com/parta/backend/internal/domain/submission"
@@ -435,11 +436,37 @@ func (s *Server) rejectSubmission(w http.ResponseWriter, r *http.Request, sub *s
 			return err
 		}
 
-		return s.submissions.RecordRevision(r.Context(), tx, sub.ID, submission.RevisionEntry{
+		if err := s.submissions.RecordRevision(r.Context(), tx, sub.ID, submission.RevisionEntry{
 			At:      now,
 			ActorID: reviewerID,
 			Comment: comment,
-		})
+		}); err != nil {
+			return err
+		}
+
+		// Отклонение закрывает пул «Ответов»: проверяющие получают 0 XP,
+		// с автора ничего не списывается — при новой попытке будет новый пул.
+		draft, err := s.answers.GetDraftBySubmissionTx(r.Context(), tx, sub.ID)
+		if err != nil {
+			return err
+		}
+
+		if draft == nil {
+			return nil
+		}
+
+		comments, err := s.answers.ListCommentsTx(r.Context(), tx, draft.ID)
+		if err != nil {
+			return err
+		}
+
+		for i := range comments {
+			if err := s.answers.MarkCommentPayout(r.Context(), tx, comments[i].ID, 0, nil); err != nil {
+				return err
+			}
+		}
+
+		return s.answers.MarkSettled(r.Context(), tx, draft.ID, "CLOSED", now)
 	})
 	if err != nil {
 		writeError(w, err)
@@ -466,9 +493,15 @@ func (s *Server) rejectSubmission(w http.ResponseWriter, r *http.Request, sub *s
 	})
 }
 
+// answerRewardNotice — выплата проверяющему после приёмки работы.
+type answerRewardNotice struct {
+	UserID int64
+	Entry  *storage.LedgerEntry
+}
+
 // acceptSubmission начисляет XP и двигает стрик.
-// Если работу проверил другой ученик, XP автора занижается по его оценке,
-// а рецензент получает награду только теперь — после вердикта учителя.
+// Пул «Ответов» выплачивается проверяющим только здесь, при приёмке работы,
+// а автор получает итоговый XP за вычетом выплаченных долей.
 func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *submission.Submission, task *submission.Task, now time.Time) {
 	user, err := s.users.GetByID(r.Context(), sub.StudentID)
 	if err != nil {
@@ -490,44 +523,20 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		reason = storage.ReasonSpeedrunBonus
 	}
 
-	// Завершённая взаимопроверка занижает XP автора в зависимости от оценки.
-	peer, err := s.peerReviews.GetCompletedBySubmission(r.Context(), sub.ID)
-	if err != nil && !errors.Is(err, domainerrors.ErrNotFound) {
-		writeError(w, err)
-
-		return
-	}
-
-	finalXP := baseXPAwarded
-
-	if peer != nil && peer.Grade != nil {
-		finalXP = int(math.Round(float64(baseXPAwarded) * authorXPMultiplier(*peer.Grade)))
-	}
-
 	decision := streak.Decide(streak.UserStreak{
 		OnTimeStreak: user.OnTimeStreak,
 		Freezes:      user.StreakFreezes,
 	}, task.DeadlineAt, now, true, &finalAt)
 
 	var (
-		ledgerEntry *storage.LedgerEntry
-		rewardEntry *storage.LedgerEntry
-		streakAfter int
-		reviewerID  int64
-		reviewer    *storage.User
-		rewardXP    int
+		ledgerEntry   *storage.LedgerEntry
+		finalXP       = baseXPAwarded
+		streakAfter   int
+		totalRewardXP int
+		rewardNotices []answerRewardNotice
 	)
 
-	if peer != nil && peer.ReviewerID != nil && peer.Grade != nil {
-		reviewerID = *peer.ReviewerID
-
-		reviewer, err = s.users.GetByID(r.Context(), reviewerID)
-		if err != nil {
-			writeError(w, err)
-
-			return
-		}
-	}
+	weekStart := answerdomain.WeekStart(now).UTC()
 
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		if _, err := s.submissions.UpdateStatus(r.Context(), tx, storage.UpdateStatusInput{
@@ -540,32 +549,136 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 			return err
 		}
 
-		sourceID := sub.ID
-
-		entry, err := s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
-			UserID:         sub.StudentID,
-			Amount:         finalXP,
-			Reason:         reason,
-			SourceType:     storage.SourceSubmission,
-			SourceID:       &sourceID,
-			IdempotencyKey: "submission:" + strconv.FormatInt(sub.ID, 10) + ":accept:" + reason,
-		})
+		// Взаимопроверка «Ответы»: пул удерживается из будущей награды и
+		// выплачивается только сейчас, при приёмке работы преподавателем.
+		draft, err := s.answers.GetDraftBySubmissionTx(r.Context(), tx, sub.ID)
 		if err != nil {
 			return err
 		}
 
-		ledgerEntry = entry
-
-		if peer != nil && peer.Grade != nil {
-			reward := reviewerReward(*peer.Grade)
-
-			posted, err := s.peerReviews.RewardReviewer(r.Context(), tx, peer, reward)
+		if draft != nil {
+			comments, err := s.answers.ListCommentsTx(r.Context(), tx, draft.ID)
 			if err != nil {
 				return err
 			}
 
-			rewardEntry = posted
-			rewardXP = reward
+			percentages := make([]int, len(comments))
+			payouts := make([]int, len(comments))
+
+			if len(comments) == 2 {
+				percentages[0], percentages[1] = answerdomain.PayoutPercents(
+					comments[0].Reaction,
+					comments[1].Reaction,
+				)
+
+				total := 0
+
+				for i := range comments {
+					payouts[i] = int(math.Round(
+						float64(draft.EscrowPoolXP) * float64(percentages[i]) / 100,
+					))
+					total += payouts[i]
+				}
+
+				// Поздняя сдача может дать меньше XP, чем пул: доли урезаются
+				// пропорционально, чтобы автор не ушёл в минус.
+				if total > finalXP && total > 0 {
+					scaled := 0
+
+					for i := range payouts {
+						payouts[i] = int(math.Floor(
+							float64(payouts[i]) * float64(finalXP) / float64(total),
+						))
+						scaled += payouts[i]
+					}
+
+					total = scaled
+				}
+
+				for i := range comments {
+					if payouts[i] <= 0 {
+						if err := s.answers.MarkCommentPayout(r.Context(), tx, comments[i].ID, 0, nil); err != nil {
+							return err
+						}
+
+						continue
+					}
+
+					key := "answer:" + strconv.FormatInt(draft.ID, 10) +
+						":comment:" + strconv.FormatInt(comments[i].ID, 10) + ":reward"
+
+					existing, err := s.ledger.GetByIdempotencyKey(r.Context(), tx, key)
+					if err != nil && !errors.Is(err, domainerrors.ErrNotFound) {
+						return err
+					}
+
+					var entry *storage.LedgerEntry
+
+					if existing != nil {
+						entry = existing
+					} else {
+						sourceID := draft.ID
+
+						entry, err = s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
+							UserID:         comments[i].ReviewerID,
+							Amount:         payouts[i],
+							Reason:         storage.ReasonPeerReviewReward,
+							SourceType:     storage.SourcePeerReview,
+							SourceID:       &sourceID,
+							IdempotencyKey: key,
+						})
+						if err != nil {
+							return err
+						}
+
+						if err := s.answers.AddWeeklyXP(
+							r.Context(), tx, comments[i].ReviewerID, payouts[i], weekStart,
+						); err != nil {
+							return err
+						}
+					}
+
+					if err := s.answers.MarkCommentPayout(
+						r.Context(), tx, comments[i].ID, percentages[i], &entry.ID,
+					); err != nil {
+						return err
+					}
+
+					totalRewardXP += entry.Amount
+					rewardNotices = append(rewardNotices, answerRewardNotice{
+						UserID: comments[i].ReviewerID,
+						Entry:  entry,
+					})
+				}
+
+				finalXP -= total
+			}
+
+			if finalXP < 0 {
+				finalXP = 0
+			}
+
+			if err := s.answers.MarkSettled(r.Context(), tx, draft.ID, "SETTLED", now); err != nil {
+				return err
+			}
+		}
+
+		if finalXP > 0 {
+			sourceID := sub.ID
+
+			entry, err := s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
+				UserID:         sub.StudentID,
+				Amount:         finalXP,
+				Reason:         reason,
+				SourceType:     storage.SourceSubmission,
+				SourceID:       &sourceID,
+				IdempotencyKey: "submission:" + strconv.FormatInt(sub.ID, 10) + ":accept:" + reason,
+			})
+			if err != nil {
+				return err
+			}
+
+			ledgerEntry = entry
 		}
 
 		if err := applyStreak(r.Context(), tx, s, user.ID, decision); err != nil {
@@ -622,32 +735,24 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		},
 	))
 
-	// Награда рецензенту пришла с приёмкой работы — уведомляем его по WS.
-	if rewardEntry != nil && reviewer != nil {
+	for _, notice := range rewardNotices {
 		s.publisher.Publish(r.Context(), events.New(
 			events.TypeXPLedgerPosted,
-			reviewer.ID,
-			events.RoomUser(reviewer.ID),
+			notice.UserID,
+			events.RoomUser(notice.UserID),
 			xpLedgerPostedPayload{
-				LedgerID:     rewardEntry.ID,
-				UserID:       rewardEntry.UserID,
-				Amount:       rewardEntry.Amount,
-				BalanceAfter: rewardEntry.BalanceAfter,
-				Reason:       rewardEntry.Reason,
+				LedgerID:     notice.Entry.ID,
+				UserID:       notice.Entry.UserID,
+				Amount:       notice.Entry.Amount,
+				BalanceAfter: notice.Entry.BalanceAfter,
+				Reason:       notice.Entry.Reason,
 			},
 		))
+	}
 
-		s.publisher.Publish(r.Context(), events.New(
-			events.TypePeerReviewStateChanged,
-			reviewer.ID,
-			events.RoomUser(reviewer.ID),
-			peerReviewStateChangedPayload{
-				PeerReviewID: peer.ID,
-				Status:       peer.Status,
-				ReviewerID:   reviewer.ID,
-				ExpiresAt:    eventTime(peer.ExpiresAt),
-			},
-		))
+	ledgerID := int64(0)
+	if ledgerEntry != nil {
+		ledgerID = ledgerEntry.ID
 	}
 
 	writeJSON(w, http.StatusOK, verdictResponse{
@@ -655,9 +760,8 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		Status:       string(submission.StatusDone),
 		XPAwarded:    finalXP,
 		StreakAfter:  streakAfter,
-		LedgerID:     ledgerEntry.ID,
-		RewardXP:     rewardXP,
-		RewardUserID: reviewerID,
+		LedgerID:     ledgerID,
+		RewardXP:     totalRewardXP,
 	})
 }
 
