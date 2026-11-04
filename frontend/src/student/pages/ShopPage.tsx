@@ -13,8 +13,7 @@ const QUANTITIES = [1, 2, 3];
 
 const REASON_LABEL: Record<LedgerEntry['reason'], string> = {
   TASK_ACCEPT: 'Принятая работа',
-  WAGER_ESCROW: 'Пари: ставка',
-  WAGER_PAYOUT: 'Пари: выплата',
+  SPEEDRUN_BONUS: 'Бонус за спидран',
   STREAK_FREEZE: 'Заморозка стрика',
   ADMIN_ADJUSTMENT: 'Корректировка',
 };
@@ -37,10 +36,9 @@ function achievementsFor(xp: number, streak: number, freezes: number): Achieveme
   ];
 }
 
-// GamificationPage — XP, on-time стрик и заморозки. Покупка заморозки кушает
-// 200 XP за шт. (domain/economy) и при нехватке XP отвечает insufficient_xp —
-// сообщение показывает inline.
-export default function GamificationPage() {
+// ShopPage — магазин ученика: XP, on-time стрик, заморозки и история начислений.
+// Здесь же живут покупки: тратить XP можно только тут.
+export default function ShopPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [streakDays, setStreakDays] = useState<string[]>([]);
@@ -62,7 +60,7 @@ export default function GamificationPage() {
       setStreakDays(nextStreakDays);
       setError(null);
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить прогресс.');
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить магазин.');
     } finally {
       setLoading(false);
     }
@@ -112,9 +110,9 @@ export default function GamificationPage() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-xl font-semibold text-ink">Геймификация</h1>
+        <h1 className="text-xl font-semibold text-ink">Магазин</h1>
         <p className="mt-0.5 text-sm text-ink3">
-          XP — витрина прогресса: дедлайны и приёмку ведёт преподаватель.
+          XP за принятые работы и спидран. Здесь можно потратить их на заморозки стрика.
         </p>
       </div>
 
@@ -266,7 +264,7 @@ export default function GamificationPage() {
                 <p className="truncate text-xs text-ink2">{entry.memo}</p>
                 <p className="text-[10px] text-ink4">
                   <span className="rounded bg-sunken px-1.5 py-0.5 text-[9px] text-ink3">
-                    {REASON_LABEL[entry.reason]}
+                    {REASON_LABEL[entry.reason] ?? entry.reason}
                   </span>{' '}
                   {new Date(entry.createdAt).toLocaleString()}
                 </p>

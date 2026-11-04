@@ -51,13 +51,6 @@ type streakUpdatedPayload struct {
 	Reason        string `json:"reason"`
 }
 
-type wagerResolvedPayload struct {
-	WagerID     int64  `json:"wager_id"`
-	Status      string `json:"status"`
-	StakeAmount int    `json:"stake_amount"`
-	Payout      int    `json:"payout"`
-}
-
 type peerReviewStateChangedPayload struct {
 	PeerReviewID int64  `json:"peer_review_id"`
 	Status       string `json:"status"`

@@ -37,9 +37,9 @@ import {
 /**
  * GroupsPanel — учебные группы и их состав.
  *
- * Состав правится точечно: студента можно перевести в другую группу или убрать
+ * Состав правится точечно: ученика можно перевести в другую группу или убрать
  * из неё (PATCH /api/users/{id} с group_id). Список «без группы» помогает
- * разобрать новых студентов после импорта.
+ * разобрать новых учеников после импорта.
  */
 export function GroupsPanel({
   notify,
@@ -122,7 +122,7 @@ export function GroupsPanel({
       );
       notify({
         tone: 'success',
-        title: groupId === null ? 'Студент вне группы' : 'Студент переведён',
+        title: groupId === null ? 'Ученик вне группы' : 'Ученик переведён',
         description: updated.display_name,
       });
     } catch (cause) {
@@ -150,7 +150,7 @@ export function GroupsPanel({
         tone: 'error',
         title: blocked ? 'Группу нельзя удалить' : 'Не удалось удалить группу',
         description: blocked
-          ? `${group.code}: есть назначения, задания или студенты. Переведите студентов и дождитесь закрытия заданий.`
+          ? `${group.code}: есть назначения, задания или ученики. Переведите учеников и дождитесь закрытия заданий.`
           : cause instanceof ApiError
             ? cause.message
             : 'Проверьте соединение.',
@@ -163,7 +163,7 @@ export function GroupsPanel({
       <ScreenHeader
         eyebrow="Потоки"
         title="Группы"
-        description={`${groups.length} ${pluralize(groups.length, ['группа', 'группы', 'групп'])} · ${users.filter((user) => user.role === 'student').length} ${pluralize(users.filter((user) => user.role === 'student').length, ['студент', 'студента', 'студентов'])}`}
+        description={`${groups.length} ${pluralize(groups.length, ['группа', 'группы', 'групп'])} · ${users.filter((user) => user.role === 'student').length} ${pluralize(users.filter((user) => user.role === 'student').length, ['ученик', 'ученика', 'учеников'])}`}
         action={
           <Button size="sm" onClick={() => setCreating(true)}>
             <IconPlus className="h-4 w-4" />
@@ -241,7 +241,7 @@ export function GroupsPanel({
                   <div className="mt-3 space-y-2">
                     {members.length === 0 ? (
                       <p className="rounded-lg border border-dashed border-line2 px-3 py-2 text-[11px] text-ink3">
-                        В группе нет студентов.
+                        В группе нет учеников.
                       </p>
                     ) : (
                       <ul className="space-y-1.5">
@@ -313,9 +313,9 @@ export function GroupsPanel({
             <Callout
               tone="amber"
               icon={<IconAlert className="h-4 w-4" />}
-              title={`${unassigned.length} ${pluralize(unassigned.length, ['студент без группы', 'студента без группы', 'студентов без группы'])}`}
+              title={`${unassigned.length} ${pluralize(unassigned.length, ['ученик без группы', 'ученика без группы', 'учеников без группы'])}`}
             >
-              Раскройте нужную группу и добавьте студента кнопкой или переведите через
+              Раскройте нужную группу и добавьте ученика кнопкой или переведите через
               выпадающий список в составе.
             </Callout>
           ) : null}
@@ -354,7 +354,7 @@ export function GroupsPanel({
           <p className="text-[12px] leading-relaxed text-ink2">
             {deleting.code} · {deleting.title}. В группе{' '}
             {(byGroup.get(deleting.id) ?? []).length}{' '}
-            {pluralize((byGroup.get(deleting.id) ?? []).length, ['студент', 'студента', 'студентов'])}.
+            {pluralize((byGroup.get(deleting.id) ?? []).length, ['ученик', 'ученика', 'учеников'])}.
             Удаление возможно только если у группы нет назначений и карточек.
           </p>
         </Modal>

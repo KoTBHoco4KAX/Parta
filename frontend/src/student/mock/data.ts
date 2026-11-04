@@ -1,7 +1,7 @@
-// Сид-данные мока студенческого кабинета ПАРТА.
+// Сид-данные мока кабинета ученика ПАРТА.
 //
 // Эти данные имитируют выдачу read-эндпоинтов Фазы 7: GET /api/tasks,
-// GET /api/submissions, GET /api/wagers, /api/users/me. Дедлайны считаются
+// GET /api/submissions, /api/users/me. Дедлайны считаются
 // относительно Date.now(), поэтому демо всегда «живое»: speedrun ещё догоняем,
 // командный проект уже на доработке.
 import type {
@@ -9,7 +9,6 @@ import type {
   BoardTask,
   LedgerEntry,
   Profile,
-  StudentWager,
 } from '../types';
 
 const HOUR = 3_600_000;
@@ -22,13 +21,12 @@ function hoursAgo(hours: number): string {
   return hoursFromNow(-hours);
 }
 
-// DEV-сид групп: группы IS-21 / IS-22, студент в IS-21 (spec PROJECT_MANIFEST §6.4).
+// DEV-сид групп: группы IS-21 / IS-22, ученик в IS-21 (spec PROJECT_MANIFEST §6.4).
 export const seedProfile: Profile = {
   id: 5,
   displayName: 'Никита Хайдаров',
   groupCode: 'IS-21',
-  // 1000 (адджастмент) + 300 (эссе, speedrun ×1.5) − 50 (проигранное пари)
-  // + 150 (выигранное пари ×2) − 200 (заморозка) = 1200 XP.
+  // 1000 (адджастмент) + 300 (эссе, speedrun ×1.5) − 100 (заморозки) = 1200 XP.
   xpBalance: 1200,
   onTimeStreak: 12,
   streakFreezes: 1,
@@ -43,6 +41,7 @@ export const seedTasks: BoardTask[] = [
     taskType: 'LAB_CODE',
     deadlineAt: hoursFromNow(72),
     speedrunWindowHours: 48,
+    speedrunUntil: hoursFromNow(24),
     baseXp: 400,
     teamSize: 1,
   },
@@ -53,6 +52,7 @@ export const seedTasks: BoardTask[] = [
     taskType: 'TEST',
     deadlineAt: hoursFromNow(26),
     speedrunWindowHours: 12,
+    speedrunUntil: hoursFromNow(14),
     baseXp: 150,
     teamSize: 1,
   },
@@ -63,6 +63,7 @@ export const seedTasks: BoardTask[] = [
     taskType: 'ESSAY',
     deadlineAt: hoursFromNow(120),
     speedrunWindowHours: 24,
+    speedrunUntil: hoursFromNow(96),
     baseXp: 200,
     teamSize: 1,
   },
@@ -74,6 +75,7 @@ export const seedTasks: BoardTask[] = [
     taskType: 'TEAM_PROJECT',
     deadlineAt: hoursFromNow(168),
     speedrunWindowHours: 48,
+    speedrunUntil: hoursFromNow(120),
     baseXp: 800,
     teamSize: 2,
   },
@@ -126,32 +128,7 @@ export const seedSubmissions: BoardSubmission[] = [
   },
 ];
 
-export const seedWagers: StudentWager[] = [
-  {
-    id: 201,
-    taskId: 3,
-    taskTitle: 'Эссе: реляционная модель и её границы',
-    taskDeadlineAt: hoursFromNow(120),
-    stakeAmount: 75,
-    deadlineAt: hoursFromNow(120),
-    status: 'WON',
-    createdAt: hoursAgo(96),
-    resolutionNote: 'Работа принята до дедлайна пари — выплата ×2 (150 XP).',
-  },
-  {
-    id: 202,
-    taskId: 4,
-    taskTitle: 'Командный проект: сервис учёта заявок',
-    taskDeadlineAt: hoursFromNow(168),
-    stakeAmount: 50,
-    deadlineAt: hoursAgo(4),
-    status: 'LOST',
-    createdAt: hoursAgo(120),
-    resolutionNote: 'Дедлайн пари прошёл, работа на доработке — ставка не возвращается.',
-  },
-];
-
-// История XP-проводок для экрана геймификации (новые сверху).
+// История XP-проводок для экрана магазина (новые сверху).
 export const seedLedger: LedgerEntry[] = [
   {
     id: 301,
@@ -162,20 +139,13 @@ export const seedLedger: LedgerEntry[] = [
   },
   {
     id: 302,
-    amount: 150,
-    reason: 'WAGER_PAYOUT',
-    memo: 'Пари на эссе: победа ×2',
-    createdAt: hoursAgo(48),
+    amount: 120,
+    reason: 'SPEEDRUN_BONUS',
+    memo: 'Бонус за спидран: лабораторная №1',
+    createdAt: hoursAgo(30),
   },
   {
     id: 303,
-    amount: -50,
-    reason: 'WAGER_ESCROW',
-    memo: 'Пари на командный проект: ставка в escrow',
-    createdAt: hoursAgo(120),
-  },
-  {
-    id: 304,
     amount: 300,
     reason: 'TASK_ACCEPT',
     memo: 'Принято: эссе по реляционной модели (speedrun ×1.5)',

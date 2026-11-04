@@ -6,7 +6,7 @@ import { ThemeToggle } from './ThemeToggle';
 const ROLE_LABEL: Record<Role, string> = {
   admin: 'Админ',
   teacher: 'Преподаватель',
-  student: 'Студент',
+  student: 'Ученик',
 };
 
 export interface AppShellProps {

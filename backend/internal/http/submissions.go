@@ -461,16 +461,9 @@ func (s *Server) rejectSubmission(w http.ResponseWriter, r *http.Request, sub *s
 	})
 }
 
-// acceptSubmission начисляет XP, двигает стрик и закрывает активные пари.
+// acceptSubmission начисляет XP и двигает стрик.
 func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *submission.Submission, task *submission.Task, now time.Time) {
 	user, err := s.users.GetByID(r.Context(), sub.StudentID)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	activeWagers, err := s.wagers.ListActiveByTask(r.Context(), sub.StudentID, task.ID)
 	if err != nil {
 		writeError(w, err)
 
@@ -482,10 +475,11 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		finalAt = *sub.SubmittedAt
 	}
 
-	finalXP := xp.ComputeFinalXP(task.BaseXP, finalAt, task.DeadlineAt, task.SpeedrunWindow)
+	// Бонус за спидран считается от границы, назначенной преподавателем, либо авто.
+	finalXP := xp.ComputeFinalXP(task.BaseXP, finalAt, task.DeadlineAt, task.DeadlineAt.Sub(task.SpeedrunBonusDeadline()))
 	reason := storage.ReasonTaskBase
 
-	if !finalAt.After(task.DeadlineAt.Add(-task.SpeedrunWindow)) {
+	if !finalAt.After(task.SpeedrunBonusDeadline()) {
 		reason = storage.ReasonSpeedrunBonus
 	}
 
@@ -495,9 +489,8 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 	}, task.DeadlineAt, now, true, &finalAt)
 
 	var (
-		ledgerEntry    *storage.LedgerEntry
-		streakAfter    int
-		resolvedWagers []resolvedWager
+		ledgerEntry *storage.LedgerEntry
+		streakAfter int
 	)
 
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
@@ -532,33 +525,6 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		}
 
 		streakAfter = decision.NewStreak
-
-		for i := range activeWagers {
-			wager := activeWagers[i]
-			result := storage.WagerStatusLost
-			note := "работа принята после дедлайна пари"
-
-			if !finalAt.After(wager.DeadlineAt) {
-				result = storage.WagerStatusWon
-				note = "работа принята в срок пари"
-			}
-
-			resolved, err := s.wagers.Resolve(r.Context(), tx, wager.ID, result, note)
-			if err != nil {
-				return err
-			}
-
-			payout := 0
-
-			switch result {
-			case storage.WagerStatusWon:
-				payout = resolved.StakeAmount * 2
-			case storage.WagerStatusCancelled:
-				payout = resolved.StakeAmount
-			}
-
-			resolvedWagers = append(resolvedWagers, resolvedWager{wager: resolved, payout: payout})
-		}
 
 		return nil
 	})
@@ -608,20 +574,6 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		},
 	))
 
-	for _, resolved := range resolvedWagers {
-		s.publisher.Publish(r.Context(), events.New(
-			events.TypeWagerResolved,
-			user.ID,
-			events.RoomUser(user.ID),
-			wagerResolvedPayload{
-				WagerID:     resolved.wager.ID,
-				Status:      resolved.wager.Status,
-				StakeAmount: resolved.wager.StakeAmount,
-				Payout:      resolved.payout,
-			},
-		))
-	}
-
 	writeJSON(w, http.StatusOK, verdictResponse{
 		SubmissionID: sub.ID,
 		Status:       string(submission.StatusDone),
@@ -629,12 +581,6 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 		StreakAfter:  streakAfter,
 		LedgerID:     ledgerEntry.ID,
 	})
-}
-
-// resolvedWager — пари, закрытое внутри транзакции приёмки, и его выплата.
-type resolvedWager struct {
-	wager  *storage.Wager
-	payout int
 }
 
 // applyStreak применяет решение domain/streak внутри транзакции.

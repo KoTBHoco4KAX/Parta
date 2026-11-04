@@ -18,7 +18,7 @@ export type Verdict = 'ACCEPT' | 'REJECT';
 /** Статусы peer-review sandbox из spec/02_FSM.md §3. */
 export type PeerReviewStatus = 'CREATED' | 'IN_REVIEW' | 'COMPLETED' | 'EXPIRED';
 
-/** Группа студентов. */
+/** Группа учеников. */
 export interface Group {
   id: number;
   code: string;
@@ -119,7 +119,7 @@ export type InboxSort = 'waiting' | 'deadline';
 export type PeerReviewFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
 
 /**
- * Вложение, прикреплённое студентом к сдаче.
+ * Вложение, прикреплённое учеником к сдаче.
  * Контракт MVP: `GET /api/attachments?submission_id={id}` (список) и
  * `GET /api/attachments/{id}` (302 на artifact_url).
  */

@@ -12,10 +12,10 @@ const inputClass =
   'w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink placeholder:text-ink4 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine';
 
 /**
- * ReviewerAwardModal — бонус XP студенту-рецензенту за качественную проверку.
+ * ReviewerAwardModal — бонус XP ученику-рецензенту за качественную проверку.
  *
  * Начисление доступно только после COMPLETED: преподаватель не завершает ревью
- * за студента, но может поощрить качество. Сумма ограничена разумным потолком,
+ * за ученика, но может поощрить качество. Сумма ограничена разумным потолком,
  * комментарий необязателен и уходит в аудит начисления.
  */
 export function ReviewerAwardModal({
@@ -43,7 +43,7 @@ export function ReviewerAwardModal({
 
   const reviewerLabel =
     review.reviewerName?.trim() ||
-    (review.reviewerId !== null ? `Студент #${review.reviewerId}` : 'Рецензент');
+    (review.reviewerId !== null ? `Ученик #${review.reviewerId}` : 'Рецензент');
 
   async function handleSubmit() {
     if (!amountValid || review.reviewerId === null) {

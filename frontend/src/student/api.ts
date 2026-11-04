@@ -1,4 +1,4 @@
-// API-слой студенческого кабинета.
+// API-слой кабинета ученика.
 //
 // ЕДИНАЯ ТОЧКА ЗАМЕНЫ МОКОВ НА backend: экраны импортируют только отсюда.
 // Сейчас все вызовы уходят в mock/store.ts (read-эндпоинтов Фазы 7 ещё нет).
@@ -10,7 +10,6 @@ import type {
   LedgerEntry,
   Profile,
   PurchaseFreezesResult,
-  StudentWager,
   SubmissionEvent,
 } from './types';
 
@@ -54,14 +53,3 @@ export function purchaseFreezes(quantity: number): Promise<PurchaseFreezesResult
   return store.purchaseFreezes(quantity);
 }
 
-export function getWagers(): Promise<StudentWager[]> {
-  return store.getWagers();
-}
-
-export function placeWager(input: {
-  taskId: number;
-  stakeAmount: number;
-  deadlineAt: string;
-}): Promise<StudentWager> {
-  return store.placeWager(input);
-}

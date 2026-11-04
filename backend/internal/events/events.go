@@ -19,7 +19,6 @@ const (
 	TypeSubmissionVerdictIssued = "submission.verdict.issued"
 	TypeXPLedgerPosted          = "xp.ledger.posted"
 	TypeStreakUpdated           = "streak.updated"
-	TypeWagerResolved           = "wager.resolved"
 	TypePeerReviewStateChanged  = "peer_review.state_changed"
 	TypeTeamSlotStateChanged    = "team_slot.state_changed"
 	TypeTaskCreated             = "task.created"

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/parta/backend/internal/domain/economy"
@@ -31,15 +32,19 @@ type createTaskRequest struct {
 	ExpectedHours       float64 `json:"expected_hours"`
 	DeadlineAt          string  `json:"deadline_at"`
 	SpeedrunWindowHours int     `json:"speedrun_window_hours"`
-	TeamSize            int     `json:"team_size"`
+	// SpeedrunBonusUntil — необязательная дата окончания бонуса за спидран.
+	// Пусто — граница считается автоматически: deadline − speedrun-окно.
+	SpeedrunBonusUntil string `json:"speedrun_bonus_until"`
+	TeamSize           int    `json:"team_size"`
 }
 
 // createTaskResponse — ответ на создание задания.
 type createTaskResponse struct {
-	TaskID     int64  `json:"task_id"`
-	BaseXP     int    `json:"base_xp_computed"`
-	Status     string `json:"status"`
-	SlotsCount int    `json:"slots_count,omitempty"`
+	TaskID             int64  `json:"task_id"`
+	BaseXP             int    `json:"base_xp_computed"`
+	Status             string `json:"status"`
+	SlotsCount         int    `json:"slots_count,omitempty"`
+	SpeedrunBonusUntil string `json:"speedrun_bonus_until,omitempty"`
 }
 
 // handleCreateTask создаёт задание и, для командного проекта, его слоты.
@@ -59,14 +64,14 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	deadline, groupID, err := s.validateCreateTask(r, p, &req)
+	deadline, bonusUntil, groupID, err := s.validateCreateTask(r, p, &req)
 	if err != nil {
 		writeError(w, err)
 
 		return
 	}
 
-	// Список студентов читается до транзакции: внутри withTx нельзя ходить в *sql.DB.
+	// Список учеников читается до транзакции: внутри withTx нельзя ходить в *sql.DB.
 	students, err := s.users.ListByGroup(r.Context(), groupID)
 	if err != nil {
 		writeError(w, err)
@@ -86,17 +91,18 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	})
 
 	in := storage.CreateTaskInput{
-		AssignmentID:      req.AssignmentID,
-		Title:             req.Title,
-		DescriptionMD:     req.DescriptionMD,
-		TaskType:          req.TaskType,
-		RequirementsCount: req.RequirementsCount,
-		ExpectedHours:     req.ExpectedHours,
-		DeadlineAt:        storage.FormatTimestamp(deadline),
-		SpeedrunWindow:    req.SpeedrunWindowHours,
-		TeamSize:          req.TeamSize,
-		BaseXP:            baseXP,
-		Status:            "PUBLISHED",
+		AssignmentID:       req.AssignmentID,
+		Title:              req.Title,
+		DescriptionMD:      req.DescriptionMD,
+		TaskType:           req.TaskType,
+		RequirementsCount:  req.RequirementsCount,
+		ExpectedHours:      req.ExpectedHours,
+		DeadlineAt:         storage.FormatTimestamp(deadline),
+		SpeedrunWindow:     req.SpeedrunWindowHours,
+		SpeedrunBonusUntil: bonusUntil,
+		TeamSize:           req.TeamSize,
+		BaseXP:             baseXP,
+		Status:             "PUBLISHED",
 	}
 
 	seeds := teamSlotSeeds(req.TaskType, req.TeamSize)
@@ -111,7 +117,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 		taskID = task.ID
 
-		// Каждый студент группы сразу получает карточку TODO: студент не создаёт
+		// Каждый ученик группы сразу получает карточку TODO: ученик не создаёт
 		// задачи и не вводит id вручную.
 		for i := range students {
 			if err := s.submissions.CreateTodoTx(r.Context(), tx, task.ID, students[i].ID); err != nil {
@@ -131,7 +137,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Публикация после Commit: студенты группы получают карточку без ручного
+	// Публикация после Commit: ученики группы получают карточку без ручного
 	// обновления доски, преподаватель — сигнал для своего экрана заданий.
 	event := events.New(
 		events.TypeTaskCreated,
@@ -149,61 +155,108 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 	s.publisher.Publish(r.Context(), event.InRoom(events.RoomTeacher(p.UserID)))
 
 	writeJSON(w, http.StatusCreated, createTaskResponse{
-		TaskID:     taskID,
-		BaseXP:     baseXP,
-		Status:     "PUBLISHED",
-		SlotsCount: len(seeds),
+		TaskID:             taskID,
+		BaseXP:             baseXP,
+		Status:             "PUBLISHED",
+		SlotsCount:         len(seeds),
+		SpeedrunBonusUntil: formatSpeedrunBonus(deadline, bonusUntil, time.Duration(req.SpeedrunWindowHours)*time.Hour),
 	})
 }
 
+// formatSpeedrunBonus возвращает дату окончания бонуса для ответа API.
+func formatSpeedrunBonus(deadline time.Time, bonusUntil *string, window time.Duration) string {
+	if bonusUntil != nil {
+		return *bonusUntil
+	}
+
+	return eventTime(deadline.Add(-window))
+}
+
 // validateCreateTask проверяет права на назначение и корректность полей.
-func (s *Server) validateCreateTask(r *http.Request, p principal, req *createTaskRequest) (time.Time, int64, error) {
+// Возвращает дедлайн, необязательную дату окончания бонуса и группу задания.
+func (s *Server) validateCreateTask(
+	r *http.Request,
+	p principal,
+	req *createTaskRequest,
+) (time.Time, *string, int64, error) {
+	invalid := func() (time.Time, *string, int64, error) {
+		return time.Time{}, nil, 0, domainerrors.ErrInvalidArgument
+	}
+
 	if req.AssignmentID <= 0 || req.Title == "" {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
 	if !validTaskType(req.TaskType) {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
 	if req.RequirementsCount <= 0 || req.ExpectedHours <= 0 || req.SpeedrunWindowHours <= 0 {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
 	if req.TaskType == string(economy.TaskTypeTeamProject) {
 		if req.TeamSize < 2 {
-			return time.Time{}, 0, domainerrors.ErrInvalidArgument
+			return invalid()
 		}
 	} else if req.TeamSize == 0 {
 		req.TeamSize = 1
 	} else if req.TeamSize != 1 {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
 	teacherID, err := s.tasks.TeacherIDForAssignment(r.Context(), req.AssignmentID)
 	if err != nil {
-		return time.Time{}, 0, err
+		return time.Time{}, nil, 0, err
 	}
 
 	if p.Role == RoleTeacher && teacherID != p.UserID {
-		return time.Time{}, 0, domainerrors.ErrForbidden
+		return time.Time{}, nil, 0, domainerrors.ErrForbidden
 	}
 
 	groupID, err := s.tasks.GroupIDForAssignment(r.Context(), req.AssignmentID)
 	if err != nil {
-		return time.Time{}, 0, err
+		return time.Time{}, nil, 0, err
 	}
 
 	deadline, err := time.Parse(time.RFC3339, req.DeadlineAt)
 	if err != nil {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
 	if !deadline.After(s.now()) {
-		return time.Time{}, 0, domainerrors.ErrInvalidArgument
+		return invalid()
 	}
 
-	return deadline, groupID, nil
+	bonusUntil, err := parseSpeedrunBonus(req.SpeedrunBonusUntil, deadline, s.now())
+	if err != nil {
+		return invalid()
+	}
+
+	return deadline, bonusUntil, groupID, nil
+}
+
+// parseSpeedrunBonus разбирает явную дату окончания бонуса от преподавателя.
+// Пустая строка — автоматический режим (nil). Дата должна быть в будущем и
+// строго раньше дедлайна задания.
+func parseSpeedrunBonus(raw string, deadline, now time.Time) (*string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, domainerrors.ErrInvalidArgument
+	}
+
+	if !parsed.After(now) || !parsed.Before(deadline) {
+		return nil, domainerrors.ErrInvalidArgument
+	}
+
+	formatted := storage.FormatTimestamp(parsed)
+
+	return &formatted, nil
 }
 
 // validTaskType проверяет тип задания по CHECK в tasks.task_type.

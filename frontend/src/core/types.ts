@@ -39,6 +39,8 @@ export interface CreateTaskRequest {
   expected_hours: number;
   deadline_at: string;
   speedrun_window_hours: number;
+  /** Бонус до (дата преподавателя); пусто — deadline − speedrun-окно. */
+  speedrun_bonus_until?: string;
   team_size: number;
 }
 
@@ -74,19 +76,6 @@ export interface PurchaseFreezesResponse {
   streak_freezes: number;
   xp_balance: number;
   ledger_id: number;
-}
-
-export interface CreateWagerRequest {
-  task_id: number;
-  stake_amount: number;
-  deadline_at: string;
-}
-
-export interface CreateWagerResponse {
-  wager_id: number;
-  status: string;
-  escrow_tx_id: number;
-  stake_amount: number;
 }
 
 export interface ChecklistItem {
@@ -151,7 +140,7 @@ export interface WsEvent<T = unknown> {
 
 export type ConnectionStatus = 'connecting' | 'online' | 'offline';
 
-// Read-модели GET /api/tasks, /api/submissions, /api/wagers, /api/peer-reviews,
+// Read-модели GET /api/tasks, /api/submissions, /api/peer-reviews,
 // /api/assignments. Имена полей повторяют JSON backend один в один.
 
 export type TaskType = 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
@@ -166,6 +155,8 @@ export interface Task {
   expected_hours: number;
   deadline_at: string;
   speedrun_window_hours: number;
+  /** Фактическая граница бонуса за спидран — от сервера. */
+  speedrun_bonus_until: string;
   team_size: number;
   base_xp_computed: number;
   group_id: number;
@@ -204,19 +195,6 @@ export interface Submission {
   student_name: string;
   team_slot_role: string | null;
   attempt: number;
-}
-
-export interface Wager {
-  id: number;
-  task_id: number;
-  task_title: string;
-  task_deadline_at: string;
-  stake_amount: number;
-  deadline_at: string;
-  status: 'PLACED' | 'WON' | 'LOST' | 'CANCELLED';
-  created_at: string;
-  resolved_at: string | null;
-  resolution_note: string;
 }
 
 export interface PeerReview {

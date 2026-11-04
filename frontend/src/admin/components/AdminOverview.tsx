@@ -249,7 +249,7 @@ export function AdminOverview({
         <div className="space-y-5">
           <div className="grid grid-cols-2 gap-2">
             <StatTile
-              label="Студентов"
+              label="Учеников"
               value={metrics.students.length}
               hint={`${metrics.teachers.length} преподавателей`}
               tone="sky"

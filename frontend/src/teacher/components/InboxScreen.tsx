@@ -72,7 +72,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 const SORTS: { value: Sort; label: string }[] = [
   { value: 'waiting', label: 'Дольше ждут' },
   { value: 'deadline', label: 'По дедлайну' },
-  { value: 'student', label: 'По студенту' },
+  { value: 'student', label: 'По ученику' },
 ];
 
 /**
@@ -288,8 +288,8 @@ export function InboxScreen({
           type="search"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder="Студент, задание или группа"
-          aria-label="Поиск по студенту, заданию или группе"
+          placeholder="Ученик, задание или группа"
+          aria-label="Поиск по ученику, заданию или группе"
           className="w-full rounded-lg border border-line2 bg-card px-3 py-2.5 text-sm text-ink placeholder:text-ink4 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine"
         />
 
@@ -330,7 +330,7 @@ export function InboxScreen({
             title={rows.length === 0 ? 'Очередь пуста' : 'Ничего не найдено'}
             description={
               rows.length === 0
-                ? 'Как только студент переведёт карточку в «На проверке», работа появится здесь.'
+                ? 'Как только ученик переведёт карточку в «На проверке», работа появится здесь.'
                 : 'Сбросьте фильтры или измените поисковый запрос.'
             }
             action={
@@ -453,7 +453,7 @@ function ReviewDetailModal({
 
   async function decide(verdict: 'ACCEPT' | 'REJECT') {
     if (verdict === 'REJECT' && comment.trim() === '') {
-      setError('Комментарий обязателен: студент должен понять, что исправить.');
+      setError('Комментарий обязателен: ученик должен понять, что исправить.');
 
       return;
     }
@@ -517,7 +517,7 @@ function ReviewDetailModal({
               <Field
                 label="Что вернуть на доработку"
                 htmlFor="reject-comment"
-                hint="Комментарий увидит студент в истории карточки."
+                hint="Комментарий увидит ученик в истории карточки."
               >
                 <TextArea
                   id="reject-comment"
@@ -596,7 +596,7 @@ function ReviewDetailModal({
 
         {row.window === 'speedrun' ? (
           <Callout tone="emerald" icon={<IconSparkles className="h-4 w-4" />} title="Сдано в бонусное окно">
-            Бонус ×1.5 действует до {formatDateTime(bonusEndsAt)}. Студент получит{' '}
+            Бонус ×1.5 действует до {formatDateTime(bonusEndsAt)}. Ученик получит{' '}
             <span className="font-semibold">{row.expectedXP} XP</span> вместо{' '}
             {submission.base_xp_computed} XP.
           </Callout>

@@ -208,7 +208,7 @@ export function AssignmentsPanel({ reloadSignal = 0 }: { reloadSignal?: number }
             <StatTile
               label="Карточек"
               value={submissions.length}
-              hint="на досках студентов"
+              hint="на досках учеников"
               tone="violet"
               icon={<IconLayers className="h-3.5 w-3.5" />}
             />
@@ -340,7 +340,7 @@ export function AssignmentsPanel({ reloadSignal = 0 }: { reloadSignal?: number }
                         </>
                       ) : (
                         <p className="text-[10px] text-ink3">
-                          Карточек нет — задание выдано в поток без студентов.
+                          Карточек нет — задание выдано в поток без учеников.
                         </p>
                       )}
 

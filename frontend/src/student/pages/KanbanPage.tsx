@@ -18,7 +18,7 @@ function statusOf(submission: Submission | null): Submission['status'] {
   return submission?.status ?? 'TODO';
 }
 
-// KanbanPage — доска студента без drag-n-drop: клик по карточке открывает
+// KanbanPage — доска ученика без drag-n-drop: клик по карточке открывает
 // задание, а карточка TODO/REJECTED сразу переводится в работу.
 export default function KanbanPage() {
   const { tasks, submissions, loading, error: loadError, reload } = useKanbanBoard();

@@ -157,6 +157,8 @@ export interface TeacherTaskInput {
   expectedHours: number;
   deadlineAt: string;
   speedrunWindowHours: number;
+  /** Своя дата окончания бонуса ×1.5; пусто — автоматический расчёт. */
+  speedrunBonusUntil?: string;
   teamSize: number;
 }
 
@@ -175,6 +177,7 @@ export async function createTeacherTask(
       expected_hours: input.expectedHours,
       deadline_at: input.deadlineAt,
       speedrun_window_hours: input.speedrunWindowHours,
+      speedrun_bonus_until: input.speedrunBonusUntil,
       team_size: input.teamSize,
     },
   });
@@ -277,7 +280,7 @@ function extractAttachmentRows(payload: unknown): unknown[] {
 }
 
 /**
- * GET /api/attachments?submission_id={id} — файлы, прикреплённые студентом.
+ * GET /api/attachments?submission_id={id} — файлы, прикреплённые учеником.
  *
  * Ответ принимается в двух формах: массив или `{ attachments | items | data }`.
  * 404 не маскируется: экран покажет ссылку на artifact_url как fallback.
@@ -418,7 +421,7 @@ function ledgerIdOf(value: unknown): string {
  * компоненты читали только `amount` / `totalXp` / `ledgerId`.
  *
  * Вызывается только для COMPLETED-сессии: преподаватель не завершает ревью за
- * студента, но может отметить качество проверки.
+ * ученика, но может отметить качество проверки.
  */
 export async function awardPeerReview(
   id: number,
@@ -482,7 +485,7 @@ interface FilteredUsersResponse {
 }
 
 /**
- * GET /api/users?group_id={id} — студенты конкретного потока.
+ * GET /api/users?group_id={id} — ученики конкретного потока.
  *
  * Доступен преподавателю только по его группам (backend сверяет
  * teacher_assignments), поэтому экраны не дублируют проверку прав.

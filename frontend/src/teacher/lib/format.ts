@@ -2,7 +2,7 @@
  * Форматирование времени и персональных данных для UI преподавателя.
  *
  * On-time и ожидание всегда считаются по `submitted_at`, не по `reviewed_at`
- * (spec/02_FSM.md §1: «студент не наказывается за задержку преподавателя»).
+ * (spec/02_FSM.md §1: «ученик не наказывается за задержку преподавателя»).
  */
 
 const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
@@ -213,7 +213,7 @@ export function initials(name: string): string {
 export function shortenName(name: string): string {
   const [first, second] = name.trim().split(/\s+/);
   if (!first) {
-    return 'Студент';
+    return 'Ученик';
   }
 
   return second ? `${first} ${second.charAt(0)}.` : first;

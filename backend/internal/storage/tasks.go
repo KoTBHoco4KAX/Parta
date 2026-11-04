@@ -21,8 +21,8 @@ func NewTaskRepo(db *sql.DB) *TaskRepo {
 
 const taskColumns = `t.id, t.assignment_id, t.title, t.description_md, t.task_type,
 	t.requirements_count, t.expected_hours, t.deadline_at, t.speedrun_window_hours,
-	t.team_size, t.base_xp_computed, ta.teacher_id, ta.group_id, t.status, t.created_at,
-	t.updated_at`
+	t.speedrun_bonus_until, t.team_size, t.base_xp_computed, ta.teacher_id, ta.group_id,
+	t.status, t.created_at, t.updated_at`
 
 const taskSelect = `SELECT ` + taskColumns + `
 	FROM tasks t
@@ -38,9 +38,11 @@ type CreateTaskInput struct {
 	ExpectedHours     float64
 	DeadlineAt        string
 	SpeedrunWindow    int
-	TeamSize          int
-	BaseXP            int
-	Status            string
+	// SpeedrunBonusUntil — явная дата окончания бонуса (nil — авто-расчёт).
+	SpeedrunBonusUntil *string
+	TeamSize           int
+	BaseXP             int
+	Status             string
 }
 
 // GetByID возвращает задание по идентификатору вместе с назначенным преподавателем.
@@ -108,14 +110,20 @@ func (r *TaskRepo) CreateTx(ctx context.Context, tx *sql.Tx, in CreateTaskInput)
 
 // create вставляет задание через переданный querier и возвращает его id.
 func (r *TaskRepo) create(ctx context.Context, q querier, in CreateTaskInput) (int64, error) {
+	var bonusUntil any
+
+	if in.SpeedrunBonusUntil != nil {
+		bonusUntil = *in.SpeedrunBonusUntil
+	}
+
 	row := q.QueryRowContext(ctx,
 		`INSERT INTO tasks (assignment_id, title, description_md, task_type, requirements_count,
-		                    expected_hours, deadline_at, speedrun_window_hours, team_size,
-		                    base_xp_computed, status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		                    expected_hours, deadline_at, speedrun_window_hours, speedrun_bonus_until,
+		                    team_size, base_xp_computed, status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 RETURNING id`,
 		in.AssignmentID, in.Title, in.DescriptionMD, in.TaskType, in.RequirementsCount,
-		in.ExpectedHours, in.DeadlineAt, in.SpeedrunWindow, in.TeamSize,
+		in.ExpectedHours, in.DeadlineAt, in.SpeedrunWindow, bonusUntil, in.TeamSize,
 		in.BaseXP, in.Status)
 
 	var id int64
@@ -213,6 +221,7 @@ func scanTask(from row) (*submission.Task, error) {
 		task                 submission.Task
 		deadlineAt           string
 		speedrunHours        int
+		bonusUntil           sql.NullString
 		createdAt, updatedAt string
 	)
 
@@ -226,6 +235,7 @@ func scanTask(from row) (*submission.Task, error) {
 		&task.ExpectedHours,
 		&deadlineAt,
 		&speedrunHours,
+		&bonusUntil,
 		&task.TeamSize,
 		&task.BaseXP,
 		&task.AssignedTeacherID,
@@ -241,6 +251,15 @@ func scanTask(from row) (*submission.Task, error) {
 
 	if task.DeadlineAt, err = parseTime(deadlineAt); err != nil {
 		return nil, err
+	}
+
+	if bonusUntil.Valid && bonusUntil.String != "" {
+		parsed, err := parseTime(bonusUntil.String)
+		if err != nil {
+			return nil, err
+		}
+
+		task.SpeedrunBonusUntil = &parsed
 	}
 
 	if task.CreatedAt, err = parseTime(createdAt); err != nil {

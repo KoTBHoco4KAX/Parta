@@ -33,7 +33,6 @@ type Server struct {
 	tasks       *storage.TaskRepo
 	submissions *storage.SubmissionRepo
 	ledger      *storage.XPLedgerRepo
-	wagers      *storage.WagerRepo
 	peerReviews *storage.PeerReviewRepo
 	teamSlots   *storage.TeamSlotRepo
 }
@@ -66,7 +65,6 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		tasks:       storage.NewTaskRepo(db),
 		submissions: storage.NewSubmissionRepo(db),
 		ledger:      storage.NewXPLedgerRepo(db),
-		wagers:      storage.NewWagerRepo(db),
 		peerReviews: storage.NewPeerReviewRepo(db),
 		teamSlots:   storage.NewTeamSlotRepo(db),
 	}
@@ -100,7 +98,6 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
 	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
 	protected.Handle("POST /api/submissions/{id}/submit", studentOnly(http.HandlerFunc(s.handleSubmitFile)))
-	protected.Handle("GET /api/wagers", studentOnly(http.HandlerFunc(s.handleListWagers)))
 	protected.Handle("GET /api/peer-reviews", staffOnly(http.HandlerFunc(s.handleListPeerReviews)))
 	protected.Handle("GET /api/assignments", staffOnly(http.HandlerFunc(s.handleListAssignments)))
 	protected.Handle("GET /api/users", staffOnly(http.HandlerFunc(s.handleUsersListFiltered)))
@@ -115,7 +112,6 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("PATCH /api/submissions/{id}/status", studentOnly(http.HandlerFunc(s.handleSubmissionStatus)))
 	protected.Handle("POST /api/submissions/{id}/verdict", staffOnly(http.HandlerFunc(s.handleVerdict)))
 	protected.Handle("POST /api/users/me/streak-freezes/purchase", studentOnly(http.HandlerFunc(s.handlePurchaseFreezes)))
-	protected.Handle("POST /api/wagers", studentOnly(http.HandlerFunc(s.handleCreateWager)))
 	protected.Handle("POST /api/peer-reviews", studentOnly(http.HandlerFunc(s.handleCreatePeerReview)))
 	protected.Handle("POST /api/peer-reviews/{id}/award", staffOnly(http.HandlerFunc(s.handlePeerReviewAward)))
 	protected.Handle("POST /api/peer-reviews/{id}/claim", studentOnly(http.HandlerFunc(s.handleClaimPeerReview)))

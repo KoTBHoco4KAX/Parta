@@ -32,9 +32,9 @@ export {
 export type { Assignment, Group, PeerReview, Submission, Task, User };
 
 /**
- * PATCH /api/users/{id} — перенос студента в другую группу.
+ * PATCH /api/users/{id} — перенос ученика в другую группу.
  *
- * `group_id: null` убирает студента из группы, число — добавляет/переводит.
+ * `group_id: null` убирает ученика из группы, число — добавляет/переводит.
  * Используется панелью групп для состава учебной группы.
  */
 export function updateUserGroup(id: number, groupId: number | null): Promise<User> {

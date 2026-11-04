@@ -13,9 +13,6 @@ const (
 	ReasonTaskBase         = "TASK_BASE"
 	ReasonSpeedrunBonus    = "SPEEDRUN_BONUS"
 	ReasonPeerReviewReward = "PEER_REVIEW_REWARD"
-	ReasonWagerWin         = "WAGER_WIN"
-	ReasonWagerLoss        = "WAGER_LOSS"
-	ReasonWagerPlace       = "WAGER_PLACE"
 	ReasonFreezePurchase   = "FREEZE_PURCHASE"
 	ReasonCarryOverBonus   = "CARRY_OVER_BONUS"
 	ReasonPenalty          = "PENALTY"
@@ -26,7 +23,6 @@ const (
 const (
 	SourceTask       = "TASK"
 	SourceSubmission = "SUBMISSION"
-	SourceWager      = "WAGER"
 	SourcePeerReview = "PEER_REVIEW"
 	SourceUser       = "USER"
 	SourceSystem     = "SYSTEM"

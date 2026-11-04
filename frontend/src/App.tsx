@@ -4,21 +4,19 @@ import { initMaxBridge } from './core/max';
 import { ThemeProvider } from './core/theme';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { EconomyPage } from './pages/EconomyPage';
 import KanbanPage from './student/pages/KanbanPage';
-import GamificationPage from './student/pages/GamificationPage';
-import BetsPage from './student/pages/BetsPage';
+import ShopPage from './student/pages/ShopPage';
 import TeacherApp from './teacher';
 import AdminApp from './admin';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
+// Меню ученика: отдельной экономики нет — покупки живут в магазине,
+// а бонус за спидран назначается на самом задании.
 const NAV = [
   { path: '/', label: 'Главная' },
   { path: '/kanban', label: 'Канбан' },
-  { path: '/economy', label: 'Экономика' },
-  { path: '/gamification', label: 'XP' },
-  { path: '/bets', label: 'Пари' },
+  { path: '/shop', label: 'Магазин' },
 ] as const;
 
 // useHashRoute — минимальный роутер без внешних зависимостей: hash переживает
@@ -78,7 +76,7 @@ function Shell() {
     return <LoginPage />;
   }
 
-  // Кабинеты преподавателя и админа используют тот же AppShell, что и студент.
+  // Кабинеты преподавателя и админа используют тот же AppShell, что и ученик.
   if (role === 'teacher') {
     return (
       <ErrorBoundary>
@@ -97,7 +95,7 @@ function Shell() {
 
   return (
     <AppShell
-      subtitle="Кабинет студента"
+      subtitle="Кабинет ученика"
       bottomNav={
         <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
           <ul className="flex gap-1 overflow-x-auto">
@@ -127,9 +125,7 @@ function Shell() {
     >
       <ErrorBoundary key={route}>
         {route === '/kanban' ? <KanbanPage /> : null}
-        {route === '/economy' ? <EconomyPage /> : null}
-        {route === '/gamification' ? <GamificationPage /> : null}
-        {route === '/bets' ? <BetsPage /> : null}
+        {route === '/shop' ? <ShopPage /> : null}
         {route === '/' || !NAV.some((item) => item.path === route) ? (
           <DashboardPage />
         ) : null}

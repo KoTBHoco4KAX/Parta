@@ -262,43 +262,6 @@ func TestVerdictAccept(t *testing.T) {
 	}
 }
 
-func TestVerdictAcceptResolvesWager(t *testing.T) {
-	h := newHarness(t)
-	ids := h.seed()
-
-	h.topUpXP(ids.student1, 500)
-
-	studentToken := h.login(t, "student1@parta.dev")
-
-	status, wagerBody := h.request(t, http.MethodPost, "/api/wagers", studentToken, map[string]any{
-		"task_id":      ids.taskLab,
-		"stake_amount": 100,
-		"deadline_at":  time.Now().Add(10 * 24 * time.Hour).UTC().Format(time.RFC3339),
-	})
-	if status != http.StatusCreated {
-		t.Fatalf("wager status = %d, want 201 (%v)", status, wagerBody)
-	}
-
-	wagerID := int64(wagerBody["wager_id"].(float64))
-
-	subID := h.createSubmission(ids.taskLab, ids.student1, "REVIEW")
-	teacherToken := h.login(t, "teacher@parta.dev")
-
-	status, body := h.request(t, http.MethodPost, verdictPath(subID), teacherToken, map[string]any{"verdict": "ACCEPT"})
-	if status != http.StatusOK {
-		t.Fatalf("verdict status = %d, want 200 (%v)", status, body)
-	}
-
-	if got := h.scalarString(`SELECT status FROM wagers WHERE id = ?`, wagerID); got != "WON" {
-		t.Fatalf("wager status = %q, want WON", got)
-	}
-
-	// 500 - 100 escrow + 600 XP + 200 выплата.
-	if balance := h.scalarInt(`SELECT xp_balance FROM users WHERE id = ?`, ids.student1); balance != 1200 {
-		t.Fatalf("balance = %d, want 1200", balance)
-	}
-}
-
 func TestVerdictAcceptMissedDeadlineConsumesFreeze(t *testing.T) {
 	h := newHarness(t)
 	ids := h.seed()

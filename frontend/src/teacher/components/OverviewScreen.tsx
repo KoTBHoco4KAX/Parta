@@ -361,7 +361,7 @@ export function OverviewScreen({
 
             <p className="text-[10px] leading-relaxed text-ink3">
               Сдачи по дням и дни, на которые назначены дедлайны. Бонусное окно
-              разгружает пик: сильные студенты закрывают работу в первые часы.
+              разгружает пик: сильные ученики закрывают работу в первые часы.
             </p>
           </Card>
 
@@ -481,7 +481,7 @@ export function OverviewScreen({
                       title={task.title}
                     >
                       Бонус до {formatCountdown(bonusEnd)} · уже воспользовались {inBonus}{' '}
-                      {inBonus === 1 ? 'студент' : 'студентов'}.
+                      {inBonus === 1 ? 'ученик' : 'учеников'}.
                     </Callout>
                   );
                 })}
@@ -540,7 +540,7 @@ export function OverviewScreen({
                     : 'Активных сессий нет'}
                 </p>
                 <p className="text-[10px] text-ink3">
-                  Студенты проверяют работы друг друга по чек-листу
+                  Ученики проверяют работы друг друга по чек-листу
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={() => onNavigate('peer')}>
@@ -551,7 +551,7 @@ export function OverviewScreen({
           </Section>
 
           <Callout tone="slate" icon={<IconClock className="h-4 w-4" />} title="Как работает конвейер">
-            Студент двигает карточку по колонкам сам. «В работе» — сигнал о старте,
+            Ученик двигает карточку по колонкам сам. «В работе» — сигнал о старте,
             «На проверке» фиксирует время сдачи и блокирует правки, вердикт
             возвращает работу в «Зачтено» или «На доработку».
           </Callout>

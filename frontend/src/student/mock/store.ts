@@ -1,10 +1,10 @@
-// Мок-хранилище студенческого кабинета ПАРТА (ветка feat/student-ui).
+// Мок-хранилище кабинета ученика ПАРТА (ветка feat/student-ui).
 //
 // ЧЕСТНОЕ ПРЕДУПРЕЖДЕНИЕ: здесь моки, а не backend. Задача ветки — UI до
 // появления read-эндпоинтов Фазы 7, поэтому данные живут в памяти страницы.
 // Правила игры соблюдаются те же, что в домене backend (spec/02_FSM.md,
-// spec/03_MATH.md): FSM-переходы, speedrun-множитель, стрик, escrow пари
-// и цена заморозки 200 XP. Ошибки выбрасываются типом ApiError с кодами
+// spec/03_MATH.md): FSM-переходы, speedrun-множитель, стрик и цена
+// заморозки 200 XP. Ошибки выбрасываются типом ApiError с кодами
 // backend (invalid_transition, insufficient_xp…) — экраны уже умеют их рендерить.
 //
 // При подключении реального backend перепаивается только student/api.ts:
@@ -16,7 +16,6 @@ import {
   seedProfile,
   seedSubmissions,
   seedTasks,
-  seedWagers,
   streakFreezePrice,
 } from './data';
 import type {
@@ -27,7 +26,6 @@ import type {
   LedgerEntry,
   Profile,
   PurchaseFreezesResult,
-  StudentWager,
   SubmissionEvent,
   TaskStatus,
   VerdictResult,
@@ -61,13 +59,11 @@ const db = {
     ...sub,
     revisionLog: sub.revisionLog.map((revision) => ({ ...revision })),
   })),
-  wagers: seedWagers.map((wager) => ({ ...wager })),
   ledger: seedLedger.map((entry) => ({ ...entry })),
   streakDays: buildStreakCalendar(),
 };
 
 let submissionSeq = 200;
-let wagerSeq = 300;
 let ledgerSeq = 400;
 
 // Подписки: экраны перечитывают данные после каждой мутации (аналог паттерна
@@ -109,7 +105,8 @@ function ledgerPost(amount: number, reason: LedgerEntry['reason'], memo: string)
 function computeMultiplier(sub: SubWithTask): number {
   const deadline = new Date(sub.task.deadlineAt).getTime();
   const submitted = new Date(sub.submittedAt ?? new Date().toISOString()).getTime();
-  const speedrunCut = deadline - sub.task.speedrunWindowHours * 3_600_000;
+  // Граница бонуса: автоматически deadline − окно либо дата от преподавателя.
+  const speedrunCut = new Date(sub.task.speedrunUntil).getTime();
 
   if (submitted <= speedrunCut) {
     return 1.5;
@@ -119,7 +116,7 @@ function computeMultiplier(sub: SubWithTask): number {
 }
 
 // applyVerdict — симуляция ACCEPT из Review Inbox преподавателя: считаем XP
-// по формуле, двигаем стрик (заморозка поглощает сброс) и разрешаем пари.
+// по формуле и двигаем стрик (заморозка поглощает сброс).
 function applyVerdict(sub: SubWithTask): VerdictResult {
   const multiplier = computeMultiplier(sub);
   const xpAwarded = Math.max(10, Math.round(sub.task.baseXp * multiplier));
@@ -135,22 +132,6 @@ function applyVerdict(sub: SubWithTask): VerdictResult {
     db.profile.streakFreezes -= 1;
   } else {
     db.profile.onTimeStreak = 0;
-  }
-
-  // Пари по этой задаче: победа ⇔ DONE раньше дедлайна пари (spec §6.3).
-  for (const wager of db.wagers) {
-    if (wager.taskId !== sub.task.id || wager.status !== 'PLACED') {
-      continue;
-    }
-
-    const wagerDeadline = new Date(wager.deadlineAt).getTime();
-
-    if (onTime && new Date(submittedAt).getTime() <= wagerDeadline) {
-      wager.status = 'WON';
-      wager.resolutionNote = 'Работа принята до дедлайна пари — выплата ×2.';
-      db.profile.xpBalance += wager.stakeAmount * 2;
-      ledgerPost(wager.stakeAmount * 2, 'WAGER_PAYOUT', `Пари на «${wager.taskTitle}»: победа ×2`);
-    }
   }
 
   return {
@@ -263,7 +244,7 @@ function getBoardNoDelay(): BoardSnapshot {
 }
 
 // ---------------------------------------------------------------------------
-// Геймификация (аналог dev-login-профиля + WS-событий + покупки заморозок)
+// Магазин (аналог dev-login-профиля + WS-событий + покупки заморозок)
 // ---------------------------------------------------------------------------
 
 export async function getProfile(): Promise<Profile> {
@@ -307,72 +288,4 @@ export async function purchaseFreezes(quantity: number): Promise<PurchaseFreezes
     streakFreezes: db.profile.streakFreezes,
     xpBalance: db.profile.xpBalance,
   };
-}
-
-// ---------------------------------------------------------------------------
-// Пари (аналог GET /api/wagers + POST /api/wagers)
-// ---------------------------------------------------------------------------
-
-export async function getWagers(): Promise<StudentWager[]> {
-  await delay(150);
-
-  return db.wagers.map((wager) => ({ ...wager }));
-}
-
-export async function placeWager(input: {
-  taskId: number;
-  stakeAmount: number;
-  deadlineAt: string;
-}): Promise<StudentWager> {
-  await delay(280);
-
-  const task = db.tasks.find((candidate) => candidate.id === input.taskId);
-
-  if (!task) {
-    throw new ApiError(404, 'not_found', 'Задание не найдено.');
-  }
-
-  if (db.wagers.some((candidate) => candidate.taskId === task.id && candidate.status === 'PLACED')) {
-    throw new ApiError(409, 'already_exists', 'По этому заданию уже есть активное пари.');
-  }
-
-  const stake = Math.floor(input.stakeAmount);
-
-  if (!Number.isFinite(stake) || stake <= 0) {
-    throw new ApiError(422, 'invalid_argument', 'Ставка должна быть положительным числом XP.');
-  }
-
-  if (stake > db.profile.xpBalance) {
-    throw new ApiError(422, 'insufficient_xp', `Ставка больше баланса (${db.profile.xpBalance} XP).`);
-  }
-
-  if (!Number.isFinite(new Date(input.deadlineAt).getTime())) {
-    throw new ApiError(422, 'guard_failed', 'Укажите корректный дедлайн пари.');
-  }
-
-  if (new Date(input.deadlineAt).getTime() > new Date(task.deadlineAt).getTime()) {
-    throw new ApiError(422, 'guard_failed', 'Дедлайн пари не может быть позже дедлайна задания.');
-  }
-
-  db.profile.xpBalance -= stake;
-  ledgerPost(-stake, 'WAGER_ESCROW', `Пари на «${task.title}»: ставка в escrow`);
-
-  wagerSeq += 1;
-
-  const wager: StudentWager = {
-    id: wagerSeq,
-    taskId: task.id,
-    taskTitle: task.title,
-    taskDeadlineAt: task.deadlineAt,
-    stakeAmount: stake,
-    deadlineAt: input.deadlineAt,
-    status: 'PLACED',
-    createdAt: new Date().toISOString(),
-    resolutionNote: '',
-  };
-
-  db.wagers.unshift(wager);
-  notify();
-
-  return { ...wager };
 }

@@ -124,9 +124,9 @@ func TestListAssignmentsAndEmptyCollections(t *testing.T) {
 	}
 
 	studentToken := h.login(t, "student1@parta.dev")
-	status, wagers := h.getArray(t, "/api/wagers", studentToken)
-	if status != http.StatusOK || len(wagers) != 0 {
-		t.Fatalf("wagers = %d (status %d), want empty array", len(wagers), status)
+	status, tasks := h.getArray(t, "/api/tasks", studentToken)
+	if status != http.StatusOK || len(tasks) == 0 {
+		t.Fatalf("tasks = %d (status %d), want non-empty array", len(tasks), status)
 	}
 
 	teacherToken := h.login(t, "teacher@parta.dev")

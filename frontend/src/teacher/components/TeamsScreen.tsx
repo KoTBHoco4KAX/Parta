@@ -433,9 +433,9 @@ export function TeamsScreen({
                   title="Участники без слота"
                 >
                   {audit.withoutSlot}{' '}
-                  {pluralize(audit.withoutSlot, ['студент получил', 'студента получили', 'студентов получили'])}{' '}
+                  {pluralize(audit.withoutSlot, ['ученик получил', 'ученика получили', 'учеников получили'])}{' '}
                   карточку задания, но не заняли слот ответственности — их вклад не
-                  зафиксирован. Слоты распределяются на стороне студента.
+                  зафиксирован. Слоты распределяются на стороне ученика.
                 </Callout>
               ) : null}
 
@@ -614,7 +614,7 @@ function SlotVerdictModal({
 
           {mode === 'reject' ? (
             <>
-              <Field label="Комментарий для студента" htmlFor="slot-reject">
+              <Field label="Комментарий для ученика" htmlFor="slot-reject">
                 <TextArea
                   id="slot-reject"
                   value={comment}

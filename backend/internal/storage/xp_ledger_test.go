@@ -65,8 +65,8 @@ func TestXPLedgerRepoPostInsufficientXP(t *testing.T) {
 	_, err := repo.Post(context.Background(), tx, PostLedgerInput{
 		UserID:         ids.student1,
 		Amount:         -50,
-		Reason:         ReasonWagerPlace,
-		SourceType:     SourceWager,
+		Reason:         ReasonFreezePurchase,
+		SourceType:     SourceUser,
 		IdempotencyKey: "test:post:negative",
 	})
 	if !domainerrors.IsSentinel(err, domainerrors.ErrInsufficientXP) {

@@ -1,4 +1,4 @@
-// UI-модели студенческого кабинета ПАРТА.
+// UI-модели кабинета ученика ПАРТА.
 //
 // Поля повторяют JSON backend (core/types), но в camelCase-витрине: маппинг
 // «DTO → модель» живёт в ../api.ts. Пока read-эндпоинтов Фазы 7 нет, данные
@@ -11,7 +11,7 @@ export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'REJECTED'
 // События FSM карточки (spec/02_FSM.md).
 export type SubmissionEvent = 'START' | 'SUBMIT' | 'REOPEN';
 
-// Задание в доске студента (GET /api/tasks — роль student).
+// Задание в доске ученика (GET /api/tasks — роль student).
 export interface BoardTask {
   id: number;
   title: string;
@@ -19,11 +19,13 @@ export interface BoardTask {
   taskType: 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
   deadlineAt: string;
   speedrunWindowHours: number;
+  // Автоматическая граница бонуса: deadline − speedrun-окно.
+  speedrunUntil: string;
   baseXp: number;
   teamSize: number;
 }
 
-// Карточка студента по заданию (GET /api/submissions).
+// Карточка ученика по заданию (GET /api/submissions).
 export interface BoardSubmission {
   id: number;
   status: TaskStatus;
@@ -51,7 +53,7 @@ export interface BoardColumn {
   title: string;
 }
 
-// Профиль студента (dev-login + WS-события streak.updated / xp.ledger.posted).
+// Профиль ученика (dev-login + WS-события streak.updated / xp.ledger.posted).
 export interface Profile {
   id: number;
   displayName: string;
@@ -65,22 +67,9 @@ export interface Profile {
 export interface LedgerEntry {
   id: number;
   amount: number;
-  reason: 'TASK_ACCEPT' | 'WAGER_ESCROW' | 'WAGER_PAYOUT' | 'STREAK_FREEZE' | 'ADMIN_ADJUSTMENT';
+  reason: 'TASK_ACCEPT' | 'SPEEDRUN_BONUS' | 'STREAK_FREEZE' | 'ADMIN_ADJUSTMENT';
   memo: string;
   createdAt: string;
-}
-
-// Пари студента (GET /api/wagers).
-export interface StudentWager {
-  id: number;
-  taskId: number;
-  taskTitle: string;
-  taskDeadlineAt: string;
-  stakeAmount: number;
-  deadlineAt: string;
-  status: 'PLACED' | 'WON' | 'LOST' | 'CANCELLED';
-  createdAt: string;
-  resolutionNote: string;
 }
 
 // Ответ PATCH /api/submissions/{id}/status.

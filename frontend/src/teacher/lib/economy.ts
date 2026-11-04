@@ -3,7 +3,7 @@
  *
  * Модуль повторяет spec/03_MATH.md и `internal/domain/xp`: интерфейс обязан
  * показывать те же числа, которые начислит backend, иначе преподаватель видит
- * одно, а студент получает другое. Все формулы — чистые функции без запросов:
+ * одно, а ученик получает другое. Все формулы — чистые функции без запросов:
  * источник истины остаётся на сервере, здесь только предпросмотр.
  */
 
@@ -37,7 +37,8 @@ export type SubmissionWindow = 'speedrun' | 'normal' | 'late';
 
 /**
  * speedrunEndsAt — момент, после которого усиленный бонус уже не действует.
- * Студент получает ×1.5, если сдал не позже `deadline - speedrunWindow`.
+ * Автоматическая граница бонуса — `deadline - speedrunWindow`; преподаватель может
+ * назначить свою дату окончания бонуса, и тогда действует она.
  */
 export function speedrunEndsAt(deadlineAt: string | Date, windowHours: number): Date {
   const deadline = toDate(deadlineAt);
@@ -86,7 +87,7 @@ export function xpMultiplier(
   }
 }
 
-/** estimateFinalXP — сколько XP получит студент за сдачу в этот момент. */
+/** estimateFinalXP — сколько XP получит ученик за сдачу в этот момент. */
 export function estimateFinalXP(
   baseXP: number,
   submittedAt: string | Date | null,

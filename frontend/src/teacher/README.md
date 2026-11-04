@@ -31,7 +31,7 @@
   `fetchSubmissionAttachments`, `downloadSubmissionAttachment`,
   `fetchPeerReviewSessions`, `awardPeerReview`, `fetchGroupMembers`.
 - `createTeacherTask` → `POST /api/tasks`: backend сам создаёт карточку `TODO`
-  каждому студенту потока и, для `TEAM_PROJECT`, слоты ответственности. Выдача на
+  каждому ученику потока и, для `TEAM_PROJECT`, слоты ответственности. Выдача на
   несколько потоков — последовательность запросов по выбранным назначениям.
 - `lib/economy.ts` повторяет `internal/domain/xp`: Base XP, множители ×1.5 / ×1.0 /
   ×0.5 и граница бонусного окна. Это предпросмотр; истина — ответ backend при

@@ -34,7 +34,7 @@ export const TASK_TYPE_HINT: Record<TaskType, string> = {
   TEAM_PROJECT: 'Слоты ответственности, вес ×2.5',
 };
 
-/** Колонки канбана студента (spec/02_FSM.md §1). */
+/** Колонки канбана ученика (spec/02_FSM.md §1). */
 export const STATUS_LABEL: Record<SubmissionStatus, string> = {
   TODO: 'К выполнению',
   IN_PROGRESS: 'В работе',
@@ -60,7 +60,7 @@ export const STATUS_TONE: Record<SubmissionStatus, BadgeTone> = {
   REJECTED: 'rose',
 };
 
-/** Порядок колонок — как на доске студента. */
+/** Порядок колонок — как на доске ученика. */
 export const STATUS_ORDER: SubmissionStatus[] = [
   'TODO',
   'IN_PROGRESS',
@@ -121,7 +121,7 @@ export const PEER_FILTER_LABEL = {
 export const ROLE_LABEL: Record<Role, string> = {
   admin: 'Админ',
   teacher: 'Преподаватель',
-  student: 'Студент',
+  student: 'Ученик',
 };
 
 /** Тоны ролей для бейджей админки. */

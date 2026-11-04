@@ -94,7 +94,7 @@ export function AttachmentsPanel({
     <section className="rounded-xl border border-line bg-muted p-3">
       <div className="flex items-center gap-2">
         <IconPaperclip className="h-4 w-4 shrink-0 text-brand" />
-        <h4 className="text-xs font-semibold text-ink2">Работа студента</h4>
+        <h4 className="text-xs font-semibold text-ink2">Работа ученика</h4>
         {!loading && !error ? (
           <Badge tone="slate">{attachments.length}</Badge>
         ) : null}
@@ -179,7 +179,7 @@ export function AttachmentsPanel({
 
       {!loading && !error && attachments.length === 0 && !hasArtifactLink ? (
         <p className="mt-2 rounded-lg border border-dashed border-line2 px-2.5 py-2 text-[11px] text-ink3">
-          Студент сдал работу без файла: проверьте комментарий и историю доработок.
+          Ученик сдал работу без файла: проверьте комментарий и историю доработок.
         </p>
       ) : null}
 

@@ -57,8 +57,6 @@ func TestTeacherCannotCallStudentEndpoints(t *testing.T) {
 		path   string
 		body   any
 	}{
-		{http.MethodGet, "/api/wagers", nil},
-		{http.MethodPost, "/api/wagers", map[string]any{}},
 		{http.MethodPost, "/api/submissions", map[string]any{}},
 		{http.MethodPost, "/api/submissions/1/submit", nil},
 		{http.MethodPatch, "/api/submissions/1/status", map[string]any{}},

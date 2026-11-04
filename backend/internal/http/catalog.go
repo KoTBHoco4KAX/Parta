@@ -25,13 +25,15 @@ type taskListView struct {
 	ExpectedHours       float64 `json:"expected_hours"`
 	DeadlineAt          string  `json:"deadline_at"`
 	SpeedrunWindowHours int     `json:"speedrun_window_hours"`
-	TeamSize            int     `json:"team_size"`
-	BaseXP              int     `json:"base_xp_computed"`
-	GroupID             int64   `json:"group_id"`
-	AssignedTeacherID   int64   `json:"assigned_teacher_id"`
-	Status              string  `json:"status"`
-	CreatedAt           string  `json:"created_at"`
-	UpdatedAt           string  `json:"updated_at"`
+	// SpeedrunBonusUntil — граница бонуса за спидран (дата преподавателя или авто).
+	SpeedrunBonusUntil string `json:"speedrun_bonus_until"`
+	TeamSize           int    `json:"team_size"`
+	BaseXP             int    `json:"base_xp_computed"`
+	GroupID            int64  `json:"group_id"`
+	AssignedTeacherID  int64  `json:"assigned_teacher_id"`
+	Status             string `json:"status"`
+	CreatedAt          string `json:"created_at"`
+	UpdatedAt          string `json:"updated_at"`
 }
 
 // revisionView — запись журнала доработок в ответе по работам.
@@ -65,20 +67,6 @@ type submissionListView struct {
 	StudentName         string         `json:"student_name"`
 	TeamSlotRole        *string        `json:"team_slot_role"`
 	Attempt             int            `json:"attempt"`
-}
-
-// wagerListView — элемент GET /api/wagers.
-type wagerListView struct {
-	ID             int64   `json:"id"`
-	TaskID         int64   `json:"task_id"`
-	TaskTitle      string  `json:"task_title"`
-	TaskDueAt      string  `json:"task_deadline_at"`
-	StakeAmount    int     `json:"stake_amount"`
-	DeadlineAt     string  `json:"deadline_at"`
-	Status         string  `json:"status"`
-	CreatedAt      string  `json:"created_at"`
-	ResolvedAt     *string `json:"resolved_at"`
-	ResolutionNote string  `json:"resolution_note"`
 }
 
 // peerReviewListView — элемент GET /api/peer-reviews.
@@ -210,43 +198,6 @@ func (s *Server) handleListSubmissions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, views)
 }
 
-// handleListWagers отдаёт пари текущего студента.
-func (s *Server) handleListWagers(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.principalOr401(w, r)
-	if !ok {
-		return
-	}
-
-	if !requireRole(w, p, RoleStudent) {
-		return
-	}
-
-	items, err := s.wagers.ListViewsByStudent(r.Context(), p.UserID)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	views := make([]wagerListView, 0, len(items))
-	for _, item := range items {
-		views = append(views, wagerListView{
-			ID:             item.ID,
-			TaskID:         item.TaskID,
-			TaskTitle:      item.TaskTitle,
-			TaskDueAt:      formatTimestamp(item.TaskDueAt),
-			StakeAmount:    item.StakeAmount,
-			DeadlineAt:     formatTimestamp(item.DeadlineAt),
-			Status:         item.Status,
-			CreatedAt:      formatTimestamp(item.CreatedAt),
-			ResolvedAt:     formatTimePtr(item.ResolvedAt),
-			ResolutionNote: item.ResolutionNote,
-		})
-	}
-
-	writeJSON(w, http.StatusOK, views)
-}
-
 // handleListPeerReviews отдаёт P2P-сессии преподавателя или админа.
 func (s *Server) handleListPeerReviews(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
@@ -348,6 +299,7 @@ func newTaskListView(task submission.Task) taskListView {
 		ExpectedHours:       task.ExpectedHours,
 		DeadlineAt:          formatTimestamp(task.DeadlineAt),
 		SpeedrunWindowHours: int(task.SpeedrunWindow.Hours()),
+		SpeedrunBonusUntil:  formatTimestamp(task.SpeedrunBonusDeadline()),
 		TeamSize:            task.TeamSize,
 		BaseXP:              task.BaseXP,
 		GroupID:             task.GroupID,

@@ -35,6 +35,9 @@ type Task struct {
 	RequirementsCount int
 	ExpectedHours     float64
 	DeadlineAt        time.Time
+	// SpeedrunBonusUntil — назначенная преподавателем граница бонуса за спидран.
+	// nil означает автоматический расчёт: DeadlineAt - SpeedrunWindow.
+	SpeedrunBonusUntil *time.Time
 	SpeedrunWindow    time.Duration
 	TeamSize          int
 	BaseXP            int
@@ -56,6 +59,16 @@ type RevisionEntry struct {
 type Actor struct {
 	UserID int64
 	Role   string
+}
+
+// SpeedrunBonusDeadline — граница бонуса за спидран: явная дата преподавателя
+// либо автоматическая DeadlineAt - SpeedrunWindow.
+func (t Task) SpeedrunBonusDeadline() time.Time {
+	if t.SpeedrunBonusUntil != nil {
+		return *t.SpeedrunBonusUntil
+	}
+
+	return t.DeadlineAt.Add(-t.SpeedrunWindow)
 }
 
 // GuardStart проверяет право студента взять задание в работу и статус задачи.

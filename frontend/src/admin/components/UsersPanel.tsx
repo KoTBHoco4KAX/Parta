@@ -40,7 +40,7 @@ type RoleFilter = 'all' | Role;
 
 const ROLE_FILTERS: { value: RoleFilter; label: string }[] = [
   { value: 'all', label: 'Все' },
-  { value: 'student', label: 'Студенты' },
+  { value: 'student', label: 'Ученики' },
   { value: 'teacher', label: 'Преподаватели' },
   { value: 'admin', label: 'Админы' },
 ];
@@ -204,7 +204,7 @@ export function UsersPanel({
         tone: 'error',
         title: blocked ? 'Удаление запрещено' : 'Не удалось удалить',
         description: blocked
-          ? `${user.display_name}: у студента есть карточки заданий или сдачи. Закройте работы или оставьте аккаунт в группе.`
+          ? `${user.display_name}: у ученика есть карточки заданий или сдачи. Закройте работы или оставьте аккаунт в группе.`
           : cause instanceof ApiError
             ? cause.message
             : 'Проверьте соединение.',
@@ -217,7 +217,7 @@ export function UsersPanel({
       <ScreenHeader
         eyebrow="Люди"
         title="Пользователи"
-        description={`${counts.student} ${pluralize(counts.student, ['студент', 'студента', 'студентов'])} · ${counts.teacher} ${pluralize(counts.teacher, ['преподаватель', 'преподавателя', 'преподавателей'])}`}
+        description={`${counts.student} ${pluralize(counts.student, ['ученик', 'ученика', 'учеников'])} · ${counts.teacher} ${pluralize(counts.teacher, ['преподаватель', 'преподавателя', 'преподавателей'])}`}
         action={
           <Button size="sm" onClick={() => setCreating(true)}>
             <IconPlus className="h-4 w-4" />
@@ -321,7 +321,7 @@ export function UsersPanel({
                       }
                       title={
                         busyStudentIds.has(user.id)
-                          ? 'Удаление недоступно: у студента есть карточки работ'
+                          ? 'Удаление недоступно: у ученика есть карточки работ'
                           : undefined
                       }
                       disabled={user.id === currentUserId || busyStudentIds.has(user.id)}
@@ -360,7 +360,7 @@ export function UsersPanel({
 
           <Callout tone="slate" icon={<IconAlert className="h-4 w-4" />} title="Ограничения backend">
             Роль задаётся только при создании: смена роли существующего пользователя
-            не поддерживается API. Студента с карточками работ удалить нельзя —
+            не поддерживается API. Ученика с карточками работ удалить нельзя —
             кнопка заблокирована, чтобы не терять историю сдач; преподавателя можно
             удалить, но его назначения останутся.
           </Callout>
@@ -398,7 +398,7 @@ export function UsersPanel({
         >
           <p className="text-[12px] leading-relaxed text-ink2">
             {deleting.display_name} ({deleting.external_id}) будет удалён из контура.
-            Если у студента уже есть карточки заданий или сдачи, backend откажет:
+            Если у ученика уже есть карточки заданий или сдачи, backend откажет:
             такие аккаунты остаются, чтобы не терять историю работ.
           </p>
         </Modal>
@@ -431,7 +431,7 @@ function CreateUserModal({
 
   const emailError = submitted && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const nameError = submitted && displayName.trim().length < 2;
-  // Backend заводит студента только с группой (handleCreateUser).
+  // Backend заводит ученика только с группой (handleCreateUser).
   const needsGroup = role === 'student' && groupValue === 'none';
   const noGroups = groups.length === 0;
 
@@ -549,14 +549,14 @@ function CreateUserModal({
         {role === 'student' ? (
           noGroups ? (
             <Callout tone="amber" icon={<IconAlert className="h-4 w-4" />} title="Нужна группа">
-              Студент создаётся сразу с группой: сначала создайте поток в разделе
+              Ученик создаётся сразу с группой: сначала создайте поток в разделе
               «Группы», затем вернитесь сюда.
             </Callout>
           ) : (
             <Field
               label="Группа"
               htmlFor="user-group"
-              hint="Backend заводит студента только с группой — перевести позже можно в разделе «Группы»."
+              hint="Backend заводит ученика только с группой — перевести позже можно в разделе «Группы»."
               error={submitted && needsGroup ? 'Выберите группу' : null}
             >
               <SelectInput

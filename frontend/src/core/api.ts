@@ -9,8 +9,6 @@ import type {
   CreateSubmissionResponse,
   CreateTaskRequest,
   CreateTaskResponse,
-  CreateWagerRequest,
-  CreateWagerResponse,
   DevLoginResponse,
   Group,
   PeerReview,
@@ -21,7 +19,6 @@ import type {
   Task,
   User,
   VerdictResponse,
-  Wager,
 } from './types';
 import { readStoredToken } from './session';
 
@@ -184,11 +181,6 @@ export function fetchSubmissions(status?: string): Promise<Submission[]> {
   return apiFetch<Submission[]>(`/submissions${query}`);
 }
 
-// fetchWagers — GET /api/wagers: пари текущего студента.
-export function fetchWagers(): Promise<Wager[]> {
-  return apiFetch<Wager[]>('/wagers');
-}
-
 // fetchPeerReviews — GET /api/peer-reviews: sandbox-сессии преподавателя.
 export function fetchPeerReviews(): Promise<PeerReview[]> {
   return apiFetch<PeerReview[]>('/peer-reviews');
@@ -256,11 +248,6 @@ export function buyStreakFreezes(quantity: number): Promise<PurchaseFreezesRespo
   });
 }
 
-// placeWager — POST /api/wagers.
-export function placeWager(body: CreateWagerRequest): Promise<CreateWagerResponse> {
-  return apiFetch<CreateWagerResponse>('/wagers', { method: 'POST', body });
-}
-
 // createTaskReal — POST /api/tasks для админки.
 export function createTaskReal(body: CreateTaskRequest): Promise<CreateTaskResponse> {
   return apiFetch<CreateTaskResponse>('/tasks', { method: 'POST', body });
@@ -323,10 +310,6 @@ export const api = {
       method: 'POST',
       body: { quantity },
     });
-  },
-
-  createWager(token: string | null, body: CreateWagerRequest): Promise<CreateWagerResponse> {
-    return request('/wagers', { ...auth(token), method: 'POST', body });
   },
 
   createPeerReview(

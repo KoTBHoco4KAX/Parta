@@ -73,7 +73,7 @@ const STATUS_SEGMENTS = STATUS_ORDER.filter((status) => status !== 'REJECTED');
  * TasksScreen — пакетная выдача заданий.
  *
  * Одна форма создаёт задание сразу для нескольких потоков: backend на каждый
- * POST /api/tasks рассылает персональные карточки всем студентам группы, а для
+ * POST /api/tasks рассылает персональные карточки всем ученикам группы, а для
  * командного проекта — ещё и слоты ответственности.
  */
 export function TasksScreen({
@@ -130,7 +130,7 @@ export function TasksScreen({
     };
   }, [reloadKey, reloadSignal]);
 
-  // Сколько студентов в каждом потоке — по уже созданным карточкам задания.
+  // Сколько учеников в каждом потоке — по уже созданным карточкам задания.
   const studentsByAssignment = useMemo(() => {
     const assignmentOfTask = new Map(tasks.map((task) => [task.id, task.assignment_id]));
     const map = new Map<number, Set<number>>();
@@ -200,7 +200,7 @@ export function TasksScreen({
       <ScreenHeader
         eyebrow="Задания"
         title="Выдача заданий"
-        description="Одна форма — карточки на досках всех студентов потока."
+        description="Одна форма — карточки на досках всех учеников потока."
         action={
           <Button size="sm" onClick={() => setCreating(true)} disabled={assignments.length === 0}>
             <IconPlus className="h-4 w-4" />
@@ -228,7 +228,7 @@ export function TasksScreen({
             <EmptyState
               icon={<IconClipboard className="h-5 w-5" />}
               title="Заданий пока нет"
-              description="Выдайте первое задание: карточки появятся у всех студентов выбранных потоков автоматически."
+              description="Выдайте первое задание: карточки появятся у всех учеников выбранных потоков автоматически."
               action={
                 <Button onClick={() => setCreating(true)} disabled={assignments.length === 0}>
                   <IconPlus className="h-4 w-4" />
@@ -425,6 +425,8 @@ function IssueTaskModal({
   const [hours, setHours] = useState('4');
   const [deadline, setDeadline] = useState(() => defaultDeadlineLocal());
   const [speedrunHours, setSpeedrunHours] = useState(24);
+  // Пустая строка — бонус считается автоматически: дедлайн − бонусное окно.
+  const [bonusUntilLocal, setBonusUntilLocal] = useState('');
   const [teamSize, setTeamSize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -461,9 +463,19 @@ function IssueTaskModal({
     (assignment) => !studentsByAssignment.has(assignment.id),
   ).length;
 
-  const bonusEnd = deadlineValid
-    ? speedrunEndsAt(deadlineDate, speedrunHours)
-    : null;
+  const bonusUntilDate = bonusUntilLocal ? new Date(bonusUntilLocal) : null;
+  const bonusUntilValid =
+    bonusUntilDate === null ||
+    (!Number.isNaN(bonusUntilDate.getTime()) &&
+      bonusUntilDate.getTime() > Date.now() &&
+      deadlineValid &&
+      bonusUntilDate.getTime() < deadlineDate.getTime());
+
+  const bonusEnd = !deadlineValid
+    ? null
+    : bonusUntilDate !== null && bonusUntilValid
+      ? bonusUntilDate
+      : speedrunEndsAt(deadlineDate, speedrunHours);
 
   const slots = taskType === 'TEAM_PROJECT' ? Array.from({ length: teamSize }, (_, index) => {
     const base = SLOT_ROLE_ORDER[index % SLOT_ROLE_ORDER.length];
@@ -502,6 +514,8 @@ function IssueTaskModal({
           expectedHours: Math.max(0.5, hoursNumber || 1),
           deadlineAt: deadlineDate.toISOString(),
           speedrunWindowHours: speedrunHours,
+          speedrunBonusUntil:
+            bonusUntilLocal && bonusUntilValid ? bonusUntilDate?.toISOString() : undefined,
           teamSize: taskType === 'TEAM_PROJECT' ? teamSize : 1,
         });
 
@@ -523,7 +537,7 @@ function IssueTaskModal({
           created.length === 1
             ? 'Задание выдано'
             : `Задание выдано в ${created.length} ${pluralize(created.length, ['поток', 'потока', 'потоков'])}`,
-        description: `Карточки созданы для всех студентов: ${created
+        description: `Карточки созданы для всех учеников: ${created
           .map((item) => item.assignment.groupCode)
           .join(', ')}${taskType === 'TEAM_PROJECT' ? ` · слоты по ${teamSize}` : ''}`,
       });
@@ -547,7 +561,7 @@ function IssueTaskModal({
       open
       onClose={onClose}
       title="Выдать задание"
-      subtitle="Карточки появятся у всех студентов выбранных потоков"
+      subtitle="Карточки появятся у всех учеников выбранных потоков"
       size="lg"
       footer={
         <div className="flex w-full flex-col gap-2">
@@ -617,7 +631,7 @@ function IssueTaskModal({
                     </span>
                     <span className="block truncate text-[10px] text-ink3">
                       {assignment.groupTitle}
-                      {known !== null ? ` · ${known} студентов` : ' · состав появится после первой выдачи'}
+                      {known !== null ? ` · ${known} учеников` : ' · состав появится после первой выдачи'}
                     </span>
                   </span>
                 </button>
@@ -639,7 +653,7 @@ function IssueTaskModal({
           <p className="mt-1 text-[10px] text-ink3">{TASK_TYPE_HINT[taskType]}</p>
         </Field>
 
-        <Field label="Тема" htmlFor="task-title" error={titleError} hint="Коротко и по делу: студент видит её на карточке.">
+        <Field label="Тема" htmlFor="task-title" error={titleError} hint="Коротко и по делу: ученик видит её на карточке.">
           <TextInput
             id="task-title"
             value={title}
@@ -652,7 +666,7 @@ function IssueTaskModal({
         <Field
           label="Методические материалы"
           htmlFor="task-description"
-          hint="Markdown: требования, ссылки на методички, критерии. Показываются студенту в карточке."
+          hint="Markdown: требования, ссылки на методички, критерии. Показываются ученику в карточке."
         >
           <TextArea
             id="task-description"
@@ -727,6 +741,20 @@ function IssueTaskModal({
           </Field>
         </div>
 
+        <Field
+          label="Бонус до (необязательно)"
+          htmlFor="task-bonus-until"
+          hint="Своя дата окончания ×1.5. Пусто — считается автоматически от дедлайна."
+          error={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : null}
+        >
+          <TextInput
+            id="task-bonus-until"
+            type="datetime-local"
+            value={bonusUntilLocal}
+            onChange={(event) => setBonusUntilLocal(event.target.value)}
+          />
+        </Field>
+
         {taskType === 'TEAM_PROJECT' ? (
           <Field label="Размер команды" hint="Каждый слот — отдельная зона ответственности.">
             <SelectInput
@@ -757,10 +785,10 @@ function IssueTaskModal({
             <li>
               • Карточки «К выполнению» появятся у{' '}
               {knownStudents > 0
-                ? `${knownStudents} студентов`
+                ? `${knownStudents} учеников`
                 : unknownStreams > 0
-                  ? 'всех студентов выбранных потоков'
-                  : 'всех студентов потока'}
+                  ? 'всех учеников выбранных потоков'
+                  : 'всех учеников потока'}
               {unknownStreams > 0 && knownStudents > 0
                 ? ' (часть потоков ещё без карточек — число уточнится)'
                 : ''}

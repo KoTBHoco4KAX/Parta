@@ -26,7 +26,7 @@ export interface SubmissionVerdictIssuedPayload {
   reviewed_at: string;
 }
 
-// isSubmissionBoardEvent — true для событий, меняющих канбан студента:
+// isSubmissionBoardEvent — true для событий, меняющих канбан ученика:
 // смена статуса, вердикт и появление нового задания.
 export function isSubmissionBoardEvent(event: Pick<WsEvent, 'event_type'>): boolean {
   return (
