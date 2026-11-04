@@ -6,21 +6,24 @@ import type { PeerReviewStatus, SubmissionStatus, TaskType, Verdict } from '../t
 /** Русские подписи типов заданий (веса — spec/03_MATH.md §1). */
 export const TASK_TYPE_LABEL: Record<TaskType, string> = {
   TEST: 'Тест',
+  NOTES: 'Конспект',
   ESSAY: 'Эссе',
-  LAB_CODE: 'Лабораторная',
-  TEAM_PROJECT: 'Командный проект',
+  LAB_CODE: 'Задание',
+  TEAM_PROJECT: 'Командная',
 };
 
 /** Короткие подписи для фильтров и бейджей. */
 export const TASK_TYPE_SHORT: Record<TaskType, string> = {
   TEST: 'Тест',
+  NOTES: 'Конспект',
   ESSAY: 'Эссе',
-  LAB_CODE: 'Лаба',
-  TEAM_PROJECT: 'Команда',
+  LAB_CODE: 'Задание',
+  TEAM_PROJECT: 'Командная',
 };
 
 export const TASK_TYPE_TONE: Record<TaskType, BadgeTone> = {
   TEST: 'sky',
+  NOTES: 'emerald',
   ESSAY: 'violet',
   LAB_CODE: 'indigo',
   TEAM_PROJECT: 'amber',
@@ -29,9 +32,10 @@ export const TASK_TYPE_TONE: Record<TaskType, BadgeTone> = {
 /** Описание типа задания в конструкторе выдачи. */
 export const TASK_TYPE_HINT: Record<TaskType, string> = {
   TEST: 'Проверка знаний, вес ×1.0',
+  NOTES: 'Конспект по теме, вес ×1.2',
   ESSAY: 'Текстовая работа, вес ×1.5',
-  LAB_CODE: 'Код и отчёт, вес ×2.0',
-  TEAM_PROJECT: 'Слоты ответственности, вес ×2.5',
+  LAB_CODE: 'Задание с решением, вес ×2.0',
+  TEAM_PROJECT: 'Командная работа, вес ×2.5',
 };
 
 /** Колонки канбана ученика (spec/02_FSM.md §1). */

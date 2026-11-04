@@ -22,7 +22,21 @@ var teamRoles = []storage.TeamSlotSeed{
 	{RoleCode: "DEVOPS", RoleTitle: "Сборка, CI и окружение"},
 }
 
+const (
+	// defaultTaskRequirements / defaultTaskHours — базовая сложность задания,
+	// когда преподаватель не задал требований и часов.
+	defaultTaskRequirements = 8
+	defaultTaskHours        = 4.0
+	// defaultSpeedrunWindowHours — бонусное окно по умолчанию.
+	defaultSpeedrunWindowHours = 48
+	// maxTaskXP — верхняя граница назначенного преподавателем XP.
+	maxTaskXP = 100_000
+)
+
 // createTaskRequest — тело POST /api/tasks (spec/04_API.md).
+//
+// Требования и ожидаемые часы необязательны: форма выдачи их не спрашивает,
+// и тогда XP считается по базовой сложности типа задания.
 type createTaskRequest struct {
 	AssignmentID int64 `json:"assignment_id"`
 	// Topic — короткое ТЗ задания.
@@ -37,7 +51,9 @@ type createTaskRequest struct {
 	// SpeedrunBonusUntil — необязательная дата окончания бонуса за спидран.
 	// Пусто — граница считается автоматически: deadline − speedrun-окно.
 	SpeedrunBonusUntil string `json:"speedrun_bonus_until"`
-	TeamSize           int    `json:"team_size"`
+	// XP — XP за задание, назначенный преподавателем. 0 — расчёт по формуле.
+	XP       int `json:"xp"`
+	TeamSize int `json:"team_size"`
 }
 
 // createTaskResponse — ответ на создание задания.
@@ -78,8 +94,8 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateTaskMultipart создаёт задание вместе с приложенными файлами.
 // Поля формы: assignment_id, topic, title, description_md, task_type,
-// requirements_count, expected_hours, deadline_at (datetime-local),
-// speedrun_window_hours, speedrun_bonus_until, team_size и файлы file[].
+// deadline_at (datetime-local), speedrun_bonus_until (datetime-local),
+// speedrun_window_hours, xp, team_size и файлы file[].
 func (s *Server) handleCreateTaskMultipart(w http.ResponseWriter, r *http.Request, p principal) {
 	if err := r.ParseMultipartForm(4 << 20); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{
@@ -123,6 +139,7 @@ func (s *Server) handleCreateTaskMultipart(w http.ResponseWriter, r *http.Reques
 		DeadlineAt:          deadline.UTC().Format(time.RFC3339),
 		SpeedrunWindowHours: int(parseInt64OrZero(value("speedrun_window_hours"))),
 		SpeedrunBonusUntil:  value("speedrun_bonus_until"),
+		XP:                  int(parseInt64OrZero(value("xp"))),
 		TeamSize:            int(parseInt64OrZero(value("team_size"))),
 	}
 
@@ -180,14 +197,29 @@ func (s *Server) createTaskResponse(
 		TeamSize:          req.TeamSize,
 	})
 
+	// Преподаватель может назначить XP сам — оно важнее расчётного.
+	if req.XP > 0 {
+		baseXP = req.XP
+	}
+
+	requirementsCount := req.RequirementsCount
+	if requirementsCount <= 0 {
+		requirementsCount = defaultTaskRequirements
+	}
+
+	expectedHours := req.ExpectedHours
+	if expectedHours <= 0 {
+		expectedHours = defaultTaskHours
+	}
+
 	in := storage.CreateTaskInput{
 		AssignmentID:       req.AssignmentID,
 		Topic:              req.Topic,
 		Title:              req.Title,
 		DescriptionMD:      req.DescriptionMD,
 		TaskType:           req.TaskType,
-		RequirementsCount:  req.RequirementsCount,
-		ExpectedHours:      req.ExpectedHours,
+		RequirementsCount:  requirementsCount,
+		ExpectedHours:      expectedHours,
 		DeadlineAt:         storage.FormatTimestamp(deadline),
 		SpeedrunWindow:     req.SpeedrunWindowHours,
 		SpeedrunBonusUntil: bonusUntil,
@@ -284,7 +316,15 @@ func (s *Server) validateCreateTask(
 		return invalid()
 	}
 
-	if req.RequirementsCount <= 0 || req.ExpectedHours <= 0 || req.SpeedrunWindowHours <= 0 {
+	if req.RequirementsCount < 0 || req.ExpectedHours < 0 {
+		return invalid()
+	}
+
+	if req.SpeedrunWindowHours <= 0 {
+		req.SpeedrunWindowHours = defaultSpeedrunWindowHours
+	}
+
+	if req.XP < 0 || req.XP > maxTaskXP {
 		return invalid()
 	}
 
@@ -355,7 +395,8 @@ func parseSpeedrunBonus(raw string, deadline, now time.Time) (*string, error) {
 // validTaskType проверяет тип задания по CHECK в tasks.task_type.
 func validTaskType(taskType string) bool {
 	switch economy.TaskType(taskType) {
-	case economy.TaskTypeTest, economy.TaskTypeEssay, economy.TaskTypeLabCode, economy.TaskTypeTeamProject:
+	case economy.TaskTypeTest, economy.TaskTypeNotes, economy.TaskTypeEssay,
+		economy.TaskTypeLabCode, economy.TaskTypeTeamProject:
 		return true
 	default:
 		return false

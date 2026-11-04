@@ -7,7 +7,7 @@
  */
 
 /** Типы заданий из CHECK `tasks.task_type` (spec/03_MATH.md §1). */
-export type TaskType = 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
+export type TaskType = 'TEST' | 'NOTES' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
 
 /** Статусы канбана из spec/02_FSM.md §1. */
 export type SubmissionStatus = 'TODO' | 'IN_PROGRESS' | 'REVIEW' | 'DONE' | 'REJECTED';

@@ -16,7 +16,7 @@ export interface BoardTask {
   id: number;
   title: string;
   description: string;
-  taskType: 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
+  taskType: 'TEST' | 'NOTES' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
   deadlineAt: string;
   speedrunWindowHours: number;
   // Автоматическая граница бонуса: deadline − speedrun-окно.

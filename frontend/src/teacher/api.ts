@@ -152,13 +152,13 @@ export interface TeacherTaskInput {
   title: string;
   descriptionMD: string;
   taskType: TaskType;
-  requirementsCount: number;
-  expectedHours: number;
   deadlineAt: string;
   speedrunWindowHours: number;
   /** Своя дата окончания бонуса ×1.5; пусто — автоматический расчёт. */
   speedrunBonusUntil?: string;
   teamSize: number;
+  /** XP за задание, назначенный преподавателем. */
+  xp?: number;
   /** Файлы, приложенные преподавателем к заданию. */
   files?: File[];
 }
@@ -175,11 +175,16 @@ export async function createTeacherTask(
     description_md: input.descriptionMD,
     task_type: input.taskType,
     deadline_at: input.deadlineAt,
+    speedrun_window_hours: String(input.speedrunWindowHours),
     team_size: String(input.teamSize),
   };
 
   if (input.speedrunBonusUntil) {
     fields.speedrun_bonus_until = input.speedrunBonusUntil;
+  }
+
+  if (input.xp !== undefined && input.xp > 0) {
+    fields.xp = String(input.xp);
   }
 
   let response: CreateTaskResponseDto;
@@ -193,21 +198,17 @@ export async function createTeacherTask(
         title: input.title,
         description_md: input.descriptionMD,
         task_type: input.taskType,
-        requirements_count: input.requirementsCount,
-        expected_hours: input.expectedHours,
         deadline_at: input.deadlineAt,
         speedrun_window_hours: input.speedrunWindowHours,
         speedrun_bonus_until: input.speedrunBonusUntil,
         team_size: input.teamSize,
+        xp: input.xp,
       },
     });
   } else {
     const form = new FormData();
 
     form.append('assignment_id', String(input.assignmentId));
-    form.append('requirements_count', String(input.requirementsCount));
-    form.append('expected_hours', String(input.expectedHours));
-    form.append('speedrun_window_hours', String(input.speedrunWindowHours));
 
     for (const [key, value] of Object.entries(fields)) {
       form.append(key, value);

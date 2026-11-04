@@ -280,3 +280,45 @@ export function toLocalInput(date: Date): string {
     date.getHours(),
   )}:${pad(date.getMinutes())}`;
 }
+
+/**
+ * defaultDeadlineLocal — дедлайн «завтра в 08:00» от текущего времени.
+ * Смещение в днях считается от сегодняшней даты (1 — завтра, 3 — через три дня).
+ */
+export function defaultDeadlineLocal(days = 1): string {
+  const date = new Date();
+
+  date.setDate(date.getDate() + days);
+  date.setHours(8, 0, 0, 0);
+
+  return toLocalInput(date);
+}
+
+/** parseLocalInput разбирает значение input[type=datetime-local] в локальную дату. */
+export function parseLocalInput(value: string): Date | null {
+  const [datePart, timePart] = value.split('T');
+
+  if (!datePart || !timePart) {
+    return null;
+  }
+
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hours, minutes] = timePart.split(':').map(Number);
+
+  if ([year, month, day, hours, minutes].some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  const date = new Date(year, month - 1, day, hours, minutes, 0, 0);
+
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** formatDeadline24 печатает дату в 24-часовом формате «18.11.2026, 08:00». */
+export function formatDeadline24(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}, ${pad(
+    date.getHours(),
+  )}:${pad(date.getMinutes())}`;
+}

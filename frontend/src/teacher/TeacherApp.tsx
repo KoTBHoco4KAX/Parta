@@ -152,7 +152,7 @@ export default function TeacherApp() {
         </nav>
       }
     >
-      {tab === 'profile' ? <ProfileScreen onNavigate={navigate} /> : null}
+      {tab === 'profile' ? <ProfileScreen /> : null}
 
       {tab === 'tasks' ? (
         <TasksScreen

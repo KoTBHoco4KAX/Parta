@@ -21,6 +21,7 @@ export const LATE_MULTIPLIER = 0.5;
 /** Вес типа задания (economy.TaskType.Weight). */
 export const TASK_TYPE_WEIGHT: Record<TaskType, number> = {
   TEST: 1,
+  NOTES: 1.2,
   ESSAY: 1.5,
   LAB_CODE: 2,
   TEAM_PROJECT: 2.5,

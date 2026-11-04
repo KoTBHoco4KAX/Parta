@@ -14,6 +14,14 @@ const teamSlotFactor = 1.15
 // minBaseXP — нижняя граница Base XP и Slot Base XP.
 const minBaseXP = 10
 
+// defaultRequirementsCount / defaultExpectedHours — базовая сложность задания,
+// если преподаватель не указал число требований и часы: сейчас эти поля не
+// спрашиваются в форме выдачи, XP задаётся типом и сроком.
+const (
+	defaultRequirementsCount = 8
+	defaultExpectedHours     = 4.0
+)
+
 // BaseXPInput — вход формулы Base XP.
 type BaseXPInput struct {
 	TaskType          economy.TaskType
@@ -39,10 +47,21 @@ func ComputeDeadlineFactor(days float64) float64 {
 }
 
 // ComputeBaseXP считает Base XP, а для TEAM_PROJECT — Slot Base XP.
+// Незаполненные требования и часы заменяются базовой сложностью.
 func ComputeBaseXP(in BaseXPInput) int {
 	days := math.Max(0.5, in.DeadlineAt.Sub(in.CreatedAt).Hours()/24.0)
 
-	complexity := ComputeComplexity(in.TaskType, in.RequirementsCount, in.ExpectedHours)
+	requirements := in.RequirementsCount
+	if requirements <= 0 {
+		requirements = defaultRequirementsCount
+	}
+
+	hours := in.ExpectedHours
+	if hours <= 0 {
+		hours = defaultExpectedHours
+	}
+
+	complexity := ComputeComplexity(in.TaskType, requirements, hours)
 	base := int(math.Round(50.0 * complexity * ComputeDeadlineFactor(days)))
 
 	if in.TaskType == economy.TaskTypeTeamProject && in.TeamSize > 1 {

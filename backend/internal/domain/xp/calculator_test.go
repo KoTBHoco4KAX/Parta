@@ -60,9 +60,9 @@ func TestComputeBaseXP(t *testing.T) {
 			want:  125,
 		},
 		{
-			name:  "floor of ten xp applies",
-			input: BaseXPInput{TaskType: economy.TaskTypeTest, RequirementsCount: 0, ExpectedHours: 0.001, CreatedAt: created, DeadlineAt: created.Add(365 * 24 * time.Hour), TeamSize: 1},
-			want:  10,
+			name:  "missing workload falls back to defaults",
+			input: BaseXPInput{TaskType: economy.TaskTypeTest, CreatedAt: created, DeadlineAt: created, TeamSize: 1},
+			want:  700,
 		},
 		{
 			name:  "long deadline window",
@@ -80,18 +80,27 @@ func TestComputeBaseXP(t *testing.T) {
 	}
 }
 
-func TestComputeBaseXPFloorIsNotReachableByRounding(t *testing.T) {
+func TestComputeBaseXPUsesDefaultWorkload(t *testing.T) {
 	input := BaseXPInput{
-		TaskType:          economy.TaskTypeTest,
-		RequirementsCount: 0,
-		ExpectedHours:     0.001,
-		CreatedAt:         created,
-		DeadlineAt:        created.Add(365 * 24 * time.Hour),
-		TeamSize:          1,
+		TaskType:   economy.TaskTypeTest,
+		CreatedAt:  created,
+		DeadlineAt: created,
+		TeamSize:   1,
 	}
 
-	if got := ComputeBaseXP(input); got != 10 {
-		t.Fatalf("ComputeBaseXP() = %d, want the floor value 10", got)
+	withDefaults := ComputeBaseXP(input)
+
+	explicit := ComputeBaseXP(BaseXPInput{
+		TaskType:          economy.TaskTypeTest,
+		RequirementsCount: defaultRequirementsCount,
+		ExpectedHours:     defaultExpectedHours,
+		CreatedAt:         created,
+		DeadlineAt:        created,
+		TeamSize:          1,
+	})
+
+	if withDefaults != explicit || withDefaults < minBaseXP {
+		t.Fatalf("ComputeBaseXP() = %d, want %d (>= %d)", withDefaults, explicit, minBaseXP)
 	}
 }
 
@@ -173,6 +182,7 @@ func TestComputeComplexity(t *testing.T) {
 		want  float64
 	}{
 		{name: "test", task: economy.TaskTypeTest, count: 10, hours: 5, want: 7.0},
+		{name: "notes", task: economy.TaskTypeNotes, count: 10, hours: 5, want: 8.4},
 		{name: "essay", task: economy.TaskTypeEssay, count: 10, hours: 5, want: 10.5},
 		{name: "lab code", task: economy.TaskTypeLabCode, count: 10, hours: 5, want: 14.0},
 		{name: "team project", task: economy.TaskTypeTeamProject, count: 10, hours: 5, want: 17.5},
@@ -196,6 +206,7 @@ func TestTaskTypeWeight(t *testing.T) {
 		want float64
 	}{
 		{economy.TaskTypeTest, 1.0},
+		{economy.TaskTypeNotes, 1.2},
 		{economy.TaskTypeEssay, 1.5},
 		{economy.TaskTypeLabCode, 2.0},
 		{economy.TaskTypeTeamProject, 2.5},

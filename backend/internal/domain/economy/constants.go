@@ -22,9 +22,11 @@ type TaskType string
 const (
 	// TaskTypeTest — тест.
 	TaskTypeTest TaskType = "TEST"
+	// TaskTypeNotes — конспект.
+	TaskTypeNotes TaskType = "NOTES"
 	// TaskTypeEssay — эссе.
 	TaskTypeEssay TaskType = "ESSAY"
-	// TaskTypeLabCode — лабораторная с кодом.
+	// TaskTypeLabCode — домашнее задание с решением/кодом.
 	TaskTypeLabCode TaskType = "LAB_CODE"
 	// TaskTypeTeamProject — командный проект.
 	TaskTypeTeamProject TaskType = "TEAM_PROJECT"
@@ -35,6 +37,8 @@ func (t TaskType) Weight() float64 {
 	switch t {
 	case TaskTypeTest:
 		return 1.0
+	case TaskTypeNotes:
+		return 1.2
 	case TaskTypeEssay:
 		return 1.5
 	case TaskTypeLabCode:

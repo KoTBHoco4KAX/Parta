@@ -9,6 +9,7 @@ func TestTaskTypeWeight(t *testing.T) {
 		want float64
 	}{
 		{name: "test", task: TaskTypeTest, want: 1.0},
+		{name: "notes", task: TaskTypeNotes, want: 1.2},
 		{name: "essay", task: TaskTypeEssay, want: 1.5},
 		{name: "lab code", task: TaskTypeLabCode, want: 2.0},
 		{name: "team project", task: TaskTypeTeamProject, want: 2.5},
@@ -30,6 +31,7 @@ func TestTaskTypeValuesMatchSchema(t *testing.T) {
 		want string
 	}{
 		{TaskTypeTest, "TEST"},
+		{TaskTypeNotes, "NOTES"},
 		{TaskTypeEssay, "ESSAY"},
 		{TaskTypeLabCode, "LAB_CODE"},
 		{TaskTypeTeamProject, "TEAM_PROJECT"},

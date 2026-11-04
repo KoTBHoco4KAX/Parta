@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../core/auth';
 import { fetchAllSubmissions, fetchTeacherAssignments, fetchTeacherTasks } from '../api';
-import type { TeacherTab } from '../TeacherApp';
-import { Button, Card, ScreenHeader, Section, Skeleton, cn } from './ui';
-import { IconArrowRight } from './icons';
+import { Card, ScreenHeader, Skeleton, cn } from './ui';
 
 /**
  * ProfileScreen — минимальная карточка преподавателя.
@@ -12,11 +10,7 @@ import { IconArrowRight } from './icons';
  * почта, число потоков, заданий и работ на проверке плюс переходы в остальные
  * разделы кабинета.
  */
-export function ProfileScreen({
-  onNavigate,
-}: {
-  onNavigate: (tab: TeacherTab) => void;
-}) {
+export function ProfileScreen() {
   const { user } = useAuth();
   const [counts, setCounts] = useState<{ streams: number; tasks: number; review: number } | null>(
     null,
@@ -79,21 +73,6 @@ export function ProfileScreen({
           </>
         )}
       </div>
-
-      <Section title="Разделы" className="mt-5">
-        <div className="space-y-2">
-          <NavRow
-            title="Задания"
-            description="Список выданных работ и выдача новой"
-            onClick={() => onNavigate('tasks')}
-          />
-          <NavRow
-            title="Проверка"
-            description="Работы учеников, которые ждут вердикта"
-            onClick={() => onNavigate('review')}
-          />
-        </div>
-      </Section>
     </div>
   );
 }
@@ -111,29 +90,5 @@ function Stat({ label, value, highlight = false }: { label: string; value: numbe
         {value}
       </p>
     </div>
-  );
-}
-
-function NavRow({
-  title,
-  description,
-  onClick,
-}: {
-  title: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <Button
-      variant="outline"
-      onClick={onClick}
-      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
-    >
-      <span className="min-w-0">
-        <span className="block text-sm font-medium text-ink">{title}</span>
-        <span className="block text-[11px] font-normal text-ink3">{description}</span>
-      </span>
-      <IconArrowRight className="h-4 w-4 shrink-0 text-ink3" />
-    </Button>
   );
 }

@@ -36,7 +36,7 @@ export interface CreateTaskRequest {
   topic?: string;
   title: string;
   description_md: string;
-  task_type: 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
+  task_type: 'TEST' | 'NOTES' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
   requirements_count: number;
   expected_hours: number;
   deadline_at: string;
@@ -150,7 +150,7 @@ export type ConnectionStatus = 'connecting' | 'online' | 'offline';
 // Read-модели GET /api/tasks, /api/submissions, /api/peer-reviews,
 // /api/assignments. Имена полей повторяют JSON backend один в один.
 
-export type TaskType = 'TEST' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
+export type TaskType = 'TEST' | 'NOTES' | 'ESSAY' | 'LAB_CODE' | 'TEAM_PROJECT';
 
 export interface Task {
   id: number;
