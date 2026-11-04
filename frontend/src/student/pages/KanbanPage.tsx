@@ -1,87 +1,78 @@
-import { useCallback, useEffect, useState, type DragEvent } from 'react';
-import { ApiError } from '../../core/api';
-import { getBoard, subscribe, takeCard } from '../api';
-import type { BoardCard, TaskStatus } from '../types';
-import TaskCard from '../components/TaskCard';
-import SubmitWorkModal from '../components/SubmitWorkModal';
-import { Button } from '../../components/Button';
-import { Modal } from '../../components/Modal';
+import { useMemo, useState } from 'react';
+import { ApiError, moveSubmission } from '../../core/api';
+import type { Submission, Task } from '../../core/types';
+import TaskDetailsModal from '../components/TaskDetailsModal';
+import { useKanbanBoard } from '../hooks/useKanbanBoard';
 
-// Колонки канбана — все статусы карточки студента (spec/02_FSM.md).
-const COLUMNS: { status: TaskStatus; title: string }[] = [
-  { status: 'TODO', title: 'К выполнению' },
-  { status: 'IN_PROGRESS', title: 'В работе' },
-  { status: 'REVIEW', title: 'На проверке' },
-  { status: 'DONE', title: 'Принято' },
-  { status: 'REJECTED', title: 'Доработка' },
+// Колонки канбана — статусы карточки напрямую из submissions.status.
+const columns: { id: Submission['status']; title: string }[] = [
+  { id: 'TODO', title: 'К выполнению' },
+  { id: 'IN_PROGRESS', title: 'В работе' },
+  { id: 'REVIEW', title: 'На проверке' },
+  { id: 'DONE', title: 'Готово' },
+  { id: 'REJECTED', title: 'На доработке' },
 ];
 
-// KanbanPage — доска заданий студента: drag-n-drop между колонками,
-// FSM-переходы через мок-слой api, тап по карточке открывает меню действий
-// (fallback для тач-экранов, где HTML5 drag-and-drop не работает).
+// statusOf — исходный статус карточки; REJECTED живёт в своей колонке.
+function statusOf(submission: Submission | null): Submission['status'] {
+  return submission?.status ?? 'TODO';
+}
+
+// KanbanPage — доска студента без drag-n-drop: клик по карточке открывает
+// задание, а карточка TODO/REJECTED сразу переводится в работу.
 export default function KanbanPage() {
-  const [cards, setCards] = useState<BoardCard[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const { tasks, submissions, loading, error: loadError, reload } = useKanbanBoard();
+  const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [draggedId, setDraggedId] = useState<number | null>(null);
-  const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
-  const [selected, setSelected] = useState<BoardCard | null>(null);
-  const [submitTarget, setSubmitTarget] = useState<BoardCard | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const error = actionError ?? loadError;
 
-  const load = useCallback(async () => {
-    try {
-      const snapshot = await getBoard();
-      setCards(snapshot.cards);
-      setError(null);
-    } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить доску.');
-    } finally {
-      setLoading(false);
+  const submissionByTask = useMemo(() => {
+    const map = new Map<number, Submission>();
+    for (const submission of submissions) {
+      map.set(submission.task_id, submission);
     }
-  }, []);
 
-  useEffect(() => {
-    void load();
+    return map;
+  }, [submissions]);
 
-    // Вердикт «преподавателя» в моке приходит через секунды — страница
-    // перечитывает доску на каждую мутацию хранилища (аналог WS-подписки).
-    return subscribe(() => {
-      void load();
-    });
-  }, [load]);
+  const cards = useMemo(
+    () =>
+      tasks.map((task) => {
+        const submission = submissionByTask.get(task.id) ?? null;
 
-  function findCard(submissionId: number): BoardCard | null {
-    return cards.find((card) => card.submission?.id === submissionId) ?? null;
-  }
+        return { task, submission, status: statusOf(submission) };
+      }),
+    [tasks, submissionByTask],
+  );
 
-  // handleMove — единственный путь мутации статуса: guard-и FSM + ошибки
-  // домена показываются inline (не alert). После мутации доска перечитывается.
-  async function handleMove(card: BoardCard, target: TaskStatus) {
-    const submission = card.submission;
+  const selectedCard = useMemo(() => {
+    const card = cards.find((candidate) => candidate.task.id === selectedTaskId);
 
-    if (busy || !submission) {
+    if (!card || !card.submission) {
+      return null;
+    }
+
+    return { task: card.task, submission: card.submission };
+  }, [cards, selectedTaskId]);
+
+  async function handleCardClick(task: Task) {
+    if (busy) {
       return;
     }
 
-    const from = submission.status;
+    const card = cards.find((candidate) => candidate.task.id === task.id);
+    const submission = card?.submission ?? null;
 
-    if (from === target) {
+    if (!submission) {
+      setActionError('Карточка ещё не создана сервером. Подождите — доска обновится автоматически.');
       return;
     }
 
-    if (from === 'DONE') {
-      setActionError('Принятая работа зафиксирована преподавателем и не двигается.');
-      return;
-    }
+    setSelectedTaskId(task.id);
 
-    if (target === 'TODO' || target === 'DONE') {
-      setActionError(
-        target === 'DONE'
-          ? 'В «Принято» карточку переводит только вердикт преподавателя.'
-          : 'Вернуть карточку в «К выполнению» нельзя — это стартовая точка.',
-      );
+    // Первый клик по входящей карточке — это и есть «взять в работу».
+    if (submission.status !== 'TODO' && submission.status !== 'REJECTED') {
       return;
     }
 
@@ -89,46 +80,20 @@ export default function KanbanPage() {
     setActionError(null);
 
     try {
-      if (target === 'REVIEW') {
-        // Сдача требует артефакта: REOPEN для доработки, START для запуска,
-        // затем открывается модалка с файлами.
-        if (from === 'TODO' || from === 'REJECTED') {
-          await takeCard(submission.id, from === 'TODO' ? 'START' : 'REOPEN');
-        }
-
-        setSubmitTarget(card);
-      } else {
-        await takeCard(submission.id, from === 'TODO' ? 'START' : 'REOPEN');
-      }
-
-      setSelected(null);
-      await load();
+      await moveSubmission(submission.id, submission.status === 'TODO' ? 'START' : 'REOPEN');
+      reload();
     } catch (cause) {
-      setActionError(cause instanceof ApiError ? cause.message : 'Не удалось переместить карточку.');
+      setActionError(cause instanceof ApiError ? cause.message : 'Не удалось взять задание в работу.');
     } finally {
       setBusy(false);
-      setDraggedId(null);
-      setDragOver(null);
     }
-  }
-
-  function handleColumnDrop(target: TaskStatus, event: DragEvent<HTMLElement>) {
-    event.preventDefault();
-    setDragOver(null);
-    const card = draggedId === null ? null : findCard(draggedId);
-
-    if (card) {
-      void handleMove(card, target);
-    }
-
-    setDraggedId(null);
   }
 
   if (loading) {
     return (
       <div className="space-y-3">
         {[0, 1, 2].map((row) => (
-          <div key={row} className="h-20 animate-pulse rounded-xl bg-slate-900/70" />
+          <div key={row} className="h-20 animate-pulse rounded-2xl bg-card" />
         ))}
       </div>
     );
@@ -136,76 +101,78 @@ export default function KanbanPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-bold text-slate-100">Канбан-доска</h1>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Перетащите карточку между колонками или откройте её для действий.
-          </p>
-        </div>
-        <Button variant="secondary" size="sm" onClick={() => void load()}>
-          Обновить
-        </Button>
+      <div className="mb-4">
+        <h1 className="text-xl font-semibold text-ink">Канбан-доска</h1>
+        <p className="mt-0.5 text-sm text-ink3">
+          Нажмите на карточку: откроется задание, а входящая сразу перейдёт в работу.
+        </p>
       </div>
 
       {error ? (
-        <p role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+        <p role="alert" className="mb-3 rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}
         </p>
       ) : null}
 
-      {actionError ? (
-        <p role="alert" className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-          {actionError}
-        </p>
-      ) : null}
-
-      {cards.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-slate-800 p-6 text-center text-sm text-slate-500">
+      {tasks.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line px-5 py-8 text-center text-sm text-ink3">
           Заданий пока нет — они появятся, когда преподаватель опубликует работу.
         </p>
       ) : (
-        <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-2">
-          {COLUMNS.map((column) => {
-            const columnCards = cards.filter(
-              (card) => (card.submission?.status ?? 'TODO') === column.status,
-            );
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {columns.map((column) => {
+            const columnCards = cards.filter((card) => card.status === column.id);
 
             return (
-              <section
-                key={column.status}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setDragOver(column.status);
-                }}
-                onDragLeave={() => setDragOver((current) => (current === column.status ? null : current))}
-                onDrop={(event) => handleColumnDrop(column.status, event)}
-                className={[
-                  'w-60 shrink-0 snap-start rounded-xl border bg-slate-900/60 p-2 transition',
-                  dragOver === column.status
-                    ? 'border-emerald-500/60 bg-emerald-500/5'
-                    : 'border-slate-800',
-                ].join(' ')}
-              >
-                <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  {column.title} · {columnCards.length}
+              <section key={column.id} className="rounded-2xl border border-line bg-muted p-3">
+                <h2 className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-ink3">
+                  <span>{column.title}</span>
+                  <span className="tabular-nums">{columnCards.length}</span>
                 </h2>
 
                 <div className="space-y-2">
-                  {columnCards.map((card) => (
-                    <TaskCard
-                      key={card.submission?.id ?? card.task.id}
-                      card={card}
-                      dragging={draggedId !== null && card.submission?.id === draggedId}
-                      draggable={!busy}
-                      onDragStart={() => setDraggedId(card.submission?.id ?? null)}
-                      onDragEnd={() => setDraggedId(null)}
-                      onOpen={() => setSelected(card)}
-                    />
+                  {columnCards.map(({ task, submission }) => (
+                    <article
+                      key={task.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-busy={busy || undefined}
+                      onClick={() => void handleCardClick(task)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          void handleCardClick(task);
+                        }
+                      }}
+                      className="cursor-pointer rounded-xl border border-line bg-card p-3 shadow-[var(--shadow-card)] transition hover:border-brandLine focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="min-w-0 flex-1 text-sm font-semibold text-ink">{task.title}</h3>
+                        <span className="shrink-0 text-[11px] font-semibold tabular-nums text-brand">
+                          +{task.base_xp_computed}
+                        </span>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-ink3">{task.description_md}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                        <span className="rounded-full bg-sunken px-2 py-0.5 text-ink3">
+                          {task.task_type}
+                        </span>
+                        <span className="text-ink4">до {new Date(task.deadline_at).toLocaleDateString()}</span>
+                        {submission?.status === 'TODO' ? (
+                          <span className="text-brand">нажмите, чтобы взять в работу</span>
+                        ) : null}
+                        {submission?.status === 'REJECTED' ? (
+                          <span className="text-warn">нажмите, чтобы вернуть в работу</span>
+                        ) : null}
+                        {submission?.status === 'IN_PROGRESS' ? (
+                          <span className="text-brand">нажмите, чтобы сдать</span>
+                        ) : null}
+                      </div>
+                    </article>
                   ))}
 
                   {columnCards.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-slate-800 px-2 py-4 text-center text-[11px] text-slate-600">
+                    <p className="rounded-xl border border-dashed border-line px-2 py-4 text-center text-[11px] text-ink4">
                       пусто
                     </p>
                   ) : null}
@@ -216,94 +183,14 @@ export default function KanbanPage() {
         </div>
       )}
 
-      {/* Детальная карточка: описание задания и доступные FSM-переходы. */}
-      {selected ? (
-        <Modal
-          open
-          onClose={() => setSelected(null)}
-          title={selected.task.title}
-          subtitle={`${selected.task.taskType} · база ${selected.task.baseXp} XP`}
-          footer={
-            <div className="flex flex-wrap justify-end gap-2">
-              {(selected.submission?.status ?? 'TODO') === 'TODO' ? (
-                <Button disabled={busy} onClick={() => void handleMove(selected, 'IN_PROGRESS')}>
-                  Взять в работу
-                </Button>
-              ) : null}
-              {(selected.submission?.status ?? 'TODO') === 'REJECTED' ? (
-                <Button disabled={busy} onClick={() => void handleMove(selected, 'IN_PROGRESS')}>
-                  Доработать
-                </Button>
-              ) : null}
-              {(selected.submission?.status ?? 'TODO') === 'IN_PROGRESS' ? (
-                <Button disabled={busy} onClick={() => void handleMove(selected, 'REVIEW')}>
-                  Сдать работу
-                </Button>
-              ) : null}
-            </div>
-          }
-        >
-          <div className="space-y-3">
-            <p className="text-sm text-slate-300">{selected.task.description}</p>
-
-            <dl className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-slate-950 px-3 py-2">
-                <dt className="text-[10px] uppercase tracking-wide text-slate-500">Дедлайн</dt>
-                <dd className="mt-0.5 text-slate-200">
-                  {new Date(selected.task.deadlineAt).toLocaleString()}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-slate-950 px-3 py-2">
-                <dt className="text-[10px] uppercase tracking-wide text-slate-500">Speedrun</dt>
-                <dd className="mt-0.5 text-slate-200">
-                  ×1.5 при сдаче за {selected.task.speedrunWindowHours} ч
-                </dd>
-              </div>
-            </dl>
-
-            {(selected.submission?.status ?? 'TODO') === 'REVIEW' ? (
-              <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
-                Работа ждёт проверки — артефакт заблокирован до вердикта.
-              </p>
-            ) : null}
-
-            {(selected.submission?.status ?? 'TODO') === 'DONE' ? (
-              <p className="rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-                Принято. XP уже начислены, артефакт доступен только для чтения.
-              </p>
-            ) : null}
-
-            {selected.submission && selected.submission.revisionLog.length > 0 ? (
-              <div className="space-y-2">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                  Комментарии преподавателя
-                </h3>
-                {selected.submission.revisionLog.map((revision) => (
-                  <blockquote
-                    key={revision.at}
-                    className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs text-rose-200"
-                  >
-                    {revision.comment}
-                    <span className="mt-1 block text-[10px] text-rose-300/70">
-                      {new Date(revision.at).toLocaleString()}
-                    </span>
-                  </blockquote>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </Modal>
-      ) : null}
-
-      {/* Модалка сдачи: файлы + SHA-256 + SUBMIT. */}
-      {submitTarget && submitTarget.submission ? (
-        <SubmitWorkModal
-          task={submitTarget.task}
-          submission={submitTarget.submission}
-          onClose={() => setSubmitTarget(null)}
+      {selectedCard ? (
+        <TaskDetailsModal
+          task={selectedCard.task}
+          submission={selectedCard.submission}
+          onClose={() => setSelectedTaskId(null)}
           onSubmitted={() => {
-            setSubmitTarget(null);
-            void load();
+            setSelectedTaskId(null);
+            reload();
           }}
         />
       ) : null}

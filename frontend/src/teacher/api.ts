@@ -1,8 +1,10 @@
-import { apiFetch } from '../core/api';
+import { ApiError, apiFetch } from '../core/api';
+import { readStoredToken } from '../core/session';
 import type {
   Assignment as AssignmentDto,
   CreateTaskResponse as CreateTaskResponseDto,
   PeerReview as PeerReviewDto,
+  Role,
   Submission,
   Task,
   TaskType,
@@ -12,6 +14,7 @@ import type {
   InboxSubmission,
   PeerReview,
   ReviewInboxItem,
+  SubmissionAttachment,
   Verdict,
   VerdictResult,
 } from './types';
@@ -91,7 +94,8 @@ export async function issueVerdict(input: {
 }
 
 /** GET /api/peer-reviews — sandbox-сессии преподавателя. */
-export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
+export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
+  const reviews = await apiFetch<PeerReviewDto[]>('/peer-reviews');
 
   return reviews.map((review) => ({
     id: review.id,
@@ -180,4 +184,317 @@ export async function createTeacherTask(
     baseXP: response.base_xp_computed,
     slotsCount: response.slots_count ?? 0,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Вложения сдачи (Sprint 2): список и скачивание через /api/attachments.
+// ---------------------------------------------------------------------------
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function firstString(
+  record: Record<string, unknown>,
+  keys: string[],
+  fallback: string,
+): string {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === 'string' && value.trim() !== '') {
+      return value;
+    }
+  }
+
+  return fallback;
+}
+
+function firstNumber(...values: unknown[]): number {
+  for (const value of values) {
+    const parsed = typeof value === 'string' ? Number(value) : value;
+    if (typeof parsed === 'number' && Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return 0;
+}
+
+function normalizeAttachment(value: unknown): SubmissionAttachment | null {
+  const record = asRecord(value);
+  if (!record) {
+    return null;
+  }
+
+  const rawID = record.id ?? record.attachment_id;
+  let id = '';
+
+  if (typeof rawID === 'string') {
+    id = rawID.trim();
+  } else if (typeof rawID === 'number' && Number.isFinite(rawID) && rawID > 0) {
+    id = String(rawID);
+  }
+
+  if (id === '') {
+    return null;
+  }
+
+  return {
+    id,
+    submissionId: firstNumber(record.submission_id),
+    filename: firstString(record, ['filename', 'file_name', 'name'], 'artifact'),
+    sizeBytes: firstNumber(record.size_bytes, record.size, record.bytes),
+    contentType: firstString(
+      record,
+      ['content_type', 'mime_type', 'mime'],
+      'application/octet-stream',
+    ),
+    createdAt: firstString(record, ['created_at', 'uploaded_at'], ''),
+    url: firstString(record, ['url', 'artifact_url'], ''),
+  };
+}
+
+function extractAttachmentRows(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  const record = asRecord(payload);
+  if (!record) {
+    return [];
+  }
+
+  for (const key of ['attachments', 'items', 'data', 'files']) {
+    const value = record[key];
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
+/**
+ * GET /api/attachments?submission_id={id} — файлы, прикреплённые студентом.
+ *
+ * Ответ принимается в двух формах: массив или `{ attachments | items | data }`.
+ * 404 не маскируется: экран покажет ссылку на artifact_url как fallback.
+ */
+export async function fetchSubmissionAttachments(
+  submissionId: number,
+): Promise<SubmissionAttachment[]> {
+  const payload = await apiFetch<unknown>(`/attachments?submission_id=${submissionId}`);
+
+  return extractAttachmentRows(payload)
+    .map(normalizeAttachment)
+    .filter((item): item is SubmissionAttachment => item !== null);
+}
+
+/**
+ * GET /api/attachments/{id} — скачивание через 302 на artifact_url.
+ *
+ * Backend отдаёт redirect, поэтому fetch следует по нему и получает уже файл
+ * (если внешний хост отдаёт CORS). Авторизация — JWT на первом запросе.
+ * Если внешний artifact_url закрыт CORS, открываем его в новой вкладке: это
+ * MVP-поведение до появления полноценного хранилища (BUGLOG BUG-001/002).
+ */
+export async function downloadSubmissionAttachment(
+  attachment: SubmissionAttachment,
+): Promise<void> {
+  const token = readStoredToken();
+  const headers: Record<string, string> = { Accept: '*/*' };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  let response: Response;
+
+  try {
+    response = await fetch(
+      `/api/attachments/${encodeURIComponent(attachment.id)}`,
+      { headers },
+    );
+  } catch {
+    // CORS/сетевой барьер на внешнем artifact_url — безопасный fallback.
+    if (attachment.url.trim() !== '') {
+      window.open(attachment.url, '_blank', 'noopener,noreferrer');
+
+      return;
+    }
+
+    throw new ApiError(0, 'network', 'Не удалось скачать файл. Проверьте соединение.');
+  }
+
+  if (!response.ok) {
+    let code = 'download_failed';
+    let message = `Не удалось скачать файл (${response.status})`;
+
+    try {
+      const payload = (await response.json()) as { error?: unknown; code?: unknown };
+      if (typeof payload.error === 'string' && payload.error.trim() !== '') {
+        message = payload.error;
+      }
+      if (typeof payload.code === 'string' && payload.code.trim() !== '') {
+        code = payload.code;
+      }
+    } catch {
+      // Тело не JSON — оставляем сообщение по HTTP-статусу.
+    }
+
+    throw new ApiError(response.status, code, message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectUrl;
+  link.download = attachmentFilename(attachment);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
+// attachmentFilename выбирает имя для сохранения: имя из API, иначе из URL.
+function attachmentFilename(attachment: SubmissionAttachment): string {
+  const filename = attachment.filename.trim();
+
+  if (filename !== '' && filename !== 'artifact') {
+    return filename;
+  }
+
+  try {
+    const segment = new URL(attachment.url).pathname.split('/').pop();
+    if (segment) {
+      return decodeURIComponent(segment);
+    }
+  } catch {
+    // URL относительный или битый — используем синтетическое имя.
+  }
+
+  return filename !== '' ? filename : `attachment-${attachment.id}`;
+}
+
+// ---------------------------------------------------------------------------
+// P2P: бонус рецензенту за качественную проверку.
+// ---------------------------------------------------------------------------
+
+/** Нормализованный ответ POST /api/peer-reviews/{id}/award. */
+export interface AwardPeerReviewResult {
+  amount: number;
+  totalXp: number;
+  ledgerId: string;
+}
+
+/** Тело запроса начисления бонуса рецензенту (UI-модель). */
+export interface AwardPeerReviewBody {
+  reviewerId: number;
+  amount: number;
+  comment?: string;
+}
+
+// ledgerIdOf приводит ledger_id из backend (int64 или строка) к строке.
+function ledgerIdOf(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return '';
+}
+
+/**
+ * POST /api/peer-reviews/{id}/award — начисление бонусного XP рецензенту.
+ *
+ * Канонический контракт backend:
+ * `200 {peer_review_id, reviewer_id, amount, total_xp, ledger_id}`.
+ * Вся нормализация snake_case → UI-поля живёт здесь (DESIGN_SPEC §4.2), чтобы
+ * компоненты читали только `amount` / `totalXp` / `ledgerId`.
+ *
+ * Вызывается только для COMPLETED-сессии: преподаватель не завершает ревью за
+ * студента, но может отметить качество проверки.
+ */
+export async function awardPeerReview(
+  id: number,
+  body: AwardPeerReviewBody,
+): Promise<{ amount: number; totalXp: number; ledgerId: string }> {
+  const response = await apiFetch<Record<string, unknown>>(
+    `/peer-reviews/${id}/award`,
+    {
+      method: 'POST',
+      body: {
+        reviewer_id: body.reviewerId,
+        amount: body.amount,
+        comment: body.comment?.trim() ?? '',
+      },
+    },
+  );
+
+  return {
+    amount: firstNumber(response.amount, response.xp_awarded, body.amount),
+    totalXp: firstNumber(
+      response.total_xp,
+      response.xp_balance,
+      response.reward_xp,
+    ),
+    ledgerId: ledgerIdOf(response.ledger_id),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Загрузка данных кабинета: сдачи целиком, состав групп, вложения.
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/submissions — все карточки преподавателя без фильтра по статусу.
+ *
+ * Инбоксу нужен только REVIEW, но обзору нагрузки и аудиту команд — вся
+ * выборка, поэтому экраны читают один список и фильтруют его локально.
+ */
+export function fetchAllSubmissions(): Promise<Submission[]> {
+  return apiFetch<Submission[]>('/submissions');
+}
+
+/** Участник потока из фильтрованного списка пользователей. */
+export interface GroupMember {
+  id: number;
+  email: string;
+  fullName: string;
+  role: Role;
+  groupId: number | null;
+}
+
+/** Ответ GET /api/users?group_id= (контракт BUG-005). */
+interface FilteredUsersResponse {
+  items: {
+    id: number;
+    email: string;
+    full_name: string;
+    role: Role;
+    group_id: number | null;
+  }[];
+}
+
+/**
+ * GET /api/users?group_id={id} — студенты конкретного потока.
+ *
+ * Доступен преподавателю только по его группам (backend сверяет
+ * teacher_assignments), поэтому экраны не дублируют проверку прав.
+ */
+export async function fetchGroupMembers(groupId: number): Promise<GroupMember[]> {
+  const response = await apiFetch<FilteredUsersResponse>(`/users?group_id=${groupId}`);
+
+  return (response.items ?? []).map((item) => ({
+    id: item.id,
+    email: item.email,
+    fullName: item.full_name,
+    role: item.role,
+    groupId: item.group_id,
+  }));
 }

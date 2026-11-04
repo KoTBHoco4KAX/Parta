@@ -52,37 +52,37 @@ export function EconomyPage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-xl font-semibold text-slate-50">Экономика</h1>
-        <p className="text-sm text-slate-400">
+        <h1 className="text-xl font-semibold text-ink">Экономика</h1>
+        <p className="text-sm text-ink3">
           XP — внутренняя валюта прогресса, не оценка и не допуск к зачёту.
         </p>
       </header>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <h2 className="text-sm font-medium text-slate-200">Заморозки стрика</h2>
-        <p className="mt-1 text-xs text-slate-400">200 XP за штуку. Тратятся вместо сброса on-time стрика.</p>
+      <section className="rounded-2xl border border-line bg-card p-4">
+        <h2 className="text-sm font-medium text-ink2">Заморозки стрика</h2>
+        <p className="mt-1 text-xs text-ink3">200 XP за штуку. Тратятся вместо сброса on-time стрика.</p>
         <div className="mt-3 flex items-end gap-2">
           <label className="flex-1 space-y-1">
-            <span className="text-[11px] uppercase tracking-wide text-slate-500">Количество</span>
+            <span className="text-[11px] uppercase tracking-wide text-ink4">Количество</span>
             <input
               type="number"
               min={1}
               max={10}
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink"
             />
           </label>
           <Button loading={busy === 'freeze'} onClick={() => void buyFreezes()} disabled={role !== 'student'}>
             Купить
           </Button>
         </div>
-        {role !== 'student' ? <p className="mt-2 text-xs text-slate-600">Покупка доступна студенту.</p> : null}
+        {role !== 'student' ? <p className="mt-2 text-xs text-ink4">Покупка доступна студенту.</p> : null}
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <h2 className="text-sm font-medium text-slate-200">Пари на собственный результат</h2>
-        <p className="mt-1 text-xs text-slate-400">Победа — работа принята до дедлайна пари; выплата ×2.</p>
+      <section className="rounded-2xl border border-line bg-card p-4">
+        <h2 className="text-sm font-medium text-ink2">Пари на собственный результат</h2>
+        <p className="mt-1 text-xs text-ink3">Победа — работа принята до дедлайна пари; выплата ×2.</p>
         <div className="mt-3 space-y-2">
           <Input label="ID задания" type="number" value={taskId} onChange={setTaskId} />
           <Input label="Ставка, XP" type="number" value={stake} onChange={setStake} />
@@ -97,8 +97,8 @@ export function EconomyPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-        <h2 className="text-sm font-medium text-slate-200">Peer-review и командные слоты</h2>
+      <section className="rounded-2xl border border-line bg-card p-4 text-sm text-ink3">
+        <h2 className="text-sm font-medium text-ink2">Peer-review и командные слоты</h2>
         <p className="mt-1 text-xs leading-relaxed">
           Создание ревью, claim по чек-листу и carry-over слота уже есть в API-клиенте
           (<code>api.createPeerReview</code>, <code>api.claimPeerReview</code>, <code>api.carryOverSlot</code>),
@@ -107,13 +107,13 @@ export function EconomyPage() {
       </section>
 
       {message ? (
-        <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">
+        <p className="rounded-lg border border-brandLine bg-brandSoft p-3 text-sm text-brandStrong">
           {message}
         </p>
       ) : null}
 
       {error ? (
-        <p className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-sm text-rose-200">{error}</p>
+        <p className="rounded-lg border border-badLine bg-badSoft p-3 text-sm text-bad">{error}</p>
       ) : null}
     </div>
   );
@@ -138,12 +138,12 @@ interface InputProps {
 function Input({ label, value, onChange, type = 'text' }: InputProps) {
   return (
     <label className="block space-y-1">
-      <span className="text-[11px] uppercase tracking-wide text-slate-500">{label}</span>
+      <span className="text-[11px] uppercase tracking-wide text-ink4">{label}</span>
       <input
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+        className="w-full rounded-lg border border-line2 bg-page px-3 py-2 text-sm text-ink"
       />
     </label>
   );

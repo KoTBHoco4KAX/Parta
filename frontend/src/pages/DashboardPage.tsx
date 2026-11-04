@@ -12,21 +12,21 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+      <section className="rounded-2xl border border-line bg-card p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-widest text-slate-500">{role}</p>
-            <h1 className="mt-1 text-xl font-semibold text-slate-50">{user.display_name}</h1>
-            <p className="text-sm text-slate-400">{user.external_id}</p>
+            <p className="text-xs uppercase tracking-widest text-ink4">{role}</p>
+            <h1 className="mt-1 text-xl font-semibold text-ink">{user.display_name}</h1>
+            <p className="text-sm text-ink3">{user.external_id}</p>
           </div>
           <span
             className={[
               'rounded-full px-2.5 py-1 text-xs font-medium',
               connection === 'online'
-                ? 'bg-emerald-500/15 text-emerald-300'
+                ? 'bg-brandSoft text-brand'
                 : connection === 'connecting'
-                  ? 'bg-amber-500/15 text-amber-300'
-                  : 'bg-slate-700/60 text-slate-400',
+                  ? 'bg-warnSoft text-warn'
+                  : 'bg-line2/60 text-ink3',
             ].join(' ')}
           >
             {connection === 'online' ? 'онлайн' : connection === 'connecting' ? 'подключение' : 'оффлайн'}
@@ -42,12 +42,12 @@ export function DashboardPage() {
 
       <section className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium uppercase tracking-widest text-slate-500">Живая лента</h2>
-          <span className="text-xs text-slate-600">{events.length} событий</span>
+          <h2 className="text-sm font-medium uppercase tracking-widest text-ink4">Живая лента</h2>
+          <span className="text-xs text-ink4">{events.length} событий</span>
         </div>
 
         {events.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-800 p-4 text-sm text-slate-500">
+          <p className="rounded-xl border border-dashed border-line p-4 text-sm text-ink4">
             Пока тихо. События появятся после действий в канбане, приёмки или экономики.
           </p>
         ) : (
@@ -59,7 +59,7 @@ export function DashboardPage() {
         )}
       </section>
 
-      <p className="text-xs leading-relaxed text-slate-600">
+      <p className="text-xs leading-relaxed text-ink4">
         Профиль обновляется по событиям <code>xp.ledger.posted</code> и <code>streak.updated</code>. Чтение
         списков (задания, карточки) появится в Фазе 7 — сейчас экраны работают как каркас.
       </p>
@@ -69,21 +69,21 @@ export function DashboardPage() {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl bg-slate-950/60 px-3 py-2">
-      <dt className="text-[11px] uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="text-lg font-semibold text-slate-100">{value}</dd>
+    <div className="rounded-xl bg-muted px-3 py-2">
+      <dt className="text-[11px] uppercase tracking-wide text-ink4">{label}</dt>
+      <dd className="text-lg font-semibold text-ink">{value}</dd>
     </div>
   );
 }
 
 function EventRow({ event }: { event: WsEvent }) {
   return (
-    <li className="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+    <li className="rounded-xl border border-line bg-card/70 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-[11px] text-emerald-400">{event.event_type}</span>
-        <span className="text-[11px] text-slate-500">{event.room}</span>
+        <span className="font-mono text-[11px] text-brand">{event.event_type}</span>
+        <span className="text-[11px] text-ink4">{event.room}</span>
       </div>
-      <p className="mt-1 truncate text-xs text-slate-400">{JSON.stringify(event.payload)}</p>
+      <p className="mt-1 truncate text-xs text-ink3">{JSON.stringify(event.payload)}</p>
     </li>
   );
 }

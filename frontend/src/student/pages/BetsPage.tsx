@@ -13,10 +13,10 @@ const STATUS_LABEL: Record<StudentWager['status'], string> = {
 };
 
 const STATUS_CLASS: Record<StudentWager['status'], string> = {
-  PLACED: 'bg-sky-500/15 text-sky-300',
-  WON: 'bg-emerald-500/15 text-emerald-300',
-  LOST: 'bg-rose-500/15 text-rose-300',
-  CANCELLED: 'bg-slate-700 text-slate-300',
+  PLACED: 'bg-brandSoft text-brand',
+  WON: 'bg-okSoft text-ok',
+  LOST: 'bg-badSoft text-bad',
+  CANCELLED: 'bg-sunken text-ink3',
 };
 
 // toLocalInput — ISO → значение для <input type="datetime-local">.
@@ -152,8 +152,8 @@ export default function BetsPage() {
   if (loading || !profile) {
     return (
       <div className="space-y-3">
-        <div className="h-20 animate-pulse rounded-xl bg-slate-900/70" />
-        <div className="h-32 animate-pulse rounded-xl bg-slate-900/70" />
+        <div className="h-20 animate-pulse rounded-2xl bg-card" />
+        <div className="h-32 animate-pulse rounded-2xl bg-card" />
       </div>
     );
   }
@@ -162,52 +162,60 @@ export default function BetsPage() {
     <div>
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-lg font-bold text-slate-100">Пари</h1>
-          <p className="mt-0.5 text-xs text-slate-400">Ставка XP на сдадите ли вы работу к дедлайну.</p>
+          <h1 className="text-xl font-semibold text-ink">Пари</h1>
+          <p className="mt-0.5 text-sm text-ink3">Ставка XP на собственный результат.</p>
         </div>
         <Button size="sm" onClick={openCreate} disabled={tasks.length === 0}>
           Создать
         </Button>
       </div>
 
-      <section className="mb-4 flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3">
+      <section className="mb-4 flex items-center justify-between rounded-2xl border border-line bg-card px-4 py-3 shadow-[var(--shadow-card)]">
         <div>
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Свободный XP</p>
-          <p className="text-xl font-bold tabular-nums text-emerald-400">{profile.xpBalance}</p>
+          <p className="text-[10px] uppercase tracking-wide text-ink3">Свободный XP</p>
+          <p className="text-xl font-bold tabular-nums text-brand">{profile.xpBalance}</p>
         </div>
-        <p className="max-w-[55%] text-right text-[11px] leading-snug text-slate-500">
-          Ставка блокируется в escrow. Победа — <span className="text-emerald-400">×2</span>,
+        <p className="max-w-[55%] text-right text-[11px] leading-snug text-ink3">
+          Ставка блокируется в escrow. Победа — <span className="font-semibold text-ok">×2</span>,
           проигрыш — ставка не возвращается.
         </p>
       </section>
 
       {error ? (
-        <p role="alert" className="mb-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+        <p role="alert" className="mb-3 rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}
         </p>
       ) : null}
 
       {/* Активные пари */}
-      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">
         Активные · {active.length}
       </h2>
       {active.length === 0 ? (
-        <p className="mb-4 rounded-2xl border border-dashed border-slate-800 p-4 text-center text-xs text-slate-500">
+        <p className="mb-4 rounded-2xl border border-dashed border-line2 bg-card px-4 py-6 text-center text-xs text-ink3">
           Активных пари нет. Поставьте XP на задание с дедлайном — проверка самого себя.
         </p>
       ) : (
         <ul className="mb-4 space-y-2">
           {active.map((wager) => (
-            <li key={wager.id} className="rounded-xl border border-sky-500/25 bg-sky-500/5 p-3">
+            <li
+              key={wager.id}
+              className="rounded-2xl border border-brandLine bg-brandSoft p-4"
+            >
               <div className="flex items-start justify-between gap-2">
-                <h3 className="min-w-0 flex-1 text-sm font-medium text-slate-100">{wager.taskTitle}</h3>
-                <span className="shrink-0 rounded-full bg-sky-500/15 px-2 py-0.5 text-[11px] text-sky-300">
+                <h3 className="min-w-0 flex-1 text-sm font-semibold text-ink">{wager.taskTitle}</h3>
+                <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-[11px] font-medium text-brand">
                   Активно
                 </span>
               </div>
-              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-400">
-                <span>Ставка: <b className="tabular-nums text-slate-200">{wager.stakeAmount} XP</b></span>
-                <span>Возможная выплата: <b className="tabular-nums text-emerald-400">{wager.stakeAmount * 2} XP</b></span>
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-ink3">
+                <span>
+                  Ставка: <b className="tabular-nums text-ink">{wager.stakeAmount} XP</b>
+                </span>
+                <span>
+                  Возможная выплата:{' '}
+                  <b className="tabular-nums text-ok">{wager.stakeAmount * 2} XP</b>
+                </span>
                 <span>до {new Date(wager.deadlineAt).toLocaleDateString()}</span>
               </div>
             </li>
@@ -218,25 +226,30 @@ export default function BetsPage() {
       {/* История */}
       {resolved.length > 0 ? (
         <>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">
             История · {resolved.length}
           </h2>
           <ul className="space-y-2">
             {resolved.map((wager) => (
-              <li key={wager.id} className="rounded-xl border border-slate-800 bg-slate-900/60 p-3">
+              <li
+                key={wager.id}
+                className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]"
+              >
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="min-w-0 flex-1 truncate text-sm font-medium text-slate-100">
+                  <h3 className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
                     {wager.taskTitle}
                   </h3>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${STATUS_CLASS[wager.status]}`}>
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${STATUS_CLASS[wager.status]}`}
+                  >
                     {STATUS_LABEL[wager.status]}
                   </span>
                 </div>
-                <p className="mt-1 text-[11px] text-slate-400">
+                <p className="mt-1 text-[11px] text-ink3">
                   Ставка {wager.stakeAmount} XP · {new Date(wager.createdAt).toLocaleDateString()}
                 </p>
                 {wager.resolutionNote ? (
-                  <p className="mt-1 text-[11px] text-slate-500">{wager.resolutionNote}</p>
+                  <p className="mt-1 text-[11px] text-ink4">{wager.resolutionNote}</p>
                 ) : null}
               </li>
             ))}
@@ -264,14 +277,14 @@ export default function BetsPage() {
         >
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-task">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-task">
                 Задание
               </label>
               <select
                 id="wager-task"
                 value={taskId}
                 onChange={(event) => afterTaskSelected(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine"
               >
                 {selectedTask ? null : <option value="">— выберите —</option>}
                 {tasks.map((task) => (
@@ -283,7 +296,7 @@ export default function BetsPage() {
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-stake">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-stake">
                 Ставка, XP
               </label>
               <input
@@ -293,15 +306,18 @@ export default function BetsPage() {
                 max={profile.xpBalance}
                 value={stake}
                 onChange={(event) => setStake(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm tabular-nums text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-sm tabular-nums text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine"
               />
-              <p className="mt-1 text-[11px] text-slate-500">
-                При победе вернётся <span className="text-emerald-400">{Number.isFinite(stakeAmount) ? stakeAmount * 2 : '—'} XP</span>
+              <p className="mt-1 text-[11px] text-ink3">
+                При победе вернётся{' '}
+                <span className="font-semibold text-ok">
+                  {Number.isFinite(stakeAmount) ? stakeAmount * 2 : '—'} XP
+                </span>
               </p>
             </div>
 
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-300" htmlFor="wager-deadline">
+              <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="wager-deadline">
                 Дедлайн пари
               </label>
               <input
@@ -310,15 +326,15 @@ export default function BetsPage() {
                 value={deadline}
                 max={selectedTask ? toLocalInput(selectedTask.deadlineAt) : undefined}
                 onChange={(event) => setDeadline(event.target.value)}
-                className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 focus:border-emerald-500 focus:outline-none"
+                className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine"
               />
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-ink3">
                 Не позже дедлайна задания — иначе guard вернёт ошибку.
               </p>
             </div>
 
             {error ? (
-              <p role="alert" className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+              <p role="alert" className="rounded-lg border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
                 {error}
               </p>
             ) : null}

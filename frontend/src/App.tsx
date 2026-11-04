@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './core/auth';
 import { initMaxBridge } from './core/max';
+import { ThemeProvider } from './core/theme';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { EconomyPage } from './pages/EconomyPage';
@@ -46,7 +47,7 @@ function normalizeRoute(hash: string): string {
   return path === '' ? '/' : path;
 }
 
-// App — провайдер сессии и роутинг по hash.
+// App — провайдеры темы и сессии, плюс роутинг по hash.
 export default function App() {
   // MAX/VK Bridge инициализируется один раз. В обычном браузере
   // initMaxBridge сразу возвращает graceful fallback и ничего не шлёт.
@@ -59,11 +60,13 @@ export default function App() {
   }, []);
 
   return (
-    <ErrorBoundary fullScreen>
-      <AuthProvider>
-        <Shell />
-      </AuthProvider>
-    </ErrorBoundary>
+    <ThemeProvider>
+      <ErrorBoundary fullScreen>
+        <AuthProvider>
+          <Shell />
+        </AuthProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 
@@ -96,7 +99,7 @@ function Shell() {
     <AppShell
       subtitle="Кабинет студента"
       bottomNav={
-        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-slate-800 bg-slate-950/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
+        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
           <ul className="flex gap-1 overflow-x-auto">
             {NAV.map((item) => {
               const active = item.path === route || (item.path === '/' && route === '/');
@@ -109,8 +112,8 @@ function Shell() {
                     className={[
                       'w-full whitespace-nowrap rounded-lg px-2 py-2 text-[10px] font-medium transition',
                       active
-                        ? 'bg-emerald-500/15 text-emerald-300'
-                        : 'text-slate-400 hover:bg-slate-900',
+                        ? 'bg-brandSoft text-brand'
+                        : 'text-ink3 hover:bg-muted',
                     ].join(' ')}
                   >
                     {item.label}

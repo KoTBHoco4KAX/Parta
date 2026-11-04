@@ -1,178 +1,163 @@
-# DESIGN_SPEC — визуальные и API-правила ПАРТА
+# DESIGN_SPEC — визуальная система ПАРТА (Сферум / VK UI)
 
-Документ обязателен для людей и ИИ-агентов, которые добавляют экраны в
-`frontend/src`. Его цель — не дать проекту снова расползтись на три несовместимых
-дизайна и мок-данные.
+Документ обязателен для людей и ИИ-агентов, которые меняют интерфейс в
+`frontend/src`. Его задача — чтобы студент, преподаватель и админ выглядели как
+одно приложение в визуальном языке Сферума, а светлая и тёмная темы оставались
+согласованными.
 
-## 1. Базовые компоненты
+## 1. Архитектура темы
 
-Любой интерактивный элемент действия создаётся только из
-`frontend/src/components/`:
+Цвета не задаются в компонентах. Работают три слоя:
 
-### Button (`src/components/Button.tsx`)
-
-```tsx
-import { Button } from '../../components/Button';
-
-<Button onClick={save} loading={saving}>Сохранить</Button>
-<Button variant="secondary" size="sm">Отмена</Button>
-```
-
-| Prop | Значения | Назначение |
-| --- | --- | --- |
-| `variant` | `primary` (по умолчанию), `secondary`, `ghost`, `outline`, `danger`, `accept`, `reject` | Иерархия действия |
-| `size` | `sm`, `md` (по умолчанию), `lg` | Плотность |
-| `loading` | `boolean` | Спиннер + `disabled` + `aria-busy` |
-| `block` | `boolean` | Растянуть на всю ширину |
-| `type` | `button` / `submit` | По умолчанию `button` |
-
-Запрещено:
-
-- писать `<button className="bg-blue-600 ...">` для действий;
-- заводить второй `Button` в `student/`, `teacher/`, `admin/` (они реэкспортируют
-  общий);
-- использовать `alert()` для бизнес-ошибок — только inline-сообщения и тосты.
-
-### Modal (`src/components/Modal.tsx`)
+1. **CSS-переменные** — `frontend/src/index.css`. Значения заданы RGB-триплетами
+   для `:root` (светлая тема) и `[data-theme='dark']` (тёмная).
+2. **Семантические цвета Tailwind** — `frontend/tailwind.config.js` (`colors`).
+   Каждый токен собран как `rgb(var(--c-…) / <alpha-value>)`, поэтому работают
+   модификаторы прозрачности: `bg-card/95`, `ring-brand/40`.
+3. **Классы в компонентах** — только токены (`bg-card`, `text-ink3`,
+   `border-line`, `bg-brandSoft`).
 
 ```tsx
-import { Modal } from '../../components/Modal';
+// правильно
+<div className="rounded-2xl border border-line bg-card text-ink" />
+<Badge tone="emerald">Зачтено</Badge>
 
-<Modal
-  open={open}
-  onClose={close}
-  title="Сдать работу"
-  subtitle={taskTitle}
-  size="md" // md | lg
-  footer={<Button onClick={submit}>Отправить</Button>}
->
-  …
-</Modal>
+// запрещено
+<div className="bg-slate-900 text-emerald-300" />
+<div className="bg-[#2688EB]" />
 ```
 
-Modal сам отвечает за:
+Запрет на палитровые классы (`slate`, `emerald`, `rose`, `sky`, `violet`,
+`indigo`, `zinc`, `gray`) и на hex-значения в `src/**/*.tsx` действует для всех
+ролей: это ломает тему и создаёт «второй дизайн».
 
-- затемнение `bg-slate-950/70`;
-- закрытие по `Escape` и клику по фону;
-- `role="dialog"`, `aria-modal`, блокировку скролла body;
-- мобильный bottom-sheet (`items-end`) и центрирование на `sm+`;
-- тёмную панель `bg-slate-900 border-slate-800`.
+## 2. Темы и переключение
 
-Самописные оверлеи (`fixed inset-0 bg-black …`) запрещены.
-
-### Прочие примитивы
-
-`Badge`, `Skeleton`, `EmptyState`, `Toast`, `cn` живут в
-`teacher/components/ui.tsx` и `admin/components/ui.tsx` и обязаны использовать
-только классы из палитры ниже. Для новых общих примитивов — выносить в
-`src/components/`.
-
-## 2. Палитра и классы Tailwind
-
-Единая тема — **тёмная**, как в главном меню (`App.tsx`).
-
-| Роль | Классы |
+| Правило | Значение |
 | --- | --- |
-| Фон приложения | `bg-slate-950` |
-| Панель / карточка | `bg-slate-900`, `border border-slate-800` |
-| Углублённая поверхность | `bg-slate-900/60`, `bg-slate-950` |
-| Текст основной | `text-slate-100` |
-| Текст вторичный | `text-slate-400` |
-| Текст третичный | `text-slate-500` |
-| Акцент / успех | `emerald-400/500` (`bg-emerald-500`, `text-emerald-300`) |
-| Опасность | `rose-500`, `text-rose-300` |
-| Предупреждение | `amber-500`, `text-amber-300` |
-| Информация | `sky-500`, `text-sky-300` |
-| Границы | `border-slate-800`, реже `border-slate-700` |
-| Радиус | `rounded-lg` для контролов, `rounded-xl`/`rounded-2xl` для панелей |
-| Фокус | `focus-visible:ring-2 focus-visible:ring-emerald-400` |
-| Тени | `shadow-sm` допустим; не плодить `shadow-2xl` |
+| Тема по умолчанию | **тёмная** |
+| Хранение выбора | `localStorage['parta.theme']` = `light` \| `dark` |
+| Применение | `document.documentElement.dataset.theme` |
+| Переключатель | `src/components/ThemeToggle.tsx`, стоит в `AppShell` и на экране входа |
+| API | `useTheme()` из `src/core/theme.tsx`: `{ theme, setTheme, toggle }` |
 
-Правила:
+Любой новый экран обязан выглядеть корректно в обеих темах. Проверять нужно обе:
+переключатель стоит в шапке, а параметры темы — в CSS-переменных.
 
-1. Никаких светлых подложек (`bg-white`, `bg-slate-50`, `bg-slate-100`) и
-   светлого текста на них.
-2. Никаких «чужих» акцентов: `indigo`, `violet`, `blue` как основной цвет
-   запрещены. Допустимы только как смысловые бейджи на тёмной подложке
-   (`bg-violet-500/10 text-violet-300`).
-3. Прозрачность акцентов — только через `/10`, `/15`, `/20`, `/30`.
-4. Нельзя смешивать в одном экране `rounded-md`, `rounded-lg`, `rounded-2xl`
-   произвольно: контролы — `rounded-lg`, панели — `rounded-2xl`.
-5. Отступы кратны 4: `p-3`, `p-4`, `gap-2`, `space-y-3`. Не использовать
-   произвольные `p-[13px]`.
-6. Сетки: `grid-cols-1` на мобильном, `sm:grid-cols-2`, `lg:grid-cols-4`.
+## 3. Токены
 
-## 3. Адаптивность
+### Поверхности и текст
 
-- Приложение мобильное: shell — `max-w-md`, контент — одна колонка.
-- Нижняя навигация — `fixed bottom-0`, горизонтальный скролл
-  (`flex overflow-x-auto`), `env(safe-area-inset-bottom)`; пункты не переносятся
-  на второй ряд.
-- Шапка — `sticky top-0`, содержит имя, роль, статус соединения и `Выход`.
-- Кнопки и тапы — не меньше 36–40 px по высоте; длинные заголовки —
-  `truncate`/`line-clamp-2`.
-- Горизонтальный скролл страницы запрещён: контент обязан влезать в вертикальный
-  вьюпорт.
+| Токен | Классы | Светлая | Тёмная | Назначение |
+| --- | --- | --- | --- | --- |
+| `page` | `bg-page` | `#ECEFF3` | `#19191A` | фон приложения |
+| `card` | `bg-card` | `#FFFFFF` | `#232324` | панели, карточки, шторки, шапка |
+| `muted` | `bg-muted` | `#F4F6F9` | `#2C2D2E` | вложенные блоки, футер шторки |
+| `sunken` | `bg-sunken` | `#E9ECF1` | `#3A3A3C` | дорожки, неактивные таблетки |
+| `line` | `border-line` | `#DBE0E7` | `#3A3A3C` | основные границы |
+| `line2` | `border-line2` | `#CBD2DB` | `#4A4A4C` | границы контролов, hover |
+| `ink` | `text-ink` | `#090D13` | `#E1E3E6` | заголовки, основной текст |
+| `ink2` | `text-ink2` | `#1A1D21` | `#D2D3D6` | текст в карточках |
+| `ink3` | `text-ink3` | `#586371` | `#909499` | подписи, вторичный текст |
+| `ink4` | `text-ink4` | `#8A94A1` | `#6B6C70` | placeholder, самый тихий текст |
 
-## 4. Паттерн работы с API
+### Смысловые акценты
 
-Единственный вход — `apiFetch` из `src/core/api.ts`. Он сам подставляет JWT из
-`localStorage` (`parta.auth`) и разбирает конверт `{ error, code }`.
+| Токен | Пара | Светлая | Тёмная | Когда |
+| --- | --- | --- | --- | --- |
+| `brand` | `bg-brand`, `text-brand` | `#1F7AE0` | `#4C9AF0` | primary-кнопка, ссылки, активная навигация |
+| `brandStrong` | `text-brandStrong` | `#1560B8` | `#6BB0F5` | текст на `brandSoft` |
+| `brandSoft` | `bg-brandSoft` | `#E4EFFD` | `#1E334D` | мягкая подложка акцента |
+| `brandLine` | `border-brandLine` | `#B2D1F6` | `#345680` | граница акцентных элементов |
+| `ok` | `bg-ok`, `text-ok` | `#3D9E3D` | `#4BB34B` | «Зачесть», «в срок», успех |
+| `okSoft` / `okLine` | `bg-okSoft` / `border-okLine` | `#E6F5E6` / `#B8DEB8` | `#1E331E` / `#345C34` | подложка успеха |
+| `warn` | `bg-warn`, `text-warn` | `#D68400` | `#FFA000` | дедлайн, предупреждение |
+| `warnSoft` / `warnLine` | `bg-warnSoft` / `border-warnLine` | `#FFF1D6` / `#ECC578` | `#3D2E10` / `#614A1A` | подложка предупреждения |
+| `bad` | `bg-bad`, `text-bad` | `#D43737` | `#FF5C5C` | возврат, ошибка, удаление |
+| `badSoft` / `badLine` | `bg-badSoft` / `border-badLine` | `#FDE9E9` / `#F0BEBE` | `#3D1E1E` / `#612F2F` | подложка ошибки |
+| `team` | `bg-team`, `text-team` | `#664AF0` | `#9E8CFF` | слоты командных проектов |
+| `teamSoft` / `teamLine` | `bg-teamSoft` / `border-teamLine` | `#EDE9FF` / `#CEC4FA` | `#292342` / `#463C70` | подложка команды |
 
-```tsx
-import { ApiError, apiFetch } from '../../core/api';
-import type { Submission } from '../../core/types';
+Тени: `--shadow-card` (`shadow-[var(--shadow-card)]`) — карточки и плитки KPI.
+В светлой теме тень двухслойная и чуть плотнее, чтобы белые панели отделялись от
+серого фона; в тёмной — минимальная.
 
-async function loadInbox() {
-  try {
-    setLoading(true);
-    const items = await apiFetch<Submission[]>('/submissions?status=REVIEW');
-    setItems(items);
-  } catch (cause) {
-    setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить инбокс');
-  } finally {
-    setLoading(false);
-  }
-}
-```
+## 4. Компоненты
 
-Правила:
+### Кнопка — `src/components/Button.tsx`
 
-1. **Никаких моков.** Папки `mock/`, `mocks/` и константы `MOCK_*` запрещены.
-   Данные — только с backend.
-2. Типы ответов — в `src/core/types.ts` (snake_case, как в JSON backend). Не
-   придумывать параллельные DTO в экранах; маппинг в UI-модели — в
-   `*/api.ts`.
-3. Для частых запросов есть типизированные обёртки:
-   `fetchTasks`, `fetchSubmissions`, `fetchWagers`, `fetchPeerReviews`,
-   `fetchAssignments`, `createSubmissionCard`, `moveSubmission`, `issueVerdict`,
-   `buyStreakFreezes`, `placeWager`, `createTaskReal`.
-4. Ошибка всегда `ApiError` (`status`, `code`, `message`). Показывать
-   `cause.message`, а не сырой `err.toString()`. Сетевой сбой (не `ApiError`) —
-   общий текст «Проверьте соединение».
-5. Каждый экран обязан иметь три состояния: `loading`, `error`, `empty`.
-   Ошибка — `role="alert"`, кнопка «Повторить».
-6. После мутации (POST/PATCH) перечитывать список с сервера, а не править
-   локальную копию «на глаз».
-7. Токен не передаётся вручную через props — `apiFetch` берёт его из сессии.
-   Явный `token: null` нужен только публичным запросам (dev-login).
+| `variant` | Вид | Когда |
+| --- | --- | --- |
+| `primary` | `bg-brand` + белый текст | главное действие экрана, одно на блок |
+| `secondary` | `bg-brandSoft` + `brandStrong` | второстепенное действие рядом с primary |
+| `ghost` | прозрачная, синий текст | действия в шапках, «Открыть», «Обновить» |
+| `outline` | `bg-card` + `border-line2` | нейтральные действия в списках |
+| `accept` | `bg-ok` | «Зачесть», подтверждение приёмки |
+| `danger` | `bg-bad` | необратимое удаление в модалке |
+| `reject` | `bg-badSoft` + `text-bad` | «На доработку» без визуального шума |
 
-### Read-эндпоинты backend
+Размеры `sm | md | lg`, `loading`, `block`. Иконочные кнопки обязаны иметь
+`aria-label`, иконки удаления — нейтральный цвет с красным hover.
 
-| Метод | Путь | Роль | Что отдаёт |
-| --- | --- | --- | --- |
-| GET | `/api/tasks` | student / teacher / admin | Задания: студент — своей группы, преподаватель — своих назначений, админ — все |
-| GET | `/api/submissions?status=REVIEW` | student / teacher / admin | Карточки с `task_title`, `group_code`, `student_name`, `attempt`, `revision_log` |
-| GET | `/api/wagers` | student | Пари студента |
-| GET | `/api/peer-reviews` | teacher / admin | P2P-сессии с чек-листом |
-| GET | `/api/assignments` | teacher / admin | Пары «группа + дисциплина + преподаватель» |
+### Шторка — `src/components/Modal.tsx`
 
-## 5. Чек-лист перед коммитом
+Белая (тёмная) карточка `bg-card`, `rounded-t-2xl` на мобильном и `rounded-2xl`
+на `sm+`, затемнение `bg-black/40`, закрытие по `Escape` и фону, липкий футер
+`bg-muted`. Свои оверлеи писать нельзя.
 
-- [ ] Действия — `<Button>`, модалки — `<Modal>` из `src/components/`.
-- [ ] Нет `bg-white`, `bg-slate-50`, `indigo-600`, самописных модалок.
-- [ ] Нет `mock/`, `mocks/`, `MOCK_*`, `setTimeout`-имитации сети.
-- [ ] Все запросы — через `apiFetch`/обёртки, ошибки — `ApiError`.
-- [ ] Есть loading / error / empty.
-- [ ] Нижняя навигация не ломается на 360 px; нет горизонтального скролла.
-- [ ] `npm run build` и `go test ./...` проходят.
+### Кит кабинета — `frontend/src/teacher/components/ui.tsx`
+
+Используется и кабинетом преподавателя, и админкой (`admin/components/ui.tsx`
+реэкспортирует его). Состав: `Card`, `Section`, `ScreenHeader`, `StatTile`,
+`Progress`, `StackedProgress`, `DeadlineMeter`, `BarChart`, `Chip`, `Segmented`,
+`Field`, `TextInput`, `TextArea`, `SelectInput`, `Avatar`, `Badge`, `Kbd`,
+`Callout`, `KeyValue`, `Timeline`, `EmptyState`, `ErrorState`, `Skeleton`,
+`SkeletonList`, `Toast`, `cn`.
+
+`Badge` тона: `slate` — нейтральный, `indigo`/`sky` — акцент, `emerald` —
+успех, `amber` — предупреждение, `rose` — ошибка, `violet` — команда.
+
+## 5. Композиция и адаптивность
+
+- Мобильный каркас: `AppShell` — колонка `max-w-md`, шапка `sticky top-0`,
+  контент `px-4 py-4 pb-24`.
+- Нижняя навигация: `fixed bottom-0`, горизонтальный скролл
+  (`flex overflow-x-auto`), `env(safe-area-inset-bottom)`, активный пункт —
+  `bg-brandSoft text-brandStrong`, счётчик — `bg-brand text-white`.
+- Горизонтальный скролл страницы запрещён: `scrollWidth === clientWidth` на
+  360–1280 px.
+- Радиусы: контролы — `rounded-lg` (8 px), карточки — `rounded-2xl` (16 px),
+  шторка — `rounded-t-2xl`/`rounded-2xl`.
+- Отступы кратны 4: `p-2`, `p-3`, `p-4`, `gap-2`, `space-y-3`.
+- Тапы — не меньше 36–40 px по высоте; длинные строки — `truncate`/`line-clamp-2`.
+
+## 6. Доступность
+
+1. Контраст: основной текст — не ниже 4.5:1, вторичный (`ink3`) — не ниже 4.5:1
+   на `card`/`page`, иконки и крупный текст — не ниже 3:1.
+2. Фокус: `focus-visible:ring-2 focus-visible:ring-brand/40` (или
+   `outline-brand`) у всех интерактивных элементов; у полей —
+   `focus:border-brand focus:ring-brandLine`.
+3. Иконочные кнопки — `aria-label`, поля — `label htmlFor`, ошибки —
+   `role="alert"`, активная вкладка — `aria-current="page"`.
+4. Цвет не единственный носитель смысла: статус дублируется текстом бейджа.
+
+## 7. Работа с API
+
+1. Единственный вход — `apiFetch` из `src/core/api.ts` (JWT из `localStorage`,
+   разбор конверта `{ error, code }`).
+2. Никаких моков: `mock/`, `mocks/`, `MOCK_*` запрещены, данные — только с backend.
+3. Типы ответов — `src/core/types.ts`; маппинг в UI-модели — в `*/api.ts`.
+4. Ошибка всегда `ApiError` (`status`, `code`, `message`): показывать `message`,
+   для сетевого сбоя — «Проверьте соединение».
+5. Каждый экран обязан иметь состояния `loading`, `error` (с «Повторить») и `empty`.
+6. После мутации список перечитывается с сервера, а не правится «на глаз».
+
+## 8. Чек-лист перед коммитом
+
+- [ ] В `src/**/*.tsx` нет палитровых классов и hex-цветов — только токены.
+- [ ] Экран проверен в тёмной (по умолчанию) и светлой темах.
+- [ ] Действия — `<Button>`, шторки — `<Modal>`, статусы — `<Badge>`.
+- [ ] Есть `loading` / `error` / `empty`.
+- [ ] Нет горизонтального скролла на 360, 390 и 1280 px.
+- [ ] `npx tsc --noEmit`, `npm run build`, `go test ./...` проходят.

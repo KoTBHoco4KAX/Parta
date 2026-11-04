@@ -11,23 +11,24 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   children?: ReactNode;
 }
 
+// Кнопка в стиле VK UI (Сферум): синий primary, мягкие вторичные заливки,
+// зелёный accept, светлый красный reject. Цвета — семантические токены темы.
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-emerald-500 text-slate-950 hover:bg-emerald-400 active:bg-emerald-600',
-  secondary: 'bg-slate-800 text-slate-100 hover:bg-slate-700 border border-slate-700',
-  ghost: 'bg-transparent text-slate-300 hover:bg-slate-800',
-  danger: 'bg-rose-500 text-white hover:bg-rose-400',
-  accept: 'bg-emerald-500 text-slate-950 hover:bg-emerald-400',
-  reject: 'bg-rose-500 text-white hover:bg-rose-400',
-  outline: 'border border-slate-700 bg-slate-900 text-slate-200 hover:bg-slate-800',
+  primary: 'bg-brand text-white hover:bg-brandStrong shadow-[0_1px_2px_rgba(0,0,0,0.12)]',
+  secondary: 'bg-brandSoft text-brandStrong hover:bg-brandLine',
+  ghost: 'bg-transparent text-brand hover:bg-brandSoft',
+  danger: 'bg-bad text-white hover:opacity-90',
+  accept: 'bg-ok text-white hover:opacity-90',
+  reject: 'bg-badSoft text-bad hover:bg-badLine',
+  outline: 'border border-line2 bg-card text-ink2 hover:bg-muted',
 };
 
 const SIZES: Record<Size, string> = {
-  sm: 'px-3 py-1.5 text-xs',
-  md: 'px-4 py-2.5 text-sm',
-  lg: 'px-5 py-3 text-sm',
+  sm: 'rounded-lg px-3 py-1.5 text-xs',
+  md: 'rounded-lg px-4 py-2.5 text-sm',
+  lg: 'rounded-xl px-5 py-3 text-sm',
 };
 
-// Button — базовая кнопка с вариантами и состоянием загрузки.
 export function Button({
   variant = 'primary',
   size = 'md',
@@ -46,8 +47,8 @@ export function Button({
       disabled={disabled || loading}
       aria-busy={loading || undefined}
       className={[
-        'inline-flex items-center justify-center gap-2 rounded-lg font-medium transition',
-        'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+        'inline-flex items-center justify-center gap-2 font-medium transition',
+        'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
         'disabled:cursor-not-allowed disabled:opacity-50',
         SIZES[size],
         VARIANTS[variant],
@@ -55,7 +56,9 @@ export function Button({
         className,
       ].join(' ')}
     >
-      {loading ? <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> : null}
+      {loading ? (
+        <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      ) : null}
       {children}
     </button>
   );

@@ -118,6 +118,23 @@ export type InboxSort = 'waiting' | 'deadline';
 /** Фильтр списка P2P-ревью. */
 export type PeerReviewFilter = 'ALL' | 'ACTIVE' | 'COMPLETED' | 'EXPIRED';
 
+/**
+ * Вложение, прикреплённое студентом к сдаче.
+ * Контракт MVP: `GET /api/attachments?submission_id={id}` (список) и
+ * `GET /api/attachments/{id}` (302 на artifact_url).
+ */
+export interface SubmissionAttachment {
+  /** Синтетический id вида `artifact-{submission_id}`. */
+  id: string;
+  submissionId: number;
+  filename: string;
+  sizeBytes: number;
+  contentType: string;
+  createdAt: string;
+  /** Внешний artifact_url — fallback, если redirect закрыт CORS. */
+  url: string;
+}
+
 /** Тост, которым приложение сообщает о результате действия. */
 export interface ToastData {
   id: number;

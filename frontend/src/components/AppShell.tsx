@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { useAuth } from '../core/auth';
 import type { Role } from '../core/types';
-import { Button } from './Button';
+import { ThemeToggle } from './ThemeToggle';
 
 const ROLE_LABEL: Record<Role, string> = {
-  student: 'Студент',
-  teacher: 'Преподаватель',
   admin: 'Админ',
+  teacher: 'Преподаватель',
+  student: 'Студент',
 };
 
 export interface AppShellProps {
@@ -16,18 +16,26 @@ export interface AppShellProps {
 }
 
 /**
- * AppShell — единый мобильный каркас для всех ролей.
+ * AppShell — единый каркас приложения в визуальном языке Сферума (VK UI).
  *
- * Контент всегда центрирован в колонке max-w-md; фон тянется на всю ширину
- * экрана. Шапка с профилем и выходом есть на каждом экране.
+ * Белая (в тёмной теме — тёмная) шапка с синим вордмарком, переключателем темы,
+ * статусом соединения и выходом; колонка max-w-md, серый фон страницы на всю
+ * ширину экрана; нижняя навигация мини-приложения. Цвета приходят из токенов.
  */
 export function AppShell({ subtitle, children, bottomNav }: AppShellProps) {
   const { user, role, connection, logout } = useAuth();
 
+  const connectionTone =
+    connection === 'online'
+      ? 'bg-ok'
+      : connection === 'connecting'
+        ? 'bg-warn'
+        : 'bg-ink4';
+
   return (
-    <div className="flex min-h-screen justify-center bg-slate-950">
-      <div className="flex min-h-screen w-full max-w-md flex-col bg-slate-950 text-slate-100 shadow-2xl shadow-black/40">
-        <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/95 px-4 py-3 backdrop-blur">
+    <div className="flex min-h-screen justify-center bg-page">
+      <div className="flex min-h-screen w-full max-w-md flex-col bg-page text-ink shadow-[0_0_0_1px_rgb(var(--c-line)/0.6)]">
+        <header className="sticky top-0 z-40 border-b border-line bg-card/95 px-4 py-2.5 backdrop-blur">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -36,37 +44,35 @@ export function AppShell({ subtitle, children, bottomNav }: AppShellProps) {
               }}
               className="min-w-0 text-left"
             >
-              <p className="text-[11px] uppercase tracking-[0.3em] text-emerald-400">ПАРТА</p>
-              <p className="truncate text-sm font-medium text-slate-100">
+              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-brand">ПАРТА</p>
+              <p className="truncate text-[13px] font-semibold text-ink">
                 {user?.display_name ?? 'Гость'}
               </p>
-              <p className="truncate text-[10px] text-slate-500">
+              <p className="truncate text-[11px] text-ink3">
                 {subtitle}
                 {role ? ` · ${ROLE_LABEL[role]}` : ''}
               </p>
             </button>
 
-            <div className="flex shrink-0 items-center gap-2">
+            <div className="flex shrink-0 items-center gap-1">
               <span
                 title={connection}
                 aria-label={`Соединение: ${connection}`}
-                className={[
-                  'h-2.5 w-2.5 rounded-full',
-                  connection === 'online'
-                    ? 'bg-emerald-400'
-                    : connection === 'connecting'
-                      ? 'bg-amber-400'
-                      : 'bg-slate-600',
-                ].join(' ')}
+                className={`h-2 w-2 rounded-full ${connectionTone}`}
               />
-              <Button variant="ghost" size="sm" onClick={logout}>
+              <ThemeToggle />
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-brand transition hover:bg-brandSoft focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+              >
                 Выход
-              </Button>
+              </button>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 px-4 py-5 pb-24">{children}</main>
+        <main className="flex-1 px-4 py-4 pb-24">{children}</main>
 
         {bottomNav}
       </div>

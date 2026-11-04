@@ -44,6 +44,18 @@ func ensureMigrationsTable(ctx context.Context, db *sql.DB) error {
 }
 
 func applyMigration(ctx context.Context, db *sql.DB, m migrations.Migration) error {
+	// Миграции 004 пересоздаёт parent-таблицу users; SQLite не умеет менять
+	// CHECK на месте, а DROP TABLE с включёнными FK внутри транзакции падает.
+	// На время стартовых миграций FK выключается (одно соединение), после —
+	// включается обратно. На работу приложения это не влияет.
+	if _, err := db.ExecContext(ctx, `PRAGMA foreign_keys = OFF`); err != nil {
+		return fmt.Errorf("storage: disable foreign_keys: %w", err)
+	}
+
+	defer func() {
+		_, _ = db.ExecContext(ctx, `PRAGMA foreign_keys = ON`)
+	}()
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("storage: begin migration %s: %w", m.Name, err)

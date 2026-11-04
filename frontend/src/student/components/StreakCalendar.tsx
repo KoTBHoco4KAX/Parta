@@ -54,7 +54,7 @@ export function StreakCalendar({ daysOnTime, weeks = 8 }: StreakCalendarProps) {
               title={`${cell.key}${cell.on ? ' · сдано вовремя' : ''}`}
               className={[
                 'h-3 w-3 rounded-[3px]',
-                cell.on ? 'bg-emerald-500' : 'bg-slate-800',
+                cell.on ? 'bg-brand' : 'bg-sunken',
               ].join(' ')}
             />
           ))}
