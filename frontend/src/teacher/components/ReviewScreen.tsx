@@ -1,29 +1,39 @@
+import { useEffect, useMemo, useState } from 'react';
+import type { Task } from '../../core/types';
+import { fetchTeacherTasks } from '../api';
+import type { ReviewInboxItem, ToastData } from '../types';
 import { useReviewInbox } from '../hooks/useReviewInbox';
+import { ReviewDetailModal } from './ReviewDetailModal';
 import { Badge, Card, EmptyState, ErrorState, ScreenHeader, SkeletonList } from './ui';
-import { IconCheckCircle, IconInbox } from './icons';
+import { IconCheckCircle, IconChevronRight, IconInbox } from './icons';
 
 /**
  * ReviewScreen — очередь проверки работ учеников.
  *
- * Обновляется сама по WebSocket: как только ученик отправил работу, backend
- * публикует `review.inbox.created` в комнату преподавателя, и карточка
- * появляется здесь без кнопки «Обновить».
+ * Обновляется сама: по WebSocket о новых сдачах, при возврате на вкладку и
+ * страховочным опросом. Нажатие на карточку открывает сдачу и вердикт.
  */
-export function ReviewScreen() {
+export function ReviewScreen({ notify }: { notify: (toast: Omit<ToastData, 'id'>) => void }) {
   const { items, loading, error, reload } = useReviewInbox();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selected, setSelected] = useState<ReviewInboxItem | null>(null);
+
+  useEffect(() => {
+    fetchTeacherTasks()
+      .then(setTasks)
+      .catch(() => {
+        // Текст задания — вспомогательный: сдача и файлы открываются и без него.
+      });
+  }, []);
+
+  const taskById = useMemo(() => new Map(tasks.map((task) => [task.id, task])), [tasks]);
 
   return (
     <div>
       <ScreenHeader
         eyebrow="Очередь"
         title="Проверка"
-        description="Новые сдачи приходят сюда сами, по WebSocket."
-        action={
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-okSoft px-2 py-1 text-[10px] font-medium text-ok">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ok" aria-hidden="true" />
-            live
-          </span>
-        }
+        description="Работы учеников, которые ждут вердикта."
       />
 
       {loading ? <SkeletonList rows={3} /> : null}
@@ -34,7 +44,7 @@ export function ReviewScreen() {
         <EmptyState
           icon={<IconCheckCircle className="h-5 w-5" />}
           title="Всё проверено"
-          description="Как только ученик нажмёт «Отправить на проверку», работа появится здесь автоматически."
+          description="Как только ученик отправит работу, она появится здесь сама."
         />
       ) : null}
 
@@ -42,23 +52,55 @@ export function ReviewScreen() {
         <ul className="space-y-2">
           {items.map((item) => (
             <li key={item.id}>
-              <Card className="flex items-start gap-3">
-                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brandSoft text-brandStrong">
-                  <IconInbox className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{item.taskTitle}</p>
-                  <p className="mt-0.5 truncate text-xs text-ink3">
-                    {item.studentName} · {item.groupCode}
-                  </p>
-                </div>
-                <Badge tone={item.onTime ? 'emerald' : 'amber'}>
-                  {item.onTime ? 'в срок' : 'просрочено'}
-                </Badge>
-              </Card>
+              <button
+                type="button"
+                onClick={() => setSelected(item)}
+                className="block w-full rounded-2xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+              >
+                <Card className="flex items-center gap-3 transition hover:border-line2">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brandSoft text-brandStrong">
+                    <IconInbox className="h-4 w-4" />
+                  </span>
+
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-semibold text-ink">
+                      {item.taskTitle}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-ink3">
+                      {item.studentName} · {item.groupCode}
+                    </span>
+                    <span className="mt-1 flex flex-wrap items-center gap-1">
+                      <Badge tone={item.onTime ? 'emerald' : 'amber'}>
+                        {item.onTime ? 'в срок' : 'просрочено'}
+                      </Badge>
+                      {item.attempt > 1 ? (
+                        <Badge tone="slate">попытка {item.attempt}</Badge>
+                      ) : null}
+                    </span>
+                  </span>
+
+                  <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-brand">
+                    Проверить
+                    <IconChevronRight className="h-4 w-4" />
+                  </span>
+                </Card>
+              </button>
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {selected ? (
+        <ReviewDetailModal
+          item={selected}
+          task={taskById.get(selected.taskId) ?? null}
+          notify={notify}
+          onClose={() => setSelected(null)}
+          onDecided={() => {
+            setSelected(null);
+            reload();
+          }}
+        />
       ) : null}
     </div>
   );
