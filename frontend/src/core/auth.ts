@@ -14,13 +14,6 @@ import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
 import type { ConnectionStatus, Role, User, WsEvent } from './types';
 
-// ROLE_EMAILS — dev-аккаунты сида (PROJECT_MANIFEST.md §4.3).
-export const ROLE_EMAILS: Record<Role, string> = {
-  admin: 'admin@parta.dev',
-  teacher: 'teacher@parta.dev',
-  student: 'student1@parta.dev',
-};
-
 const STORAGE_KEY = AUTH_STORAGE_KEY;
 const EVENT_LIMIT = 100;
 
@@ -37,8 +30,11 @@ interface AuthContextValue {
   error: string | null;
   connection: ConnectionStatus;
   events: WsEvent[];
-  login: (email: string, password: string, role: Role) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  // subscribe регистрирует слушателя всех WS-событий сессии.
+  // Возвращённая функция снимает подписку (её нужно вернуть из useEffect).
+  subscribe: (listener: (event: WsEvent) => void) => () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -71,13 +67,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [connection, setConnection] = useState<ConnectionStatus>('offline');
   const [events, setEvents] = useState<WsEvent[]>([]);
   const socketRef = useRef<PartaSocket | null>(null);
+  // Слушатели событий живут вне React-состояния: экран может обновить свои
+  // данные по WS, не дожидаясь перерисовки всего AuthContext.
+  const listenersRef = useRef(new Set<(event: WsEvent) => void>());
 
-  const login = useCallback(async (email: string, password: string, role: Role) => {
+  const subscribe = useCallback((listener: (event: WsEvent) => void) => {
+    listenersRef.current.add(listener);
+
+    return () => {
+      listenersRef.current.delete(listener);
+    };
+  }, []);
+
+  const login = useCallback(async (email: string, password: string) => {
     setBusy(true);
     setError(null);
 
     try {
-      const response = await loginWithPassword(email, password, role);
+      const response = await loginWithPassword(email, password);
       const next = { token: response.token, user: response.user };
 
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -111,6 +118,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       onEvent: (event) => {
         setEvents((previous) => [event, ...previous].slice(0, EVENT_LIMIT));
         applyUserEvent(event, setAuth);
+
+        // Слушатели экранов не должны ломать сокет: ошибку одного экрана
+        // изолируем, остальные получают событие.
+        for (const listener of listenersRef.current) {
+          try {
+            listener(event);
+          } catch (cause) {
+            console.error('ws: event listener failed', cause);
+          }
+        }
       },
     });
 
@@ -134,8 +151,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       events,
       login,
       logout,
+      subscribe,
     }),
-    [auth, busy, connection, error, events, login, logout, token],
+    [auth, busy, connection, error, events, login, logout, subscribe, token],
   );
 
   return createElement(AuthContext.Provider, { value }, children);

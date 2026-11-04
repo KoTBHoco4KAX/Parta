@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from './core/auth';
+import { initMaxBridge } from './core/max';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
-import { InboxPage } from './pages/InboxPage';
 import { EconomyPage } from './pages/EconomyPage';
 import KanbanPage from './student/pages/KanbanPage';
 import GamificationPage from './student/pages/GamificationPage';
@@ -10,11 +10,11 @@ import BetsPage from './student/pages/BetsPage';
 import TeacherApp from './teacher';
 import AdminApp from './admin';
 import { AppShell } from './components/AppShell';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 const NAV = [
   { path: '/', label: 'Главная' },
   { path: '/kanban', label: 'Канбан' },
-  { path: '/inbox', label: 'Инбокс' },
   { path: '/economy', label: 'Экономика' },
   { path: '/gamification', label: 'XP' },
   { path: '/bets', label: 'Пари' },
@@ -48,10 +48,22 @@ function normalizeRoute(hash: string): string {
 
 // App — провайдер сессии и роутинг по hash.
 export default function App() {
+  // MAX/VK Bridge инициализируется один раз. В обычном браузере
+  // initMaxBridge сразу возвращает graceful fallback и ничего не шлёт.
+  useEffect(() => {
+    void initMaxBridge().then((status) => {
+      if (status.supported && !status.initialized) {
+        console.info('MAX bridge: fallback —', status.reason);
+      }
+    });
+  }, []);
+
   return (
-    <AuthProvider>
-      <Shell />
-    </AuthProvider>
+    <ErrorBoundary fullScreen>
+      <AuthProvider>
+        <Shell />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -65,11 +77,19 @@ function Shell() {
 
   // Кабинеты преподавателя и админа используют тот же AppShell, что и студент.
   if (role === 'teacher') {
-    return <TeacherApp />;
+    return (
+      <ErrorBoundary>
+        <TeacherApp />
+      </ErrorBoundary>
+    );
   }
 
   if (role === 'admin') {
-    return <AdminApp />;
+    return (
+      <ErrorBoundary>
+        <AdminApp />
+      </ErrorBoundary>
+    );
   }
 
   return (
@@ -102,14 +122,15 @@ function Shell() {
         </nav>
       }
     >
-      {route === '/kanban' ? <KanbanPage /> : null}
-      {route === '/inbox' ? <InboxPage /> : null}
-      {route === '/economy' ? <EconomyPage /> : null}
-      {route === '/gamification' ? <GamificationPage /> : null}
-      {route === '/bets' ? <BetsPage /> : null}
-      {route === '/' || !NAV.some((item) => item.path === route) ? (
-        <DashboardPage navigate={navigate} />
-      ) : null}
+      <ErrorBoundary key={route}>
+        {route === '/kanban' ? <KanbanPage /> : null}
+        {route === '/economy' ? <EconomyPage /> : null}
+        {route === '/gamification' ? <GamificationPage /> : null}
+        {route === '/bets' ? <BetsPage /> : null}
+        {route === '/' || !NAV.some((item) => item.path === route) ? (
+          <DashboardPage />
+        ) : null}
+      </ErrorBoundary>
     </AppShell>
   );
 }

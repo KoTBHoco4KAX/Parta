@@ -10,6 +10,8 @@ import {
   fetchReviewInbox,
 } from '../api';
 import { ApiError } from '../../core/api';
+import { useAuth } from '../../core/auth';
+import { isReviewInboxEvent } from '../../core/ws';
 import { SubmissionCard } from './SubmissionCard';
 import { VerdictModal } from './VerdictModal';
 import { Badge, Button, EmptyState, Skeleton, cn } from './ui';
@@ -66,6 +68,7 @@ export function ReviewInbox({
 }: {
   notify: (toast: Omit<ToastData, 'id'>) => void;
 }) {
+  const { subscribe } = useAuth();
   const [items, setItems] = useState<ReviewInboxItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -115,6 +118,18 @@ export function ReviewInbox({
     const timer = window.setInterval(() => setNow(Date.now()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  // Реалтайм: новая сдача приходит событием review.inbox.created в комнату
+  // teacher:{id}. Перечитываем инбокс с GET /api/submissions?status=REVIEW.
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (isReviewInboxEvent(event)) {
+          setRefreshKey((key) => key + 1);
+        }
+      }),
+    [subscribe],
+  );
 
   const groups = useMemo(
     () => Array.from(new Set(items.map((item) => item.groupCode))).sort(),

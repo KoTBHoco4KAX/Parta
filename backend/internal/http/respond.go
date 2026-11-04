@@ -18,6 +18,10 @@ const (
 	CodeUnauthorized = "unauthorized"
 	// CodeInternal — непредвиденная ошибка сервера.
 	CodeInternal = "internal"
+	// CodeInvalidMultipart — тело запроса не разбирается как multipart/form-data.
+	CodeInvalidMultipart = "invalid_multipart"
+	// CodeFileTooLarge — файл превышает допустимый размер.
+	CodeFileTooLarge = "file_too_large"
 )
 
 // maxBodyBytes ограничивает тело запроса, чтобы не читать гигабайты в память.

@@ -37,11 +37,13 @@ type devLoginRequest struct {
 
 // loginRequest — тело POST /api/auth/login.
 // Пароль в dev-контуре не проверяется, но обязателен: экран входа не должен
-// отправлять пустую форму.
+// отправлять пустую форму. Role не обязателен: роль всегда берётся из профиля
+// пользователя, а переданное клиентом значение служит только проверкой
+// совместимости со старыми клиентами.
 type loginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
-	Role     string `json:"role"`
+	Role     string `json:"role,omitempty"`
 }
 
 // userView — публичное представление пользователя.
@@ -99,7 +101,9 @@ func (s *Server) handleDevLogin(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, devLoginResponse{Token: token, User: newUserView(user)})
 }
 
-// handleLogin выдаёт токен по email/паролю и выбранной роли.
+// handleLogin выдаёт токен по email/паролю. Роль берётся из профиля и не
+// может быть выбрана клиентом; поле role поддерживается только для старых
+// клиентов, которые присылали ожидаемую роль.
 // Пароль принимается любой непустой: внешний провайдер (Сферум/MAX) появится позже.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
@@ -110,7 +114,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	email := strings.TrimSpace(req.Email)
 
-	if email == "" || strings.TrimSpace(req.Password) == "" || !validRole(req.Role) {
+	if email == "" || strings.TrimSpace(req.Password) == "" {
+		writeError(w, domainerrors.ErrInvalidArgument)
+
+		return
+	}
+
+	if req.Role != "" && !validRole(req.Role) {
 		writeError(w, domainerrors.ErrInvalidArgument)
 
 		return
@@ -123,7 +133,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Role != req.Role {
+	if req.Role != "" && user.Role != req.Role {
 		writeError(w, domainerrors.ErrForbidden)
 
 		return

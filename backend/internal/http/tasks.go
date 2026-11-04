@@ -9,6 +9,7 @@ import (
 	"github.com/parta/backend/internal/domain/economy"
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/domain/xp"
+	"github.com/parta/backend/internal/events"
 	"github.com/parta/backend/internal/storage"
 )
 
@@ -129,6 +130,23 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
+
+	// Публикация после Commit: студенты группы получают карточку без ручного
+	// обновления доски, преподаватель — сигнал для своего экрана заданий.
+	event := events.New(
+		events.TypeTaskCreated,
+		p.UserID,
+		events.RoomGroup(groupID),
+		taskCreatedPayload{
+			TaskID:     taskID,
+			GroupID:    groupID,
+			Title:      req.Title,
+			DeadlineAt: eventTime(deadline),
+			Status:     "PUBLISHED",
+		},
+	)
+	s.publisher.Publish(r.Context(), event)
+	s.publisher.Publish(r.Context(), event.InRoom(events.RoomTeacher(p.UserID)))
 
 	writeJSON(w, http.StatusCreated, createTaskResponse{
 		TaskID:     taskID,

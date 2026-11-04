@@ -72,6 +72,14 @@ type teamSlotStateChangedPayload struct {
 	AssignedUserID int64  `json:"assigned_user_id"`
 }
 
+type taskCreatedPayload struct {
+	TaskID     int64  `json:"task_id"`
+	GroupID    int64  `json:"group_id"`
+	Title      string `json:"title"`
+	DeadlineAt string `json:"deadline_at"`
+	Status     string `json:"status"`
+}
+
 // eventTime форматирует время в формате конверта (RFC3339 с миллисекундами).
 func eventTime(t time.Time) string {
 	return t.UTC().Format(events.TimestampFormat)

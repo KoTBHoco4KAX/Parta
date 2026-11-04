@@ -14,6 +14,10 @@ export default defineConfig({
         target: BACKEND,
         changeOrigin: true,
       },
+      '/uploads': {
+        target: BACKEND,
+        changeOrigin: true,
+      },
       '/ws': {
         target: BACKEND.replace('http', 'ws'),
         ws: true,

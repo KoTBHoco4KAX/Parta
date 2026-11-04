@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"runtime/debug"
 	"strings"
 	"time"
 )
@@ -58,6 +59,15 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
+		// В API принимаются только пользовательские токены с известной ролью.
+		// Read-only токен peer-review (scope без role) не должен становиться
+		// principal: иначе любой валидно подписанный токен открывал бы REST.
+		if claims.Scope != "" || !validRole(claims.Role) {
+			writeUnauthorized(w, "token does not grant API access")
+
+			return
+		}
+
 		next.ServeHTTP(w, r.WithContext(withPrincipal(r.Context(), principal{
 			UserID: claims.Sub,
 			Role:   claims.Role,
@@ -107,11 +117,13 @@ func (s *Server) logging(next http.Handler) http.Handler {
 }
 
 // recoverer превращает панику хендлера в 500 в общем формате ошибки.
+// Паника одного запроса не должна ронять процесс: сервер продолжает
+// обслуживать остальные соединения, а клиент получает JSON-конверт.
 func (s *Server) recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				log.Printf("http: panic on %s %s: %v", r.Method, r.URL.Path, recovered)
+				log.Printf("http: panic on %s %s: %v\n%s", r.Method, r.URL.Path, recovered, debug.Stack())
 				writeJSON(w, http.StatusInternalServerError, errorBody{
 					Error: "internal server error",
 					Code:  CodeInternal,

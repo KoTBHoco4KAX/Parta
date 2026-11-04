@@ -194,18 +194,24 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	s.applyStatusEvent(w, r, p, id, req)
+}
+
+// applyStatusEvent выполняет переход карточки и публикует события.
+// Возвращает false, если ответ уже содержит ошибку.
+func (s *Server) applyStatusEvent(w http.ResponseWriter, r *http.Request, p principal, id int64, req statusRequest) bool {
 	sub, err := s.submissions.GetByID(r.Context(), id)
 	if err != nil {
 		writeError(w, err)
 
-		return
+		return false
 	}
 
 	task, err := s.tasks.GetByID(r.Context(), sub.TaskID)
 	if err != nil {
 		writeError(w, err)
 
-		return
+		return false
 	}
 
 	// Пользователь читается до транзакции: внутри withTx ходить в *sql.DB нельзя.
@@ -213,7 +219,7 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		writeError(w, err)
 
-		return
+		return false
 	}
 
 	now := s.now()
@@ -223,7 +229,7 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 	if guardErr != nil {
 		writeError(w, guardErr)
 
-		return
+		return false
 	}
 
 	in := storage.UpdateStatusInput{
@@ -251,7 +257,7 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		writeError(w, err)
 
-		return
+		return false
 	}
 
 	// Публикация строго после Commit: событие — уведомление, а не источник истины.
@@ -290,6 +296,8 @@ func (s *Server) handleSubmissionStatus(w http.ResponseWriter, r *http.Request) 
 		Status:       string(updated.Status),
 		SubmittedAt:  formatTimePtr(updated.SubmittedAt),
 	})
+
+	return true
 }
 
 // studentRoomFor выбирает основную комнату по уже прочитанному пользователю.
