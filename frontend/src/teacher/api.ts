@@ -174,6 +174,10 @@ export async function createTeacherTask(
     title: input.title,
     description_md: input.descriptionMD,
     task_type: input.taskType,
+    // Скрытые базовые значения: форма их не спрашивает, но старый backend
+    // (до перехода на необязательные поля) без них отвечает invalid argument.
+    requirements_count: '8',
+    expected_hours: '4',
     deadline_at: input.deadlineAt,
     speedrun_window_hours: String(input.speedrunWindowHours),
     team_size: String(input.teamSize),
@@ -198,6 +202,8 @@ export async function createTeacherTask(
         title: input.title,
         description_md: input.descriptionMD,
         task_type: input.taskType,
+        requirements_count: 8,
+        expected_hours: 4,
         deadline_at: input.deadlineAt,
         speedrun_window_hours: input.speedrunWindowHours,
         speedrun_bonus_until: input.speedrunBonusUntil,
