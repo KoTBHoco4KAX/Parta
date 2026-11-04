@@ -1,52 +1,75 @@
-import { useEffect, useState } from 'react';
-import { ApiError, buyStreakFreezes } from '../../core/api';
+import { useCallback, useEffect, useState } from 'react';
+import { ApiError } from '../../core/api';
+import { FREEZE_PRICE, purchaseFreezes, getProfile, getLedger, getStreakDays, subscribe } from '../api';
+import { StreakCalendar } from '../components/StreakCalendar';
 import { Button } from '../../components/Button';
-import { useAuth } from '../../core/auth';
-import type { Achievement } from '../types';
+import type { LedgerEntry, Profile } from '../types';
 
+// XP_PER_LEVEL — витринный уровень: каждые 1500 XP (демо-градация, в backend
+// уровней нет — регуляторика запрещает заменять XP оценками/журналом).
 const XP_PER_LEVEL = 1500;
 
-function achievementsFor(xp: number, streak: number, freezes: number): Achievement[] {
-  return [
-    { id: 'first', title: 'Первый шаг', description: 'Получить первый XP', icon: '🎯', unlocked: xp > 0, xpReward: 50 },
-    { id: 'week', title: 'Недельный стрик', description: '7 дней подряд', icon: '🔥', unlocked: streak >= 7, xpReward: 100 },
-    { id: 'marathon', title: 'Марафонец', description: '30 дней подряд', icon: '⚡', unlocked: streak >= 30, xpReward: 500 },
-    { id: 'frost', title: 'Запасливый', description: 'Купить заморозку стрика', icon: '❄️', unlocked: freezes > 0, xpReward: 20 },
-  ];
-}
+const QUANTITIES = [1, 2, 3];
 
-// GamificationPage — XP, стрик и заморозки из профиля пользователя.
-// Покупка заморозки идёт реальным POST /api/users/me/streak-freezes/purchase.
+const REASON_LABEL: Record<LedgerEntry['reason'], string> = {
+  TASK_ACCEPT: 'Принятая работа',
+  WAGER_ESCROW: 'Пари: ставка',
+  WAGER_PAYOUT: 'Пари: выплата',
+  STREAK_FREEZE: 'Заморозка стрика',
+  ADMIN_ADJUSTMENT: 'Корректировка',
+};
+
+// GamificationPage — XP, on-time стрик и заморозки. Данные из мок-профиля;
+// покупка заморозки кушает 200 XP за шт. (domain/economy) и при нехватке XP
+// отвечает insufficient_xp — сообщение показывает inline.
 export default function GamificationPage() {
-  const { user } = useAuth();
-  const [xp, setXp] = useState(user?.xp_balance ?? 0);
-  const [streak, setStreak] = useState(user?.on_time_streak ?? 0);
-  const [freezes, setFreezes] = useState(user?.streak_freezes ?? 0);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [streakDays, setStreakDays] = useState<string[]>([]);
+  const [quantity, setQuantity] = useState(1);
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const [nextProfile, nextLedger, nextStreakDays] = await Promise.all([
+        getProfile(),
+        getLedger(),
+        getStreakDays(),
+      ]);
+
+      setProfile(nextProfile);
+      setLedger(nextLedger);
+      setStreakDays(nextStreakDays);
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось загрузить прогресс.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    setXp(user?.xp_balance ?? 0);
-    setStreak(user?.on_time_streak ?? 0);
-    setFreezes(user?.streak_freezes ?? 0);
-  }, [user]);
+    void load();
 
-  const level = Math.floor(xp / XP_PER_LEVEL) + 1;
-  const progress = Math.min(100, Math.round(((xp % XP_PER_LEVEL) / XP_PER_LEVEL) * 100));
+    // XP и стрик приходят «по WS» после покупки/вердикта — перечитываем.
+    return subscribe(() => {
+      void load();
+    });
+  }, [load]);
 
-  async function buyFreeze() {
-    if (xp < 200) {
-      setError('Недостаточно XP: заморозка стоит 200 XP.');
-      return;
-    }
-
+  async function handleBuyFreeze() {
     setBuying(true);
     setError(null);
 
     try {
-      const response = await buyStreakFreezes(1);
-      setFreezes(response.streak_freezes);
-      setXp(response.xp_balance);
+      const result = await purchaseFreezes(quantity);
+      setProfile((current) =>
+        current
+          ? { ...current, xpBalance: result.xpBalance, streakFreezes: result.streakFreezes }
+          : current,
+      );
     } catch (cause) {
       setError(cause instanceof ApiError ? cause.message : 'Не удалось купить заморозку.');
     } finally {
@@ -54,79 +77,168 @@ export default function GamificationPage() {
     }
   }
 
+  if (loading || !profile) {
+    return (
+      <div className="space-y-3">
+        <div className="h-24 animate-pulse rounded-xl bg-slate-900/70" />
+        <div className="h-40 animate-pulse rounded-xl bg-slate-900/70" />
+      </div>
+    );
+  }
+
+  const level = Math.floor(profile.xpBalance / XP_PER_LEVEL) + 1;
+  const inLevel = profile.xpBalance % XP_PER_LEVEL;
+  const progress = Math.round((inLevel / XP_PER_LEVEL) * 100);
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-lg font-bold text-slate-100">Геймификация</h1>
-        <p className="mt-0.5 text-xs text-slate-400">XP и стрик обновляются сервером по событиям.</p>
+        <p className="mt-0.5 text-xs text-slate-400">
+          XP — витрина прогресса: дедлайны и приёмку ведёт преподаватель.
+        </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Stat label="Уровень" value={String(level)} />
-        <Stat label="Стрик" value={`🔥 ${streak}`} />
-        <Stat label="Заморозки" value={`❄️ ${freezes}`} />
-      </div>
-
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <div className="mb-2 flex items-baseline justify-between text-xs">
-          <span className="font-medium text-slate-300">Опыт</span>
-          <span className="tabular-nums text-slate-400">
-            {xp % XP_PER_LEVEL} / {XP_PER_LEVEL} XP
-          </span>
+      {/* Панель XP */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">Баланс</p>
+            <p className="text-3xl font-black tabular-nums text-emerald-400">{profile.xpBalance}</p>
+            <p className="text-[11px] text-slate-400">уровень {level} · {profile.displayName}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-slate-500">Стрик</p>
+            <p className="text-2xl font-bold text-amber-300">🔥 {profile.onTimeStreak}</p>
+            <p className="text-[11px] text-slate-400">❄️ заморозок: {profile.streakFreezes}</p>
+          </div>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-800">
-          <div className="h-full rounded-full bg-emerald-500 transition" style={{ width: `${progress}%` }} />
+
+        <div className="mt-3">
+          <div className="mb-1 flex justify-between text-[11px] text-slate-400">
+            <span>До {XP_PER_LEVEL} XP нового уровня</span>
+            <span className="tabular-nums">{inLevel} / {XP_PER_LEVEL}</span>
+          </div>
+          <div
+            className="h-2 overflow-hidden rounded-full bg-slate-800"
+            role="progressbar"
+            aria-valuenow={progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progress}%` }} />
+          </div>
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-        <div className="flex items-center justify-between gap-3">
+      {/* Стрик: календарь on-time сдач */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-medium text-slate-100">Заморозка стрика</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Сохранит стрик при пропуске. Цена — 200 XP.</p>
+            <h2 className="text-sm font-medium text-slate-100">On-time стрик</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Засчитывается только за сдачу до дедлайна.
+            </p>
           </div>
-          <Button size="sm" onClick={buyFreeze} loading={buying} disabled={xp < 200}>
-            Купить
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[11px] text-amber-300">
+            {profile.onTimeStreak} дн.
+          </span>
+        </div>
+
+        <StreakCalendar daysOnTime={streakDays} />
+
+        <p className="mt-3 flex items-center gap-3 text-[11px] text-slate-500">
+          <span className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-[3px] bg-emerald-500" /> сдал вовремя
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="h-3 w-3 rounded-[3px] bg-slate-800" /> без сдачи
+          </span>
+        </p>
+      </section>
+
+      {/* Магазин заморозок */}
+      <section className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+        <h2 className="text-sm font-medium text-slate-100">Заморозка стрика</h2>
+        <p className="mt-0.5 text-xs text-slate-400">
+          Спасает стрик при пропуске дедлайна. Цена — {FREEZE_PRICE} XP за штуку.
+        </p>
+
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <div className="flex gap-1.5" role="group" aria-label="Сколько заморозок купить">
+            {QUANTITIES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setQuantity(value)}
+                aria-pressed={quantity === value}
+                className={[
+                  'h-9 w-11 rounded-lg text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400',
+                  quantity === value
+                    ? 'bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40'
+                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700',
+                ].join(' ')}
+              >
+                ×{value}
+              </button>
+            ))}
+          </div>
+
+          <Button
+            size="sm"
+            onClick={handleBuyFreeze}
+            loading={buying}
+            disabled={FREEZE_PRICE * quantity > profile.xpBalance}
+          >
+            Купить за {FREEZE_PRICE * quantity} XP
           </Button>
         </div>
+
+        {FREEZE_PRICE * quantity > profile.xpBalance ? (
+          <p className="mt-2 text-[11px] text-amber-300">
+            Не хватает XP: у вас {profile.xpBalance}, нужно {FREEZE_PRICE * quantity}.
+          </p>
+        ) : null}
+
         {error ? (
-          <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p>
+          <p role="alert" className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300">
+            {error}
+          </p>
         ) : null}
       </section>
 
+      {/* История XP-проводок */}
       <section>
-        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Достижения</h2>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {achievementsFor(xp, streak, freezes).map((achievement) => (
-            <div
-              key={achievement.id}
-              className={[
-                'flex items-center gap-3 rounded-xl border p-3',
-                achievement.unlocked
-                  ? 'border-emerald-500/30 bg-emerald-500/10'
-                  : 'border-slate-800 bg-slate-900/60 opacity-60',
-              ].join(' ')}
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+          История XP
+        </h2>
+        <ul className="space-y-2">
+          {ledger.map((entry) => (
+            <li
+              key={entry.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2"
             >
-              <span className="text-2xl">{achievement.icon}</span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-xs font-medium text-slate-100">{achievement.title}</h3>
-                <p className="text-[11px] text-slate-400">{achievement.description}</p>
-                <p className="text-[10px] text-emerald-400">+{achievement.xpReward} XP</p>
+              <div className="min-w-0">
+                <p className="truncate text-xs text-slate-200">{entry.memo}</p>
+                <p className="text-[10px] text-slate-500">
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 text-[9px] text-slate-400">
+                    {REASON_LABEL[entry.reason]}
+                  </span>{' '}
+                  {new Date(entry.createdAt).toLocaleString()}
+                </p>
               </div>
-              {achievement.unlocked ? <span className="text-emerald-400">✓</span> : null}
-            </div>
+              <span
+                className={`shrink-0 text-sm font-semibold tabular-nums ${
+                  entry.amount > 0 ? 'text-emerald-400' : 'text-rose-300'
+                }`}
+              >
+                {entry.amount > 0 ? '+' : ''}
+                {entry.amount}
+              </span>
+            </li>
           ))}
-        </div>
+        </ul>
       </section>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-800 bg-slate-900 px-3 py-2.5">
-      <p className="text-[10px] uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-0.5 text-base font-bold text-slate-100">{value}</p>
     </div>
   );
 }

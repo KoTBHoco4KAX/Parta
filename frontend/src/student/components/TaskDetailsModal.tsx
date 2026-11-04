@@ -98,39 +98,36 @@ export default function TaskDetailsModal({
     >
       <div className="space-y-4">
         <section>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Задание
-          </h3>
-          <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm leading-6 text-slate-300">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-ink3">Задание</h3>
+          <div className="mt-2 max-h-56 overflow-y-auto whitespace-pre-wrap rounded-xl border border-line bg-muted p-3 text-sm leading-6 text-ink2">
             {task.description_md.trim() || 'Описание задания пока не заполнено.'}
           </div>
         </section>
 
         <dl className="grid grid-cols-2 gap-2 text-xs">
-          <div className="rounded-lg bg-slate-950/60 px-3 py-2">
-            <dt className="text-slate-500">Статус</dt>
-            <dd className="mt-0.5 font-medium text-slate-200">
-              {STATUS_LABEL[submission.status]}
-            </dd>
+          <div className="rounded-xl bg-muted px-3 py-2">
+            <dt className="text-ink3">Статус</dt>
+            <dd className="mt-0.5 font-medium text-ink">{STATUS_LABEL[submission.status]}</dd>
           </div>
-          <div className="rounded-lg bg-slate-950/60 px-3 py-2">
-            <dt className="text-slate-500">За это дадут</dt>
-            <dd className="mt-0.5 font-medium text-emerald-300">{task.base_xp_computed} XP</dd>
+          <div className="rounded-xl bg-muted px-3 py-2">
+            <dt className="text-ink3">За это дадут</dt>
+            <dd className="mt-0.5 font-medium text-brand">{task.base_xp_computed} XP</dd>
           </div>
         </dl>
 
         {canSubmit ? (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-300">
+            <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="work-file">
               Файл работы
             </label>
             <input
+              id="work-file"
               type="file"
               onChange={(event) => handleFile(event.target.files?.[0])}
               disabled={submitting}
-              className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-slate-800 file:px-2 file:py-1 file:text-xs file:text-slate-200"
+              className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
             />
-            <p className="mt-1.5 text-[11px] text-slate-500">
+            <p className="mt-1.5 text-[11px] text-ink3">
               {file
                 ? `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} МБ`
                 : 'Можно прикрепить один файл до 20 МБ.'}
@@ -139,34 +136,31 @@ export default function TaskDetailsModal({
         ) : null}
 
         {submission.status === 'TODO' ? (
-          <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <p className="rounded-xl border border-brandLine bg-brandSoft px-3 py-2 text-xs text-brand">
             Задание берётся в работу…
           </p>
         ) : null}
 
         {submission.status === 'REVIEW' ? (
-          <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          <p className="rounded-xl border border-warnLine bg-warnSoft px-3 py-2 text-xs text-warn">
             Работа уже отправлена преподавателю и ждёт проверки.
           </p>
         ) : null}
 
         {submission.status === 'DONE' ? (
-          <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+          <p className="rounded-xl border border-okLine bg-okSoft px-3 py-2 text-xs text-ok">
             Работа принята.
           </p>
         ) : null}
 
         {submission.status === 'REJECTED' ? (
-          <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          <p className="rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
             Работа отклонена. Закройте окно и откройте карточку ещё раз, чтобы вернуть её в работу.
           </p>
         ) : null}
 
         {error ? (
-          <p
-            role="alert"
-            className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-300"
-          >
+          <p role="alert" className="rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
             {error}
           </p>
         ) : null}
