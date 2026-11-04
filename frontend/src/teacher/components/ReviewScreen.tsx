@@ -13,7 +13,14 @@ import { IconCheckCircle, IconChevronRight, IconInbox } from './icons';
  * Обновляется сама: по WebSocket о новых сдачах, при возврате на вкладку и
  * страховочным опросом. Нажатие на карточку открывает сдачу и вердикт.
  */
-export function ReviewScreen({ notify }: { notify: (toast: Omit<ToastData, 'id'>) => void }) {
+export function ReviewScreen({
+  notify,
+  onReviewed,
+}: {
+  notify: (toast: Omit<ToastData, 'id'>) => void;
+  /** Обновляет счётчик на вкладке сразу после вердикта. */
+  onReviewed?: () => void;
+}) {
   const { items, loading, error, reload } = useReviewInbox();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selected, setSelected] = useState<ReviewInboxItem | null>(null);
@@ -99,6 +106,7 @@ export function ReviewScreen({ notify }: { notify: (toast: Omit<ToastData, 'id'>
           onDecided={() => {
             setSelected(null);
             reload();
+            onReviewed?.();
           }}
         />
       ) : null}

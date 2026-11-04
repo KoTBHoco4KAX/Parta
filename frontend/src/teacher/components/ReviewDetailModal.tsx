@@ -252,11 +252,7 @@ export function ReviewDetailModal({
           ) : null}
         </section>
 
-        <AttachmentsPanel
-          submissionId={item.id}
-          artifactUrl={item.artifactUrl}
-          artifactHash={item.artifactHash}
-        />
+        <AttachmentsPanel submissionId={item.id} notify={notify} />
 
         <section>
           <h4 className="mb-2 text-xs font-semibold text-ink2">История доработок</h4>

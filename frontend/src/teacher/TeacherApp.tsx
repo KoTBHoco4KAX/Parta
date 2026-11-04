@@ -41,7 +41,7 @@ function tabFromHash(fallback: TeacherTab): TeacherTab {
  * и перечитывают экран без ручного обновления.
  */
 export default function TeacherApp() {
-  const { events } = useAuth();
+  const { events, subscribe } = useAuth();
 
   const [tab, setTab] = useState<TeacherTab>(() => tabFromHash('profile'));
   const [reviewCount, setReviewCount] = useState(0);
@@ -82,7 +82,19 @@ export default function TeacherApp() {
     const timer = window.setInterval(refreshReviewCount, 60_000);
 
     return () => window.clearInterval(timer);
-  }, [refreshReviewCount, reloadSignal]);
+  }, [refreshReviewCount]);
+
+  // Счётчик на вкладке «Проверка» обновляется сразу по WS, а не только по
+  // таймеру: новая сдача приходит в комнату teacher:{id}.
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (REFRESH_EVENTS.has(event.event_type)) {
+          refreshReviewCount();
+        }
+      }),
+    [refreshReviewCount, subscribe],
+  );
 
   useEffect(() => {
     const latest = events[0];
@@ -162,7 +174,9 @@ export default function TeacherApp() {
         />
       ) : null}
 
-      {tab === 'review' ? <ReviewScreen notify={notify} /> : null}
+      {tab === 'review' ? (
+        <ReviewScreen notify={notify} onReviewed={refreshReviewCount} />
+      ) : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20">
         <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2">
