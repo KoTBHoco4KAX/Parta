@@ -1,16 +1,17 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { formatDeadline24, parseLocalInput, toLocalInput } from '../lib/format';
 import { cn } from './ui';
 
 /** Время по умолчанию, если поле ещё не заполнено. */
-const DEFAULT_TIME = '08:00';
+const DEFAULT_HOURS = '08';
+const DEFAULT_MINUTES = '00';
 
 export interface DeadlineInputProps {
   /** Значение в формате `YYYY-MM-DDTHH:mm` (как у input[type=datetime-local]). */
   value: string;
   onChange: (value: string) => void;
   invalid?: boolean;
-  /** Текст под полями (подсказка или ошибка). */
+  /** Дополнительная подпись под полями. */
   hint?: string;
 }
 
@@ -24,32 +25,101 @@ export interface DeadlineInputProps {
  */
 export function DeadlineInput({ value, onChange, invalid = false, hint }: DeadlineInputProps) {
   const parsed = parseLocalInput(value);
-  const hours = parsed ? String(parsed.getHours()).padStart(2, '0') : DEFAULT_TIME.slice(0, 2);
-  const minutes = parsed ? String(parsed.getMinutes()).padStart(2, '0') : DEFAULT_TIME.slice(3, 5);
   const date = parsed ? toLocalInput(parsed).slice(0, 10) : value.slice(0, 10);
 
-  // Черновик часов/минут: пустое поле не сбрасывает значение в 00, пока
-  // пользователь не закончит набор (две цифры).
-  const [hourDraft, setHourDraft] = useState(hours);
-  const [minuteDraft, setMinuteDraft] = useState(minutes);
+  // Введённые значения хранятся строкой без ведущего нуля: «8» → «08» только
+  // при потере фокуса, иначе после первой цифры «1» поле нельзя донабрать.
+  const [hours, setHours] = useState(
+    parsed ? String(parsed.getHours()).padStart(2, '0') : DEFAULT_HOURS,
+  );
+  const [minutes, setMinutes] = useState(
+    parsed ? String(parsed.getMinutes()).padStart(2, '0') : DEFAULT_MINUTES,
+  );
 
+  const minutesRef = useRef<HTMLInputElement | null>(null);
+
+  // Внешнее значение (пресеты «+1 день», кнопка «сброс») подхватывается здесь.
   useEffect(() => {
-    setHourDraft(hours);
-    setMinuteDraft(minutes);
-  }, [hours, minutes]);
+    const current = parseLocalInput(value);
 
-  function commit(nextDate: string, nextHour: string, nextMinute: string) {
-    onChange(`${nextDate}T${nextHour}:${nextMinute}`);
-  }
-
-  function clamp(raw: string, max: number): string {
-    const digits = raw.replace(/\D/g, '').slice(0, 2);
-
-    if (digits === '') {
-      return '';
+    if (!current) {
+      return;
     }
 
-    return String(Math.min(Number(digits), max)).padStart(2, '0');
+    setHours(String(current.getHours()).padStart(2, '0'));
+    setMinutes(String(current.getMinutes()).padStart(2, '0'));
+  }, [value]);
+
+  function commit(nextDate: string, nextHours: string, nextMinutes: string) {
+    const hourNumber = Math.min(Number(nextHours || DEFAULT_HOURS), 23);
+    const minuteNumber = Math.min(Number(nextMinutes || DEFAULT_MINUTES), 59);
+
+    onChange(
+      `${nextDate}T${String(hourNumber).padStart(2, '0')}:${String(minuteNumber).padStart(2, '0')}`,
+    );
+  }
+
+  function digitsOnly(raw: string): string {
+    return raw.replace(/\D/g, '').slice(0, 2);
+  }
+
+  function handleHours(raw: string) {
+    const digits = digitsOnly(raw);
+
+    if (digits === '') {
+      setHours('');
+      return;
+    }
+
+    // «7» → 7, «25» → 2 и сразу переход к минутам.
+    const first = digits.slice(0, 1);
+    const valueAsNumber = Number(digits.length === 1 ? digits : digits.slice(0, 2));
+
+    if (valueAsNumber > 23) {
+      setHours(first);
+      commit(date, first, minutes || DEFAULT_MINUTES);
+      minutesRef.current?.focus();
+      return;
+    }
+
+    setHours(digits);
+    commit(date, digits, minutes || DEFAULT_MINUTES);
+
+    if (digits.length === 2) {
+      minutesRef.current?.focus();
+    }
+  }
+
+  function handleMinutes(raw: string) {
+    const digits = digitsOnly(raw);
+
+    if (digits === '') {
+      setMinutes('');
+      return;
+    }
+
+    const first = digits.slice(0, 1);
+    const valueAsNumber = Number(digits.length === 1 ? digits : digits.slice(0, 2));
+
+    if (valueAsNumber > 59) {
+      setMinutes(first);
+      commit(date, hours || DEFAULT_HOURS, first);
+      return;
+    }
+
+    setMinutes(digits);
+    commit(date, hours || DEFAULT_HOURS, digits);
+  }
+
+  function normalizeOnBlur(
+    draft: string,
+    fallback: string,
+    max: number,
+    setDraft: (next: string) => void,
+  ) {
+    const number = draft === '' ? Number(fallback) : Number(draft);
+
+    setDraft(String(Math.min(Math.max(number, 0), max)).padStart(2, '0'));
   }
 
   const fieldClass = cn(
@@ -64,7 +134,9 @@ export function DeadlineInput({ value, onChange, invalid = false, hint }: Deadli
           aria-label="Дата"
           type="date"
           value={date}
-          onChange={(event) => commit(event.target.value, hourDraft || DEFAULT_TIME.slice(0, 2), minuteDraft || '00')}
+          onChange={(event) =>
+            commit(event.target.value, hours || DEFAULT_HOURS, minutes || DEFAULT_MINUTES)
+          }
           className={cn(
             'w-full rounded-lg border bg-card px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine',
             invalid ? 'border-bad' : 'border-line2',
@@ -75,43 +147,30 @@ export function DeadlineInput({ value, onChange, invalid = false, hint }: Deadli
           <input
             aria-label="Часы (00–23)"
             inputMode="numeric"
-            pattern="[0-9]*"
+            autoComplete="off"
             maxLength={2}
-            value={hourDraft}
-            onChange={(event) => {
-              const next = clamp(event.target.value, 23);
-              setHourDraft(next);
-
-              if (next.length === 2) {
-                commit(date, next, minuteDraft || '00');
-              }
-            }}
+            value={hours}
+            onChange={(event) => handleHours(event.target.value)}
+            onFocus={(event) => event.target.select()}
             onBlur={() => {
-              const next = clamp(hourDraft || DEFAULT_TIME.slice(0, 2), 23);
-              setHourDraft(next);
-              commit(date, next, minuteDraft || '00');
+              normalizeOnBlur(hours, DEFAULT_HOURS, 23, setHours);
+              commit(date, hours || DEFAULT_HOURS, minutes || DEFAULT_MINUTES);
             }}
             className={cn(fieldClass, 'w-12')}
           />
           <span className="text-sm font-semibold text-ink3">:</span>
           <input
+            ref={minutesRef}
             aria-label="Минуты (00–59)"
             inputMode="numeric"
-            pattern="[0-9]*"
+            autoComplete="off"
             maxLength={2}
-            value={minuteDraft}
-            onChange={(event) => {
-              const next = clamp(event.target.value, 59);
-              setMinuteDraft(next);
-
-              if (next.length === 2) {
-                commit(date, hourDraft || '00', next);
-              }
-            }}
+            value={minutes}
+            onChange={(event) => handleMinutes(event.target.value)}
+            onFocus={(event) => event.target.select()}
             onBlur={() => {
-              const next = clamp(minuteDraft || '00', 59);
-              setMinuteDraft(next);
-              commit(date, hourDraft || '00', next);
+              normalizeOnBlur(minutes, DEFAULT_MINUTES, 59, setMinutes);
+              commit(date, hours || DEFAULT_HOURS, minutes || DEFAULT_MINUTES);
             }}
             className={cn(fieldClass, 'w-12')}
           />
@@ -119,7 +178,8 @@ export function DeadlineInput({ value, onChange, invalid = false, hint }: Deadli
       </div>
 
       <p className={cn('mt-1 text-[10px]', invalid ? 'text-bad' : 'text-ink3')}>
-        {invalid && hint ? hint : `${parsed ? formatDeadline24(parsed) : '—'} · 24 ч (ЧЧ:ММ)${hint ? ` · ${hint}` : ''}`}
+        {parsed ? `${formatDeadline24(parsed)} · 24 ч (ЧЧ:ММ)` : 'Укажите дату и время · 24 ч (ЧЧ:ММ)'}
+        {hint ? ` · ${hint}` : ''}
       </p>
     </div>
   );
