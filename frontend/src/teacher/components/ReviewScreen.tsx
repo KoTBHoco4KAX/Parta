@@ -1,69 +1,40 @@
-import { useCallback, useEffect, useState } from 'react';
-import { fetchReviewInbox } from '../api';
-import type { ReviewInboxItem, ToastData } from '../types';
-import { Badge, Button, Card, EmptyState, ErrorState, ScreenHeader, SkeletonList, cn } from './ui';
-import { IconCheckCircle, IconInbox, IconRefresh } from './icons';
+import { useReviewInbox } from '../hooks/useReviewInbox';
+import { Badge, Card, EmptyState, ErrorState, ScreenHeader, SkeletonList } from './ui';
+import { IconCheckCircle, IconInbox } from './icons';
 
 /**
  * ReviewScreen — очередь проверки работ учеников.
  *
- * Пока показывает работы в статусе REVIEW; инструменты вердикта (баллы,
- * комментарий, влияние взаимопроверки) будут добавлены следующим шагом.
+ * Обновляется сама по WebSocket: как только ученик отправил работу, backend
+ * публикует `review.inbox.created` в комнату преподавателя, и карточка
+ * появляется здесь без кнопки «Обновить».
  */
-export function ReviewScreen({
-  notify,
-  reloadSignal = 0,
-  onReviewed: _onReviewed,
-}: {
-  notify: (toast: Omit<ToastData, 'id'>) => void;
-  reloadSignal?: number;
-  onReviewed?: () => void;
-}) {
-  const [items, setItems] = useState<ReviewInboxItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      setItems(await fetchReviewInbox());
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Не удалось загрузить очередь.');
-      notify({ tone: 'error', title: 'Ошибка загрузки', description: 'Попробуйте обновить список.' });
-    } finally {
-      setLoading(false);
-    }
-  }, [notify]);
-
-  useEffect(() => {
-    void load();
-  }, [load, reloadSignal]);
+export function ReviewScreen() {
+  const { items, loading, error, reload } = useReviewInbox();
 
   return (
     <div>
       <ScreenHeader
         eyebrow="Очередь"
         title="Проверка"
-        description="Работы, сданные на вердикт. Инструменты оценки — следующий шаг."
+        description="Новые сдачи приходят сюда сами, по WebSocket."
         action={
-          <Button variant="secondary" size="sm" onClick={() => void load()}>
-            <IconRefresh className="h-3.5 w-3.5" />
-            Обновить
-          </Button>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-okSoft px-2 py-1 text-[10px] font-medium text-ok">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-ok" aria-hidden="true" />
+            live
+          </span>
         }
       />
 
       {loading ? <SkeletonList rows={3} /> : null}
 
-      {error && !loading ? <ErrorState message={error} onRetry={() => void load()} /> : null}
+      {error && !loading ? <ErrorState message={error} onRetry={reload} /> : null}
 
       {!loading && !error && items.length === 0 ? (
         <EmptyState
           icon={<IconCheckCircle className="h-5 w-5" />}
           title="Всё проверено"
-          description="Новые сдачи появятся здесь автоматически, как только ученики отправят работу."
+          description="Как только ученик нажмёт «Отправить на проверку», работа появится здесь автоматически."
         />
       ) : null}
 
@@ -89,11 +60,6 @@ export function ReviewScreen({
           ))}
         </ul>
       ) : null}
-
-      <p className={cn('mt-4 text-[11px] leading-relaxed text-ink4')}>
-        Проверка пока в режиме чтения: вердикт, баллы и комментарий появятся на этом шаге
-        следом.
-      </p>
     </div>
   );
 }

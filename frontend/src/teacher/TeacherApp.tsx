@@ -162,13 +162,7 @@ export default function TeacherApp() {
         />
       ) : null}
 
-      {tab === 'review' ? (
-        <ReviewScreen
-          notify={notify}
-          reloadSignal={reloadSignal}
-          onReviewed={() => setReviewCount((count) => Math.max(0, count - 1))}
-        />
-      ) : null}
+      {tab === 'review' ? <ReviewScreen /> : null}
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20">
         <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2">
