@@ -165,6 +165,7 @@ func TestAnswerTwoCommentsAndAcceptPaysReviewers(t *testing.T) {
 
 	h.advanceSubmission(submissionID, ids.student1, "REVIEW")
 
+	authorBalanceBefore, authorWeeklyBefore := h.userBalance(t, ids.student1)
 	balanceBefore, weeklyBefore := h.userBalance(t, ids.student2)
 
 	status, verdict := h.request(t, http.MethodPost, "/api/submissions/"+itoa64(submissionID)+"/verdict", teacherToken, map[string]any{
@@ -191,6 +192,15 @@ func TestAnswerTwoCommentsAndAcceptPaysReviewers(t *testing.T) {
 	wantAuthor := finalBefore - 2*share
 	if verdict["xp_awarded"] != float64(wantAuthor) {
 		t.Fatalf("author xp = %v, want %d", verdict["xp_awarded"], wantAuthor)
+	}
+
+	authorBalanceAfter, authorWeeklyAfter := h.userBalance(t, ids.student1)
+	if authorBalanceAfter-authorBalanceBefore != wantAuthor {
+		t.Fatalf("author balance delta = %d, want %d", authorBalanceAfter-authorBalanceBefore, wantAuthor)
+	}
+
+	if authorWeeklyAfter-authorWeeklyBefore != wantAuthor {
+		t.Fatalf("author weekly delta = %d, want %d", authorWeeklyAfter-authorWeeklyBefore, wantAuthor)
 	}
 }
 

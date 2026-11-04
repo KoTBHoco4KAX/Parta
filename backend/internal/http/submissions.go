@@ -665,20 +665,38 @@ func (s *Server) acceptSubmission(w http.ResponseWriter, r *http.Request, sub *s
 
 		if finalXP > 0 {
 			sourceID := sub.ID
+			key := "submission:" + strconv.FormatInt(sub.ID, 10) + ":accept:" + reason
 
-			entry, err := s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
-				UserID:         sub.StudentID,
-				Amount:         finalXP,
-				Reason:         reason,
-				SourceType:     storage.SourceSubmission,
-				SourceID:       &sourceID,
-				IdempotencyKey: "submission:" + strconv.FormatInt(sub.ID, 10) + ":accept:" + reason,
-			})
-			if err != nil {
+			existing, err := s.ledger.GetByIdempotencyKey(r.Context(), tx, key)
+			if err != nil && !errors.Is(err, domainerrors.ErrNotFound) {
 				return err
 			}
 
-			ledgerEntry = entry
+			if existing != nil {
+				ledgerEntry = existing
+			} else {
+				entry, err := s.ledger.Post(r.Context(), tx, storage.PostLedgerInput{
+					UserID:         sub.StudentID,
+					Amount:         finalXP,
+					Reason:         reason,
+					SourceType:     storage.SourceSubmission,
+					SourceID:       &sourceID,
+					IdempotencyKey: key,
+				})
+				if err != nil {
+					return err
+				}
+
+				// Недельный опыт нужен лидерборду: сюда попадает и обычная
+				// награда автора, а не только выплаты проверяющим.
+				if err := s.answers.AddWeeklyXP(
+					r.Context(), tx, sub.StudentID, finalXP, weekStart,
+				); err != nil {
+					return err
+				}
+
+				ledgerEntry = entry
+			}
 		}
 
 		if err := applyStreak(r.Context(), tx, s, user.ID, decision); err != nil {

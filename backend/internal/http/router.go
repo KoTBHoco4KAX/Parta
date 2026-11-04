@@ -35,6 +35,7 @@ type Server struct {
 	ledger      *storage.XPLedgerRepo
 	peerReviews *storage.PeerReviewRepo
 	answers     *storage.AnswerRepo
+	leaderboard *storage.LeaderboardRepo
 	teamSlots   *storage.TeamSlotRepo
 }
 
@@ -68,6 +69,7 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		ledger:      storage.NewXPLedgerRepo(db),
 		peerReviews: storage.NewPeerReviewRepo(db),
 		answers:     storage.NewAnswerRepo(db),
+		leaderboard: storage.NewLeaderboardRepo(db),
 		teamSlots:   storage.NewTeamSlotRepo(db),
 	}
 
@@ -101,6 +103,7 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
 	protected.Handle("POST /api/submissions/{id}/submit", studentOnly(http.HandlerFunc(s.handleSubmitFile)))
 	protected.Handle("GET /api/answers", studentOnly(http.HandlerFunc(s.handleAnswersOverview)))
+	protected.Handle("GET /api/leaderboard", studentOnly(http.HandlerFunc(s.handleLeaderboard)))
 	protected.Handle("GET /api/answers/queue/next", studentOnly(http.HandlerFunc(s.handleNextAnswerDraft)))
 	protected.Handle("POST /api/answers/drafts", studentOnly(http.HandlerFunc(s.handleCreateAnswerDraft)))
 	protected.Handle("POST /api/answers/drafts/{id}/comments", studentOnly(http.HandlerFunc(s.handleAddAnswerComment)))

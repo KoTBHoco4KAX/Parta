@@ -7,6 +7,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import KanbanPage from './student/pages/KanbanPage';
 import ShopPage from './student/pages/ShopPage';
 import AnswersPage from './student/pages/AnswersPage';
+import LeaderboardPage from './student/pages/LeaderboardPage';
 import TeacherApp from './teacher';
 import AdminApp from './admin';
 import { AppShell } from './components/AppShell';
@@ -19,6 +20,7 @@ const NAV = [
   { path: '/kanban', label: 'Канбан' },
   { path: '/shop', label: 'Магазин' },
   { path: '/answers', label: 'Ответы' },
+  { path: '/leaderboard', label: 'Рейтинг' },
 ] as const;
 
 // useHashRoute — минимальный роутер без внешних зависимостей: hash переживает
@@ -129,6 +131,7 @@ function Shell() {
         {route === '/kanban' ? <KanbanPage /> : null}
         {route === '/shop' ? <ShopPage /> : null}
         {route === '/answers' ? <AnswersPage /> : null}
+        {route === '/leaderboard' ? <LeaderboardPage /> : null}
         {route === '/' || !NAV.some((item) => item.path === route) ? (
           <DashboardPage />
         ) : null}
