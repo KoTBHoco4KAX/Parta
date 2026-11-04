@@ -5,11 +5,13 @@
  * (spec/02_FSM.md §1: «ученик не наказывается за задержку преподавателя»).
  */
 
+// Всё время в интерфейсе — 24-часовое (hourCycle h23), без AM/PM.
 const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
   month: 'short',
   hour: '2-digit',
   minute: '2-digit',
+  hourCycle: 'h23',
 });
 
 const dateFormatter = new Intl.DateTimeFormat('ru-RU', {
@@ -26,6 +28,7 @@ const dateFullFormatter = new Intl.DateTimeFormat('ru-RU', {
 const timeFormatter = new Intl.DateTimeFormat('ru-RU', {
   hour: '2-digit',
   minute: '2-digit',
+  hourCycle: 'h23',
 });
 
 const weekdayFormatter = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });

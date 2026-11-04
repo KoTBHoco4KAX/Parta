@@ -34,6 +34,7 @@ import {
   TASK_TYPE_TONE,
   slotRoleTitle,
 } from '../lib/labels';
+import { DeadlineInput } from './DeadlineInput';
 import {
   Badge,
   Button,
@@ -682,27 +683,14 @@ function IssueTaskModal({
 
         <Field
           label="Дедлайн"
-          htmlFor="task-deadline"
           error={deadlineError}
-          hint={deadlineDate ? formatDeadline24(deadlineDate) : undefined}
+          hint={deadlineError ?? undefined}
         >
-          <div className="grid grid-cols-2 gap-2">
-            <TextInput
-              aria-label="Дата дедлайна"
-              type="date"
-              value={deadline.slice(0, 10)}
-              onChange={(event) => setDeadline(`${event.target.value}T${deadline.slice(11, 16)}`)}
-              invalid={Boolean(deadlineError)}
-            />
-            <TextInput
-              aria-label="Время дедлайна"
-              type="time"
-              step={60}
-              value={deadline.slice(11, 16)}
-              onChange={(event) => setDeadline(`${deadline.slice(0, 10)}T${event.target.value}`)}
-              invalid={Boolean(deadlineError)}
-            />
-          </div>
+          <DeadlineInput
+            value={deadline}
+            onChange={setDeadline}
+            invalid={Boolean(deadlineError)}
+          />
         </Field>
 
         <div className="flex flex-wrap gap-1.5">
@@ -725,49 +713,17 @@ function IssueTaskModal({
 
         <Field
           label="Бонус до (спидран)"
-          htmlFor="task-bonus-until"
-          hint={autoBonusEnd ? `Автоматически: ${formatDeadline24(autoBonusEnd)} — можно изменить.` : undefined}
+          hint={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : undefined}
           error={submitted && !bonusUntilValid ? 'Дата должна быть в будущем и раньше дедлайна' : null}
         >
-          <div className="grid grid-cols-2 gap-2">
-            <TextInput
-              aria-label="Дата окончания бонуса"
-              type="date"
-              value={
-                bonusUntilLocal
-                  ? bonusUntilLocal.slice(0, 10)
-                  : autoBonusEnd
-                    ? toLocalInput(autoBonusEnd).slice(0, 10)
-                    : ''
-              }
-              onChange={(event) =>
-                setBonusUntilLocal(
-                  `${event.target.value}T${
-                    bonusUntilLocal ? bonusUntilLocal.slice(11, 16) : toLocalInput(autoBonusEnd ?? new Date()).slice(11, 16)
-                  }`,
-                )
-              }
-              invalid={submitted && !bonusUntilValid}
-            />
-            <TextInput
-              aria-label="Время окончания бонуса"
-              type="time"
-              step={60}
-              value={
-                bonusUntilLocal
-                  ? bonusUntilLocal.slice(11, 16)
-                  : autoBonusEnd
-                    ? toLocalInput(autoBonusEnd).slice(11, 16)
-                    : ''
-              }
-              onChange={(event) =>
-                setBonusUntilLocal(
-                  `${bonusUntilLocal ? bonusUntilLocal.slice(0, 10) : toLocalInput(autoBonusEnd ?? new Date()).slice(0, 10)}T${event.target.value}`,
-                )
-              }
-              invalid={submitted && !bonusUntilValid}
-            />
-          </div>
+          <DeadlineInput
+            value={
+              bonusUntilLocal ||
+              (autoBonusEnd ? toLocalInput(autoBonusEnd) : '')
+            }
+            onChange={setBonusUntilLocal}
+            invalid={submitted && !bonusUntilValid}
+          />
         </Field>
 
         <Field
