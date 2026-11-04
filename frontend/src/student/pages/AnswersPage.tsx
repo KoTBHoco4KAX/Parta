@@ -148,6 +148,24 @@ export default function AnswersPage() {
   );
 }
 
+function timeBonusFor(deadlineAt: string): number {
+  const hours = (new Date(deadlineAt).getTime() - Date.now()) / 3_600_000;
+
+  if (hours > 48) {
+    return 0;
+  }
+
+  if (hours >= 24) {
+    return 10;
+  }
+
+  if (hours >= 6) {
+    return 20;
+  }
+
+  return 30;
+}
+
 /** UploadDraftSection — выбор активного задания и загрузка черновика. */
 function UploadDraftSection({ tasks, onUploaded }: { tasks: AnswerTask[]; onUploaded: () => void }) {
   const [submissionId, setSubmissionId] = useState('');
@@ -157,6 +175,22 @@ function UploadDraftSection({ tasks, onUploaded }: { tasks: AnswerTask[]; onUplo
   const [error, setError] = useState<string | null>(null);
 
   const selected = tasks.find((task) => String(task.submission_id) === submissionId) ?? null;
+
+  // Пул пересчитывается в момент выбора: наценка за срок зависит от «сейчас».
+  const pool = useMemo(() => {
+    if (!selected) {
+      return null;
+    }
+
+    const timeBonus = timeBonusFor(selected.deadline_at);
+    const percent = Math.min(25 + timeBonus + selected.spam_bonus, 60);
+
+    return {
+      percent,
+      timeBonus,
+      xp: Math.round((selected.base_xp * percent) / 100),
+    };
+  }, [selected]);
 
   const hasContent = text.trim() !== '' || file !== null;
 
@@ -221,19 +255,17 @@ function UploadDraftSection({ tasks, onUploaded }: { tasks: AnswerTask[]; onUplo
             ))}
           </select>
 
-          {selected ? (
+          {selected && pool ? (
             <div className="mt-3 rounded-xl border border-brandLine bg-brandSoft p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] font-medium text-brandStrong">Пул взаимопроверки</p>
-                <p className="text-sm font-bold tabular-nums text-brandStrong">
-                  {selected.escrow_pool_xp} XP
-                </p>
+                <p className="text-sm font-bold tabular-nums text-brandStrong">{pool.xp} XP</p>
               </div>
               <div className="mt-1 flex flex-wrap gap-1 text-[10px] text-brandStrong/80">
-                <span>база {selected.base_percent}%</span>
-                <span>+ срок {selected.time_bonus}%</span>
+                <span>база 25%</span>
+                <span>+ срок {pool.timeBonus}%</span>
                 <span>+ активность {selected.spam_bonus}%</span>
-                <span>= {selected.escrow_percent}% от {selected.base_xp} XP</span>
+                <span>= {pool.percent}% от {selected.base_xp} XP</span>
               </div>
               <p className="mt-1 text-[10px] leading-relaxed text-brandStrong/70">
                 Пул не списывается сейчас — он удерживается из XP за задание только при приёмке
@@ -401,9 +433,11 @@ function ReviewQueueSection({ onReviewed }: { onReviewed: () => void }) {
 /** MyDraftsSection — черновики автора и реакции на полученные отзывы. */
 function MyDraftsSection({ drafts, onChanged }: { drafts: AnswerDraft[]; onChanged: () => void }) {
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function react(commentId: number, reaction: 'LIKE' | 'REPORT' | 'NONE') {
     setBusyId(commentId);
+    setError(null);
 
     try {
       await apiFetch(`/answers/comments/${commentId}/reaction`, {
@@ -411,6 +445,8 @@ function MyDraftsSection({ drafts, onChanged }: { drafts: AnswerDraft[]; onChang
         body: { reaction },
       });
       onChanged();
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : 'Не удалось сохранить реакцию.');
     } finally {
       setBusyId(null);
     }
@@ -423,6 +459,11 @@ function MyDraftsSection({ drafts, onChanged }: { drafts: AnswerDraft[]; onChang
   return (
     <section>
       <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">Мои черновики</h2>
+      {error ? (
+        <p role="alert" className="mb-2 text-[11px] text-bad">
+          {error}
+        </p>
+      ) : null}
       <ul className="space-y-2">
         {drafts.map((draft) => (
           <li key={draft.id} className="rounded-2xl border border-line bg-card p-4">
