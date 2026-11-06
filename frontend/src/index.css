@@ -160,29 +160,13 @@ body {
 }
 
 .theme-ideya-fix .theme-pattern {
-  position: relative;
-  isolation: isolate;
   background-color: rgb(var(--c-card));
-  overflow: hidden;
-}
-
-.theme-ideya-fix .theme-pattern::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
   background-image: url('/assets/themes/ideya-fix-pattern.png');
   background-repeat: repeat;
   background-size: 384px;
-  opacity: 0.18;
+  box-shadow: inset 0 0 0 9999px rgb(var(--c-card) / 0.82);
 }
 
-.theme-ideya-fix .theme-pattern > * {
-  position: relative;
-  z-index: 1;
-}
-
-.theme-ideya-fix[data-theme='light'] .theme-pattern::before {
-  opacity: 0.14;
+.theme-ideya-fix[data-theme='light'] .theme-pattern {
+  box-shadow: inset 0 0 0 9999px rgb(var(--c-card) / 0.86);
 }

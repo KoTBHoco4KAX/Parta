@@ -132,7 +132,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
       </aside>
 
       <div className="min-w-0 md:pl-60">
-        <header className="sticky top-0 z-30 theme-pattern border-b border-line bg-card px-4 py-3 md:hidden">
+        <header className="theme-pattern border-b border-line bg-card px-4 py-3 md:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink">ПАРТА</p>
