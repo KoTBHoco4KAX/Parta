@@ -1,21 +1,23 @@
-import bridge from '@vkontakte/vk-bridge';
-
-// MAX (как и VK Сферум) открывает приложение внутри WebView и общается с ним
-// через VK Bridge. Токенов MAX пока нет, поэтому инициализация — заглушка:
-// в обычном браузере мы вообще не дёргаем runtime, а внутри клиента отправляем
-// VKWebAppInit и мягко деградируем при ошибке/таймауте.
+// MAX Bridge SDK: платформа подключает window.MaxBridge скриптом
+// https://st.max.ru/js/max-bridge.js. В обычном браузере объекта нет, поэтому
+// приложение обязано стартовать без ошибок и без сетевых вызовов.
 
 export interface MaxBridgeStatus {
-  // supported — приложение открыто во встроенном WebView/iframe.
   supported: boolean;
-  // initialized — VKWebAppInit принят клиентом.
   initialized: boolean;
-  // reason — почему мост не поднялся; для диагностики, не для UI.
   reason?: string;
 }
 
-// Ограничение ожидания ответа клиента: зависший postMessage не должен
-// блокировать отрисовку приложения.
+interface MaxBridgeApi {
+  send(method: string, params?: unknown): unknown;
+}
+
+declare global {
+  interface Window {
+    MaxBridge?: MaxBridgeApi;
+  }
+}
+
 const INIT_TIMEOUT_MS = 1_500;
 
 let status: MaxBridgeStatus = {
@@ -44,34 +46,30 @@ function describeError(cause: unknown): string {
   return 'unknown-error';
 }
 
-// detectEmbedded — единственная проверка среды. В обычном браузере
-// bridge.isEmbedded() === false, поэтому сетевых и postMessage-вызовов нет.
-function detectEmbedded(): boolean {
+function getBridge(): MaxBridgeApi | null {
   if (typeof window === 'undefined') {
-    return false;
+    return null;
   }
 
-  try {
-    return bridge.isEmbedded();
-  } catch {
-    return false;
-  }
+  const bridge = window.MaxBridge;
+
+  return bridge && typeof bridge.send === 'function' ? bridge : null;
 }
 
-// getMaxBridgeStatus отдаёт текущее состояние моста (для отладки).
 export function getMaxBridgeStatus(): MaxBridgeStatus {
   return status;
 }
 
-// initMaxBridge идемпотентен: повторные вызовы возвращают один и тот же промис.
-// Функция никогда не reject-ит — обычный браузер обязан работать без ошибок.
+// initMaxBridge идемпотентен и никогда не reject-ит.
 export function initMaxBridge(): Promise<MaxBridgeStatus> {
   if (pending) {
     return pending;
   }
 
-  if (!detectEmbedded()) {
-    pending = Promise.resolve(fallback('standalone-browser'));
+  const bridge = getBridge();
+
+  if (!bridge) {
+    pending = Promise.resolve(fallback('max-bridge-missing'));
 
     return pending;
   }
@@ -80,24 +78,64 @@ export function initMaxBridge(): Promise<MaxBridgeStatus> {
     window.setTimeout(() => resolve(fallback('init-timeout')), INIT_TIMEOUT_MS);
   });
 
-  const attempt = bridge
-    .send('VKWebAppInit')
-    .then<MaxBridgeStatus>(() => {
-      status = { supported: true, initialized: true };
+  const attempt = Promise.allSettled([
+    Promise.resolve().then(() => bridge.send('ready')),
+    Promise.resolve().then(() => bridge.send('expand')),
+  ]).then<MaxBridgeStatus>((results) => {
+    const readyOK = results[0]?.status === 'fulfilled';
 
-      return status;
-    })
-    .catch<MaxBridgeStatus>((cause: unknown) => {
-      status = {
-        supported: true,
-        initialized: false,
-        reason: `init-failed: ${describeError(cause)}`,
-      };
+    status = readyOK
+      ? { supported: true, initialized: true }
+      : {
+          supported: true,
+          initialized: false,
+          reason: `ready-failed: ${describeError(
+            results[0]?.status === 'rejected' ? results[0].reason : 'unknown',
+          )}`,
+        };
 
-      return status;
-    });
+    return status;
+  });
 
   pending = Promise.race([attempt, timeout]);
 
   return pending;
+}
+
+// readMaxLaunchParams собирает параметры запуска MAX из query и hash.
+// Возвращает null в обычном браузере, чтобы не запускать MAX-авторизацию.
+export function readMaxLaunchParams(): Record<string, string> | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const params: Record<string, string> = {};
+
+  collectParams(window.location.search, params);
+
+  const hash = window.location.hash.replace(/^#/, '');
+  const question = hash.indexOf('?');
+
+  if (question >= 0) {
+    collectParams(hash.slice(question), params);
+  } else if (hash.includes('=') && !hash.startsWith('/')) {
+    collectParams(hash, params);
+  }
+
+  const hasLaunchParams =
+    params.hash !== undefined ||
+    params.user_id !== undefined ||
+    params.max_user_id !== undefined;
+
+  return hasLaunchParams ? params : null;
+}
+
+function collectParams(source: string, target: Record<string, string>): void {
+  if (!source) {
+    return;
+  }
+
+  new URLSearchParams(source).forEach((value, key) => {
+    target[key] = value;
+  });
 }

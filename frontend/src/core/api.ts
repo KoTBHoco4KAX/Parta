@@ -120,6 +120,15 @@ export function loginWithPassword(
   });
 }
 
+// loginWithMax — POST /api/auth/max: параметры запуска MAX с подписью.
+export function loginWithMax(params: Record<string, string>): Promise<DevLoginResponse> {
+  return request<DevLoginResponse>('/auth/max', {
+    method: 'POST',
+    body: { params },
+    token: null,
+  });
+}
+
 // fetchUsers / createUser / deleteUser — управление пользователями (admin).
 export function fetchUsers(): Promise<User[]> {
   return apiFetch<User[]>('/users');

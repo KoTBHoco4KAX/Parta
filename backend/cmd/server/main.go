@@ -66,7 +66,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.Handle("/ws", realtime)
 	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir(cfg.UploadDir))))
-	mux.Handle("/", api)
+	mux.Handle("/", newWebHandler(api, cfg.WebDir))
 
 	server := &http.Server{
 		Addr:              cfg.Addr,

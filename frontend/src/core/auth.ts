@@ -9,8 +9,9 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, loginWithPassword } from './api';
+import { ApiError, loginWithMax, loginWithPassword } from './api';
 import { AUTH_STORAGE_KEY } from './session';
+import { readMaxLaunchParams } from './max';
 import { PartaSocket } from './ws';
 import type { ConnectionStatus, Role, User, WsEvent } from './types';
 
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Слушатели событий живут вне React-состояния: экран может обновить свои
   // данные по WS, не дожидаясь перерисовки всего AuthContext.
   const listenersRef = useRef(new Set<(event: WsEvent) => void>());
+  const maxLoginAttempted = useRef(false);
 
   const subscribe = useCallback((listener: (event: WsEvent) => void) => {
     listenersRef.current.add(listener);
@@ -96,6 +98,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBusy(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (auth || maxLoginAttempted.current) {
+      return;
+    }
+
+    const params = readMaxLaunchParams();
+
+    if (!params) {
+      return;
+    }
+
+    maxLoginAttempted.current = true;
+    setBusy(true);
+    setError(null);
+
+    let cancelled = false;
+
+    loginWithMax(params)
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        const next = { token: response.token, user: response.user };
+
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        setAuth(next);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          setError(err instanceof ApiError ? err.message : 'Не удалось войти через MAX');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setBusy(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth]);
 
   const logout = useCallback(() => {
     window.localStorage.removeItem(STORAGE_KEY);

@@ -99,6 +99,7 @@ func (s *Server) Handler() http.Handler {
 	public := http.NewServeMux()
 	public.Handle("POST /api/auth/login", http.HandlerFunc(s.handleLogin))
 	public.Handle("POST /api/auth/dev-login", http.HandlerFunc(s.handleDevLogin))
+	public.Handle("POST /api/auth/max", http.HandlerFunc(s.handleMaxAuth))
 
 	protected := http.NewServeMux()
 	protected.Handle("GET /api/tasks", http.HandlerFunc(s.handleListTasks))

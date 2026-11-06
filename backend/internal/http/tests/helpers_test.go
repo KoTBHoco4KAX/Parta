@@ -97,6 +97,40 @@ func newHarnessWith(t *testing.T, env string, opts ...httpapi.Option) *harness {
 	return &harness{t: t, db: db, server: server, cfg: cfg, client: server.Client()}
 }
 
+// newHarnessWithMaxToken поднимает сервер с настроенным MAX_BOT_TOKEN.
+func newHarnessWithMaxToken(t *testing.T, token string) *harness {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "parta_http.db")
+	uploadDir := filepath.Join(t.TempDir(), "uploads")
+
+	db, err := storage.Open(path)
+	if err != nil {
+		t.Fatalf("storage.Open: %v", err)
+	}
+
+	if err := storage.Migrate(context.Background(), db); err != nil {
+		t.Fatalf("storage.Migrate: %v", err)
+	}
+
+	cfg := config.Config{
+		JWTSecret:   testJWTSecret,
+		Env:         "dev",
+		DBPath:      path,
+		UploadDir:   uploadDir,
+		MAXBotToken: token,
+	}
+
+	server := httptest.NewServer(httpapi.New(cfg, db).Handler())
+
+	t.Cleanup(func() {
+		server.Close()
+		_ = db.Close()
+	})
+
+	return &harness{t: t, db: db, server: server, cfg: cfg, client: server.Client()}
+}
+
 // request отправляет JSON-запрос и возвращает статус и разобранное тело.
 func (h *harness) request(t *testing.T, method, path, token string, body any) (int, map[string]any) {
 	t.Helper()
