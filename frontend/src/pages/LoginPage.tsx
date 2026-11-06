@@ -3,7 +3,7 @@ import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useAuth } from '../core/auth';
 
-// LoginPage — вход по email и паролю. Роль определяет сервер.
+// LoginPage — строгий вход в стиле VK UI: ровный фон, синий акцент, без декора.
 export function LoginPage() {
   const { login, busy, error } = useAuth();
   const [email, setEmail] = useState('');
@@ -27,46 +27,23 @@ export function LoginPage() {
   const inputClass = (invalid: boolean) =>
     [
       'w-full rounded-lg border bg-card px-3 py-2.5 text-sm text-ink placeholder:text-ink4 transition',
-      'focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-ink/10',
+      'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/15',
       invalid ? 'border-bad' : 'border-line',
     ].join(' ');
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -left-32 top-[-10rem] h-96 w-96 rounded-full bg-brand/10 blur-3xl" />
-        <div className="absolute -right-24 bottom-[-12rem] h-[28rem] w-[28rem] rounded-full bg-brand/5 blur-3xl" />
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgb(var(--c-line)/0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgb(var(--c-line)/0.18)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
+    <div className="relative flex min-h-screen items-center justify-center bg-page px-4 py-10">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
       </div>
 
-      <div className="relative w-full max-w-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-bold tracking-[0.24em] text-ink">ПАРТА</span>
-            <span className="rounded-md border border-line px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-ink3">
-              вход
-            </span>
-          </div>
-          <ThemeToggle />
+      <div className="w-full max-w-sm">
+        <div className="text-center">
+          <p className="text-[22px] font-bold tracking-[0.18em] text-brand">ПАРТА</p>
+          <p className="mt-1 text-[12px] text-ink3">Учебная платформа</p>
         </div>
 
-        <div className="mt-12">
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink4">
-            Учебный контур
-          </p>
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
-            Войти в ПАРТУ
-          </h1>
-          <p className="mt-1.5 text-sm leading-relaxed text-ink3">
-            Задания, канбан и обратная связь — в одном месте.
-          </p>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="mt-7 space-y-3.5 rounded-xl border border-line/80 bg-card/80 p-4 backdrop-blur"
-          noValidate
-        >
+        <form onSubmit={handleSubmit} className="mt-8 space-y-4" noValidate>
           <div>
             <label htmlFor="login-email" className="mb-1.5 block text-[11px] font-medium text-ink2">
               Email

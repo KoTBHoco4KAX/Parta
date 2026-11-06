@@ -54,7 +54,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           fullScreen ? 'min-h-screen' : 'min-h-[60vh]',
         ].join(' ')}
       >
-        <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 text-center shadow-[var(--shadow-card)]">
+        <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 text-center">
           <div
             aria-hidden="true"
             className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warnSoft text-2xl"

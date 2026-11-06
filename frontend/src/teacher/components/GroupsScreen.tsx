@@ -176,14 +176,14 @@ export function GroupsScreen({
             return (
               <section
                 key={group.id}
-                className="border-b border-line/70 pb-4 last:border-0 last:pb-0"
+                className="border-b border-line pb-4 last:border-0 last:pb-0"
               >
                 <div className="flex items-start gap-2.5 py-2">
                   <IconUsers className="mt-0.5 h-4 w-4 shrink-0 text-ink3" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <h2 className="truncate text-sm font-semibold text-ink">{group.code}</h2>
-                      <span className="text-[11px] text-ink3">
+                      <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-ink3">
                         {roster.length} {pluralStudents(roster.length)}
                       </span>
                       {groupDisciplines.map((discipline) => (

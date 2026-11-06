@@ -319,7 +319,7 @@ function TaskCard({
   const reviewCount = counts.REVIEW;
 
   return (
-    <Card className={cn('space-y-3', muted && 'opacity-80')}>
+    <section className={cn('border-b border-line py-4 last:border-0', muted && 'opacity-80')}>
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink">
@@ -341,8 +341,11 @@ function TaskCard({
           </p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-[10px] uppercase tracking-wide text-ink3">Base XP</p>
-          <p className="text-sm font-semibold tabular-nums text-brandStrong">
+          <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-ink3">
+            {total} {pluralize(total, ['задание', 'задания', 'заданий'])}
+          </span>
+          <p className="mt-1 text-[10px] uppercase tracking-wide text-ink3">Base XP</p>
+          <p className="text-sm font-semibold tabular-nums text-ink">
             {formatNumber(task.base_xp_computed)}
           </p>
         </div>
@@ -372,7 +375,7 @@ function TaskCard({
           <span>дедлайн {formatDateTime(task.deadline_at)}</span>
         </div>
       </div>
-    </Card>
+    </section>
   );
 }
 

@@ -134,7 +134,7 @@ export default function KanbanPage() {
             const columnCards = cards.filter((card) => card.status === column.id);
 
             return (
-              <section key={column.id} className="min-w-0 rounded-xl border border-line/70 bg-card/30 p-2.5">
+              <section key={column.id} className="min-w-0 rounded-xl border border-line bg-muted p-2.5">
                 <h2 className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-ink3">
                   <span>{column.title}</span>
                   <span className="tabular-nums">{columnCards.length}</span>
@@ -154,7 +154,7 @@ export default function KanbanPage() {
                           void handleCardClick(task);
                         }
                       }}
-                      className="cursor-pointer rounded-xl border border-line bg-card p-3 shadow-[var(--shadow-card)] transition hover:border-brandLine focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+                      className="cursor-pointer rounded-xl border border-line bg-card p-3 transition hover:border-brandLine focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <h3 className="min-w-0 flex-1 text-sm font-semibold text-ink">{task.title}</h3>

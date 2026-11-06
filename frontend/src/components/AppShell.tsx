@@ -48,7 +48,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-page text-ink">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line/70 bg-card/70 backdrop-blur md:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line bg-card md:flex">
         <div className="px-4 pb-4 pt-5">
           <button
             type="button"
@@ -100,7 +100,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
           </ul>
         </nav>
 
-        <div className="border-t border-line/70 p-3">
+        <div className="border-t border-line p-3">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-semibold text-ink2">
               {initials(user?.display_name ?? 'П')}
@@ -132,7 +132,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
       </aside>
 
       <div className="min-w-0 md:pl-60">
-        <header className="sticky top-0 z-30 border-b border-line/70 bg-page/90 px-4 py-3 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-30 border-b border-line bg-card px-4 py-3 md:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink">ПАРТА</p>
@@ -163,7 +163,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line/70 bg-card/80 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-card px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 md:hidden">
         <ul className="flex gap-0.5">
           {nav.map((item) => (
             <li key={item.id} className="min-w-0 flex-1">

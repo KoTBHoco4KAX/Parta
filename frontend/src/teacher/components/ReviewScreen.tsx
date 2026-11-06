@@ -4,7 +4,7 @@ import { fetchTeacherTasks } from '../api';
 import type { ReviewInboxItem, ToastData } from '../types';
 import { useReviewInbox } from '../hooks/useReviewInbox';
 import { ReviewDetailModal } from './ReviewDetailModal';
-import { Badge, EmptyState, ErrorState, SkeletonList } from './ui';
+import { EmptyState, ErrorState, SkeletonList } from './ui';
 import { IconCheckCircle, IconChevronRight } from './icons';
 
 /**
@@ -58,7 +58,7 @@ export function ReviewScreen({
       ) : null}
 
       {!loading && !error && items.length > 0 ? (
-        <ul className="divide-y divide-line/70 border-y border-line/70">
+        <ul className="divide-y divide-line/70 border-y border-line">
           {items.map((item) => (
             <li key={item.id}>
               <button
@@ -80,13 +80,13 @@ export function ReviewScreen({
                 </span>
 
                 <span className="flex shrink-0 items-center gap-2">
-                  <Badge tone={item.onTime ? 'emerald' : 'amber'}>
+                  <span className="hidden text-[10px] text-ink4 sm:inline">
                     {item.onTime ? 'в срок' : 'просрочено'}
-                  </Badge>
-                  <span className="hidden items-center gap-1 text-[11px] text-ink3 sm:inline-flex">
-                    Проверить
-                    <IconChevronRight className="h-3.5 w-3.5" />
                   </span>
+                  <span className="rounded-md border border-line px-1.5 py-0.5 text-[10px] text-ink3">
+                    1 работа
+                  </span>
+                  <IconChevronRight className="h-3.5 w-3.5 text-ink4" />
                 </span>
               </button>
             </li>

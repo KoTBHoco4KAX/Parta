@@ -42,14 +42,14 @@ export function DashboardPage() {
           </span>
         </div>
 
-        <dl className="mt-5 grid grid-cols-3 gap-2">
+        <dl className="mt-5 flex divide-x divide-line border-y border-line py-3">
           <Stat label="XP" value={user.xp_balance} />
           <Stat label="Стрик" value={user.on_time_streak} />
           <Stat label="Заморозки" value={user.streak_freezes} />
         </dl>
       </section>
 
-      <div className="flex divide-x divide-line border-y border-line/70 py-3">
+      <div className="flex divide-x divide-line border-y border-line py-3">
         <Counter label="К выполнению" value={countByStatus(submissions, 'TODO')} />
         <Counter label="В работе" value={countByStatus(submissions, 'IN_PROGRESS')} />
         <Counter label="На проверке" value={countByStatus(submissions, 'REVIEW')} />
@@ -74,7 +74,7 @@ function Counter({ label, value }: { label: string; value: number }) {
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl bg-muted px-3 py-2">
+    <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">
       <dt className="text-[11px] uppercase tracking-wide text-ink4">{label}</dt>
       <dd className="text-lg font-semibold text-ink">{value}</dd>
     </div>

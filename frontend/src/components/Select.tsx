@@ -80,7 +80,7 @@ export function Select({
       {open ? (
         <ul
           role="listbox"
-          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card p-1 shadow-xl"
+          className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-card p-1"
         >
           {options.map((option) => {
             const active = option.value === value;

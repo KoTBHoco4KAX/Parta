@@ -54,7 +54,7 @@ export function Modal({ open, title, subtitle, onClose, children, footer, size =
         aria-modal="true"
         aria-label={typeof title === 'string' ? title : undefined}
         className={[
-          'flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-card shadow-[0_8px_40px_rgba(0,0,0,0.24)] sm:rounded-2xl',
+          'flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-card sm:rounded-2xl',
           SIZES[size],
         ].join(' ')}
         onClick={(event) => event.stopPropagation()}

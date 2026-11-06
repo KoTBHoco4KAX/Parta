@@ -22,7 +22,6 @@ import {
   Section,
   SkeletonList,
   StackedProgress,
-  StatTile,
   cn,
 } from '../../teacher/components/ui';
 import { speedrunEndsAt } from '../../teacher/lib/economy';
@@ -247,37 +246,29 @@ export function AdminOverview({
 
       {!loading && !error ? (
         <div className="space-y-5">
-          <div className="grid grid-cols-2 gap-2">
-            <StatTile
+          <div className="flex divide-x divide-line border-y border-line py-3">
+            <AdminMetric
               label="Учеников"
               value={metrics.students.length}
               hint={`${metrics.teachers.length} преподавателей`}
-              tone="sky"
-              icon={<IconUsers className="h-3.5 w-3.5" />}
               onClick={() => onNavigate('users')}
             />
-            <StatTile
+            <AdminMetric
               label="Групп"
               value={groups.length}
               hint={`${assignments.length} назначений`}
-              tone="emerald"
-              icon={<IconLayers className="h-3.5 w-3.5" />}
               onClick={() => onNavigate('groups')}
             />
-            <StatTile
-              label="Заданий в работе"
+            <AdminMetric
+              label="Заданий"
               value={metrics.activeTasks.length}
               hint={`всего ${tasks.length}`}
-              tone="violet"
-              icon={<IconClipboard className="h-3.5 w-3.5" />}
               onClick={() => onNavigate('assignments')}
             />
-            <StatTile
+            <AdminMetric
               label="На проверке"
               value={metrics.review.length}
               hint={metrics.rejected.length > 0 ? `${metrics.rejected.length} возвращено` : 'очередь'}
-              tone={metrics.review.length > 0 ? 'amber' : 'slate'}
-              icon={<IconInbox className="h-3.5 w-3.5" />}
             />
           </div>
 
@@ -458,5 +449,41 @@ export function AdminOverview({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function AdminMetric({
+  label,
+  value,
+  hint,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  onClick?: () => void;
+}) {
+  const content = (
+    <>
+      <span className="block text-lg font-semibold tabular-nums text-ink">{value}</span>
+      <span className="mt-0.5 block truncate text-[10px] uppercase tracking-wide text-ink3">
+        {label}
+      </span>
+      {hint ? <span className="mt-0.5 block truncate text-[10px] text-ink4">{hint}</span> : null}
+    </>
+  );
+
+  if (!onClick) {
+    return <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">{content}</div>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="min-w-0 flex-1 px-3 text-left transition first:pl-0 last:pr-0 hover:opacity-80"
+    >
+      {content}
+    </button>
   );
 }

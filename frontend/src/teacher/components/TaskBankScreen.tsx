@@ -17,7 +17,6 @@ import {
   Badge,
   Button,
   Callout,
-  Card,
   EmptyState,
   ErrorState,
   Field,
@@ -244,10 +243,10 @@ function TemplateRow({
     <button
       type="button"
       onClick={onOpen}
-      className="block w-full rounded-2xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+      className="block w-full border-b border-line text-left transition hover:bg-muted/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
     >
-      <Card className="space-y-2.5 transition hover:border-line2">
-        <div className="flex items-start gap-2">
+      <div className="flex items-center gap-3 py-3">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink">
               {template.title}
@@ -275,7 +274,7 @@ function TemplateRow({
           </div>
           <IconChevronRight className="mt-1 h-4 w-4 shrink-0 text-ink3" />
         </div>
-      </Card>
+      </div>
     </button>
   );
 }

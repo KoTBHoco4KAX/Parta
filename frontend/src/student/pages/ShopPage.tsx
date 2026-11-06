@@ -124,18 +124,18 @@ export default function ShopPage() {
       </div>
 
       {/* Панель XP */}
-      <section className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]">
+      <section className="rounded-2xl border border-line bg-card p-4">
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-[10px] uppercase tracking-wide text-ink3">Баланс</p>
-            <p className="text-3xl font-black tabular-nums text-brand">{profile.xpBalance}</p>
+            <p className="text-3xl font-black tabular-nums text-ink">{profile.xpBalance}</p>
             <p className="text-[11px] text-ink3">
               уровень {level} · {profile.displayName}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[10px] uppercase tracking-wide text-ink3">Стрик</p>
-            <p className="text-2xl font-bold text-warn">{profile.onTimeStreak} дней</p>
+            <p className="text-2xl font-bold text-ink">{profile.onTimeStreak} дней</p>
             <p className="text-[11px] text-ink3">заморозок: {profile.streakFreezes}</p>
           </div>
         </div>
@@ -160,7 +160,7 @@ export default function ShopPage() {
       </section>
 
       {/* Стрик: календарь on-time сдач */}
-      <section className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]">
+      <section className="rounded-2xl border border-line bg-card p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold text-ink">On-time стрик</h2>
@@ -186,7 +186,7 @@ export default function ShopPage() {
       </section>
 
       {/* Магазин заморозок */}
-      <section className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]">
+      <section className="rounded-2xl border border-line bg-card p-4">
         <h2 className="text-sm font-semibold text-ink">Заморозка стрика</h2>
         <p className="mt-0.5 text-xs text-ink3">
           Спасает стрик при пропуске дедлайна. Цена — {FREEZE_PRICE} XP за штуку.

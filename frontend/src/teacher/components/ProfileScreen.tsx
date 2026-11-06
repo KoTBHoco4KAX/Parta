@@ -52,7 +52,7 @@ export function ProfileScreen({
 
   return (
     <div>
-      <div className="flex items-center gap-3 rounded-xl border border-line/70 bg-card/50 p-4">
+      <div className="flex items-center gap-3 rounded-xl border border-line bg-card p-4">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold text-ink2">
           {initial}
         </div>
@@ -65,7 +65,7 @@ export function ProfileScreen({
         </div>
       </div>
 
-      <div className="mt-4 flex divide-x divide-line border-y border-line/70 py-3">
+      <div className="mt-4 flex divide-x divide-line border-y border-line py-3">
         {counts === null ? (
           <>
             <Skeleton className="mx-3 h-10 flex-1" />
@@ -87,7 +87,7 @@ export function ProfileScreen({
             <ProfileMetric
               label="На проверке"
               value={counts.review}
-              tone={counts.review > 0 ? 'text-warn' : undefined}
+
               onClick={() => onNavigate('review')}
             />
           </>

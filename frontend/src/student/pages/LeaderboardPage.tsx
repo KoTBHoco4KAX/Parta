@@ -163,7 +163,7 @@ function CurrentUserCard({ me }: { me: Me }) {
         </div>
       </div>
 
-      <p className="mt-3 rounded-lg bg-card/70 px-2.5 py-2 text-[11px] leading-relaxed text-brandStrong">
+      <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-relaxed text-brandStrong">
         {me.rank === 1
           ? 'Вы на первом месте в группе. Держите темп.'
           : `До ${me.rank - 1} места осталось ${me.xp_to_next_rank} XP`}

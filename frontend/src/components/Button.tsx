@@ -14,7 +14,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // Кнопка в стиле VK UI (Сферум): синий primary, мягкие вторичные заливки,
 // зелёный accept, светлый красный reject. Цвета — семантические токены темы.
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-ink text-page hover:opacity-90',
+  primary: 'bg-brand text-white hover:bg-brandStrong',
   secondary: 'bg-muted text-ink hover:bg-sunken',
   ghost: 'bg-transparent text-ink2 hover:bg-muted',
   danger: 'bg-bad text-white hover:opacity-90',

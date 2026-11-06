@@ -189,7 +189,7 @@ export function Toast({
     <div
       role="status"
       className={cn(
-        'pointer-events-auto flex w-full items-start gap-3 rounded-2xl border p-3 shadow-[0_6px_24px_rgba(0,0,0,0.12)]',
+        'pointer-events-auto flex w-full items-start gap-3 rounded-2xl border p-3',
         toneStyles,
       )}
     >
@@ -244,7 +244,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'rounded-xl border border-line/70 bg-card',
+        'rounded-xl border border-line bg-card',
         padded && 'p-4',
         className,
       )}
@@ -368,7 +368,7 @@ export function StatTile({
       <button
         type="button"
         onClick={onClick}
-        className="rounded-2xl border border-line bg-card p-3 text-left shadow-[var(--shadow-card)] transition hover:border-line2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+        className="rounded-2xl border border-line bg-card p-3 text-left transition hover:border-line2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
       >
         {content}
       </button>
@@ -376,7 +376,7 @@ export function StatTile({
   }
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-3 shadow-[var(--shadow-card)]">
+    <div className="rounded-2xl border border-line bg-card p-3">
       {content}
     </div>
   );
@@ -657,7 +657,7 @@ export function Segmented<T extends string>({
           className={cn(
             'flex-1 truncate rounded-lg px-2 py-1.5 text-[11px] font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand',
             value === option.value
-              ? 'border border-line bg-card text-ink shadow-sm'
+              ? 'border border-line bg-card text-ink'
               : 'border border-transparent text-ink3 hover:text-ink2',
           )}
         >
