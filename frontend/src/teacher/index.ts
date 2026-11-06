@@ -2,6 +2,8 @@ export { default, default as TeacherApp } from './TeacherApp';
 export type { TeacherTab } from './TeacherApp';
 
 export { ProfileScreen } from './components/ProfileScreen';
+export { GroupsScreen } from './components/GroupsScreen';
+export { TaskBankScreen } from './components/TaskBankScreen';
 export { TasksScreen } from './components/TasksScreen';
 export { ReviewScreen } from './components/ReviewScreen';
 export { AttachmentsPanel } from './components/AttachmentsPanel';

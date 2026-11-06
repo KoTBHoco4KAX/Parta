@@ -4,19 +4,21 @@ import { useAuth } from '../core/auth';
 import type { ToastData } from './types';
 import { fetchAllSubmissions } from './api';
 import { GroupsScreen } from './components/GroupsScreen';
+import { TaskBankScreen } from './components/TaskBankScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { TasksScreen } from './components/TasksScreen';
 import { ReviewScreen } from './components/ReviewScreen';
 import { Toast, cn } from './components/ui';
-import { IconClipboard, IconInbox, IconUser, IconUsers } from './components/icons';
+import { IconBook, IconClipboard, IconInbox, IconUser, IconUsers } from './components/icons';
 
-export type TeacherTab = 'profile' | 'tasks' | 'review' | 'groups';
+export type TeacherTab = 'profile' | 'groups' | 'tasks' | 'bank' | 'review';
 
 const TABS: { id: TeacherTab; label: string; icon: typeof IconInbox }[] = [
   { id: 'profile', label: 'Профиль', icon: IconUser },
   { id: 'groups', label: 'Группы', icon: IconUsers },
   { id: 'tasks', label: 'Задания', icon: IconClipboard },
   { id: 'review', label: 'Проверка', icon: IconInbox },
+  { id: 'bank', label: 'База', icon: IconBook },
 ];
 
 /** События, после которых кабинет перечитывает данные с сервера. */
@@ -38,9 +40,8 @@ function tabFromHash(fallback: TeacherTab): TeacherTab {
 /**
  * TeacherApp — кабинет преподавателя ПАРТА.
  *
- * Три раздела: карточка профиля, выдача заданий (список + форма) и проверка
- * работ учеников. Данные — только с backend; новые сдачи приходят по WebSocket
- * и перечитывают экран без ручного обновления.
+ * Пять разделов: профиль, группы, выдача заданий, база заготовок и проверка.
+ * Данные — только с backend; новые сдачи приходят по WebSocket.
  */
 export default function TeacherApp() {
   const { events, subscribe } = useAuth();
@@ -169,6 +170,8 @@ export default function TeacherApp() {
       {tab === 'profile' ? <ProfileScreen onNavigate={navigate} /> : null}
 
       {tab === 'groups' ? <GroupsScreen notify={notify} /> : null}
+
+      {tab === 'bank' ? <TaskBankScreen notify={notify} /> : null}
 
       {tab === 'tasks' ? (
         <TasksScreen

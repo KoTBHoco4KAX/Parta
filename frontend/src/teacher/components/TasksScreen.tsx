@@ -4,7 +4,6 @@ import type { Submission, Task, TaskTemplate, TaskType } from '../../core/types'
 import {
   createTaskTemplate,
   createTeacherTask,
-  deleteTaskTemplate,
   fetchAllSubmissions,
   fetchGroupMembers,
   fetchTaskTemplates,
@@ -37,7 +36,6 @@ import {
   STATUS_LABEL,
   STATUS_ORDER,
   STATUS_TONE,
-  TASK_TYPE_HINT,
   TASK_TYPE_LABEL,
   TASK_TYPE_SHORT,
   TASK_TYPE_TONE,
@@ -71,7 +69,6 @@ import {
   IconPlus,
   IconRefresh,
   IconSparkles,
-  IconTrash,
   IconUsers,
 } from './icons';
 
@@ -106,9 +103,7 @@ export function TasksScreen({
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
-  const [issuingTemplate, setIssuingTemplate] = useState<TaskTemplate | null>(null);
   const [repeatingTask, setRepeatingTask] = useState<Task | null>(null);
-  const [deletingTemplateID, setDeletingTemplateID] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,32 +145,6 @@ export function TasksScreen({
       cancelled = true;
     };
   }, [reloadKey, reloadSignal]);
-
-  async function removeTemplate(template: TaskTemplate) {
-    if (deletingTemplateID !== null) {
-      return;
-    }
-
-    setDeletingTemplateID(template.id);
-
-    try {
-      await deleteTaskTemplate(template.id);
-      notify({
-        tone: 'success',
-        title: 'Шаблон удалён',
-        description: template.title,
-      });
-      setReloadKey((key) => key + 1);
-    } catch (cause) {
-      notify({
-        tone: 'error',
-        title: 'Не удалось удалить шаблон',
-        description: teacherErrorMessage(cause, 'Проверьте соединение и повторите.'),
-      });
-    } finally {
-      setDeletingTemplateID(null);
-    }
-  }
 
   // Сколько учеников в каждом потоке — по уже созданным карточкам задания.
   const studentsByAssignment = useMemo(() => {
@@ -271,35 +240,6 @@ export function TasksScreen({
             </Callout>
           ) : null}
 
-          <div className="space-y-2.5">
-            <div className="flex items-end justify-between gap-2">
-              <div className="min-w-0">
-                <h2 className="text-sm font-semibold text-ink">База заданий</h2>
-                <p className="mt-0.5 text-[11px] text-ink3">
-                  Сохранённые заготовки: выдавайте их в поток одним нажатием.
-                </p>
-              </div>
-              <Badge tone="slate">{templates.length}</Badge>
-            </div>
-
-            {templates.length === 0 ? (
-              <p className="rounded-2xl border border-dashed border-line2 bg-muted px-3 py-3 text-[11px] leading-relaxed text-ink3">
-                База пока пуста. При выдаче задания отметьте «Сохранить в базу» —
-                и заготовка появится здесь.
-              </p>
-            ) : (
-              templates.map((template) => (
-                <TemplateCard
-                  key={template.id}
-                  template={template}
-                  deleting={deletingTemplateID === template.id}
-                  onIssue={() => setIssuingTemplate(template)}
-                  onDelete={() => void removeTemplate(template)}
-                />
-              ))
-            )}
-          </div>
-
           {grouped.length === 0 ? (
             <EmptyState
               icon={<IconClipboard className="h-5 w-5" />}
@@ -352,24 +292,12 @@ export function TasksScreen({
       {creating ? (
         <IssueTaskModal
           assignments={assignments}
+          templates={templates}
           studentsByAssignment={studentsByAssignment}
           notify={notify}
           onClose={() => setCreating(false)}
           onIssued={() => {
             setCreating(false);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      ) : null}
-
-      {issuingTemplate ? (
-        <TemplateIssueModal
-          template={issuingTemplate}
-          assignments={assignments}
-          notify={notify}
-          onClose={() => setIssuingTemplate(null)}
-          onIssued={() => {
-            setIssuingTemplate(null);
             setReloadKey((key) => key + 1);
           }}
         />
@@ -387,67 +315,6 @@ export function TasksScreen({
         />
       ) : null}
     </div>
-  );
-}
-
-/** TemplateCard — сохранённая заготовка с выдачей и удалением. */
-function TemplateCard({
-  template,
-  deleting,
-  onIssue,
-  onDelete,
-}: {
-  template: TaskTemplate;
-  deleting: boolean;
-  onIssue: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <Card className="space-y-2.5" padded>
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink">
-            {template.title}
-          </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            <Badge tone={TASK_TYPE_TONE[template.task_type]}>
-              {TASK_TYPE_LABEL[template.task_type]}
-            </Badge>
-            <Badge tone="indigo">{template.discipline_title}</Badge>
-            <Badge tone="slate">
-              {template.expected_hours} ч · {template.requirements_count} требований
-            </Badge>
-            {template.team_size > 1 ? (
-              <Badge tone="violet">
-                <IconUsers className="h-3 w-3" />
-                {template.team_size}
-              </Badge>
-            ) : null}
-          </div>
-          {template.description_md.trim() !== '' ? (
-            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-ink3">
-              {template.description_md}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-col gap-1.5">
-          <Button size="sm" onClick={onIssue}>
-            <IconBolt className="h-4 w-4" />
-            Выдать
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="text-bad hover:bg-badSoft"
-            disabled={deleting}
-            onClick={onDelete}
-          >
-            <IconTrash className="h-3.5 w-3.5" />
-            Удалить
-          </Button>
-        </div>
-      </div>
-    </Card>
   );
 }
 
@@ -564,15 +431,17 @@ function TaskCard({
   );
 }
 
-/** IssueTaskModal — выдача задания: потоки → тип → текст → файлы → дедлайн → бонус → XP. */
+/** IssueTaskModal — выдача: новое задание или готовое из базы. */
 function IssueTaskModal({
   assignments,
+  templates,
   studentsByAssignment,
   notify,
   onClose,
   onIssued,
 }: {
   assignments: TeacherAssignment[];
+  templates: TaskTemplate[];
   studentsByAssignment: Map<number, Set<number>>;
   notify: (toast: Omit<ToastData, 'id'>) => void;
   onClose: () => void;
@@ -581,6 +450,8 @@ function IssueTaskModal({
   const [selectedIds, setSelectedIds] = useState<number[]>(() =>
     assignments.length > 0 ? [assignments[0].id] : [],
   );
+  const [sourceMode, setSourceMode] = useState<'new' | 'bank'>('new');
+  const [selectedTemplateID, setSelectedTemplateID] = useState<number | null>(null);
   const [taskType, setTaskType] = useState<TaskType>('LAB_CODE');
   const [title, setTitle] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -609,6 +480,26 @@ function IssueTaskModal({
   const selectedAssignments = assignments.filter((item) => selectedIds.includes(item.id));
   const singleAssignment = selectedAssignments.length === 1 ? selectedAssignments[0] : null;
   const singleGroupID = singleAssignment?.groupId ?? null;
+
+  // Для базы — только заготовки той дисциплины, в которую выдаём.
+  const availableTemplates = useMemo(
+    () =>
+      singleAssignment === null
+        ? []
+        : templates.filter(
+            (template) => template.discipline_id === singleAssignment.disciplineId,
+          ),
+    [templates, singleAssignment],
+  );
+
+  const selectedTemplate =
+    availableTemplates.find((template) => template.id === selectedTemplateID) ?? null;
+
+  useEffect(() => {
+    if (selectedTemplateID !== null && selectedTemplate === null) {
+      setSelectedTemplateID(null);
+    }
+  }, [selectedTemplate, selectedTemplateID]);
 
   // Состав группы нужен и для выбора получателей, и для честного счётчика.
   useEffect(() => {
@@ -699,7 +590,8 @@ function IssueTaskModal({
   const xpValid = xpOverride.trim() === '' || (Number.isFinite(xpNumber) && xpNumber > 0);
   const finalXP = xpOverride.trim() !== '' && xpValid ? Math.round(xpNumber) : estimatedBaseXP;
 
-  const titleError = submitted && title.trim().length < 3 ? 'Опишите задание' : null;
+  const titleError =
+    sourceMode === 'new' && submitted && title.trim().length < 3 ? 'Опишите задание' : null;
   const assignmentError =
     submitted && selectedIds.length === 0 ? 'Выберите хотя бы один поток' : null;
   const recipientError =
@@ -707,6 +599,25 @@ function IssueTaskModal({
       ? 'Выберите хотя бы одного ученика'
       : null;
   const deadlineError = submitted && !deadlineValid ? 'Дедлайн должен быть в будущем' : null;
+  const templateError =
+    sourceMode === 'bank' && submitted && selectedTemplate === null
+      ? 'Выберите задание из базы'
+      : null;
+  const sourceError =
+    sourceMode === 'bank' && selectedAssignments.length !== 1
+      ? 'Для выдачи из базы выберите один поток'
+      : null;
+
+  function changeSourceMode(next: 'new' | 'bank') {
+    setSourceMode(next);
+    setSelectedTemplateID(null);
+    setSaveToBase(false);
+
+    // База выдаётся в один поток: при переключении оставляем первый выбранный.
+    if (next === 'bank' && selectedIds.length > 1) {
+      setSelectedIds((previous) => previous.slice(0, 1));
+    }
+  }
 
   // Смена дедлайна пересчитывает бонус заново: он всегда «привязан» к сроку.
   function changeDeadline(next: string) {
@@ -717,6 +628,43 @@ function IssueTaskModal({
   async function handleSubmit() {
     setSubmitted(true);
     setError(null);
+
+    if (sourceMode === 'bank') {
+      if (
+        selectedTemplate === null ||
+        singleAssignment === null ||
+        deadlineDate === null ||
+        !deadlineValid ||
+        (recipientMode === 'selected' && selectedStudentIDs.length === 0)
+      ) {
+        return;
+      }
+
+      setSubmitting(true);
+
+      try {
+        const result = await issueTaskTemplate(selectedTemplate.id, {
+          assignmentId: singleAssignment.id,
+          deadlineAt: deadlineDate.toISOString(),
+          studentIds: recipientMode === 'selected' ? selectedStudentIDs : undefined,
+        });
+
+        notify({
+          tone: 'success',
+          title: 'Задание выдано из базы',
+          description: `${selectedTemplate.title} · ${singleAssignment.groupCode}${
+            recipientMode === 'selected' ? ` · ${selectedStudentIDs.length} учеников` : ' · вся группа'
+          }${result.slotsCount > 0 ? ` · ${result.slotsCount} слота` : ''}.`,
+        });
+        onIssued();
+      } catch (cause) {
+        setError(teacherErrorMessage(cause, 'Не удалось выдать задание. Проверьте соединение.'));
+      } finally {
+        setSubmitting(false);
+      }
+
+      return;
+    }
 
     if (
       title.trim().length < 3 ||
@@ -840,7 +788,11 @@ function IssueTaskModal({
       open
       onClose={onClose}
       title="Выдать задание"
-      subtitle="Карточки появятся у всех учеников выбранных потоков"
+      subtitle={
+        sourceMode === 'bank'
+          ? 'Готовая заготовка из базы — заполнять заново не нужно'
+          : 'Карточки появятся у всех учеников выбранных потоков'
+      }
       size="lg"
       footer={
         <div className="flex w-full flex-col gap-2">
@@ -857,10 +809,18 @@ function IssueTaskModal({
               block
               className="whitespace-nowrap"
               loading={submitting}
+              disabled={
+                sourceMode === 'bank' &&
+                (selectedTemplate === null || singleAssignment === null)
+              }
               onClick={() => void handleSubmit()}
             >
               <IconBolt className="h-4 w-4" />
-              {selectedIds.length > 1 ? `Выдать · ${selectedIds.length}` : 'Выдать задание'}
+              {sourceMode === 'bank'
+                ? 'Выдать из базы'
+                : selectedIds.length > 1
+                  ? `Выдать · ${selectedIds.length}`
+                  : 'Выдать задание'}
             </Button>
           </div>
         </div>
@@ -917,6 +877,96 @@ function IssueTaskModal({
           </div>
         </Field>
 
+        <Field label="Источник задания">
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
+            {[
+              { value: 'new' as const, label: 'Новое задание' },
+              { value: 'bank' as const, label: 'Из базы' },
+            ].map((option) => {
+              const active = sourceMode === option.value;
+
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => changeSourceMode(option.value)}
+                  className={cn(
+                    'rounded-lg px-3 py-2 text-xs font-medium transition',
+                    active
+                      ? 'bg-brandSoft text-brandStrong'
+                      : 'text-ink3 hover:text-ink2',
+                  )}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        {sourceError ? (
+          <p role="alert" className="text-[11px] text-bad">
+            {sourceError}
+          </p>
+        ) : null}
+
+        {sourceMode === 'bank' ? (
+          <Field
+            label="Задание из базы"
+            error={templateError}
+            hint="Берётся сохранённая заготовка: тип, текст и параметры менять не нужно."
+          >
+            {availableTemplates.length === 0 ? (
+              <Callout tone="amber" icon={<IconAlert className="h-4 w-4" />} title="В базе пусто">
+                Для этой дисциплины нет заготовок. Создайте их во вкладке «База».
+              </Callout>
+            ) : (
+              <>
+                <SelectInput
+                  value={selectedTemplateID === null ? '' : String(selectedTemplateID)}
+                  onChange={(event) =>
+                    setSelectedTemplateID(
+                      event.target.value === '' ? null : Number(event.target.value),
+                    )
+                  }
+                >
+                  <option value="">Выберите заготовку</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.title}
+                    </option>
+                  ))}
+                </SelectInput>
+
+                {selectedTemplate ? (
+                  <Card className="mt-2 space-y-2 bg-muted">
+                    <p className="text-sm font-semibold text-ink">{selectedTemplate.title}</p>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge tone={TASK_TYPE_TONE[selectedTemplate.task_type]}>
+                        {TASK_TYPE_LABEL[selectedTemplate.task_type]}
+                      </Badge>
+                      <Badge tone="indigo">{selectedTemplate.discipline_title}</Badge>
+                      <Badge tone="slate">
+                        {selectedTemplate.expected_hours} ч ·{' '}
+                        {selectedTemplate.requirements_count} требований
+                      </Badge>
+                    </div>
+                    {selectedTemplate.description_md.trim() !== '' ? (
+                      <p className="whitespace-pre-line text-[11px] leading-relaxed text-ink3">
+                        {selectedTemplate.description_md}
+                      </p>
+                    ) : null}
+                    <p className="text-[10px] text-ink3">
+                      XP и бонусное окно рассчитаются по параметрам заготовки.
+                    </p>
+                  </Card>
+                ) : null}
+              </>
+            )}
+          </Field>
+        ) : null}
+
         {singleAssignment ? (
           <Field
             label="Получатели"
@@ -945,7 +995,9 @@ function IssueTaskModal({
           </Callout>
         ) : null}
 
-        <Field label="Тип задания">
+        {sourceMode === 'new' ? (
+          <>
+            <Field label="Тип задания">
           <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="Тип задания">
             {TASK_TYPES.map((value) => {
               const active = taskType === value;
@@ -1000,7 +1052,9 @@ function IssueTaskModal({
           {files.length > 0 ? (
             <p className="mt-1 text-[10px] text-ink3">{files.map((file) => file.name).join(', ')}</p>
           ) : null}
-        </Field>
+            </Field>
+          </>
+        ) : null}
 
         <Field
           label="Дедлайн"
@@ -1032,8 +1086,10 @@ function IssueTaskModal({
           ))}
         </div>
 
-        <Field
-          label="Бонус до (спидран)"
+        {sourceMode === 'new' ? (
+          <>
+            <Field
+              label="Бонус до (спидран)"
           hint={
             submitted && !bonusUntilValid
               ? 'Дата должна быть в будущем и раньше дедлайна'
@@ -1098,6 +1154,8 @@ function IssueTaskModal({
             </span>
           </span>
         </label>
+          </>
+        ) : null}
 
         <p className="text-[11px] text-ink3">
           Получат карточку: {knownStudents > 0 ? `${knownStudents} учеников` : 'все ученики потоков'}.
@@ -1192,233 +1250,6 @@ function RecipientsField({
         </p>
       ) : null}
     </div>
-  );
-}
-
-/** TemplateIssueModal — выдача заготовки в поток и выбранным ученикам. */
-function TemplateIssueModal({
-  template,
-  assignments,
-  notify,
-  onClose,
-  onIssued,
-}: {
-  template: TaskTemplate;
-  assignments: TeacherAssignment[];
-  notify: (toast: Omit<ToastData, 'id'>) => void;
-  onClose: () => void;
-  onIssued: () => void;
-}) {
-  const preferred =
-    assignments.find(
-      (assignment) => assignment.disciplineId === template.discipline_id,
-    ) ??
-    assignments[0] ??
-    null;
-
-  const [assignmentID, setAssignmentID] = useState<number>(preferred?.id ?? 0);
-  const assignment = assignments.find((item) => item.id === assignmentID) ?? null;
-  const groupID = assignment?.groupId ?? null;
-
-  const [deadline, setDeadline] = useState(() => defaultDeadlineLocal(7));
-  const [mode, setMode] = useState<'group' | 'selected'>('group');
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(false);
-  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    setSelectedIDs([]);
-
-    if (groupID === null) {
-      setMembers([]);
-      setMembersLoading(false);
-
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    setMembersLoading(true);
-
-    fetchGroupMembers(groupID)
-      .then((nextMembers) => {
-        if (!cancelled) {
-          setMembers(nextMembers);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMembers([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setMembersLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [groupID]);
-
-  const deadlineDate = parseLocalInput(deadline);
-  const deadlineValid = deadlineDate !== null && deadlineDate.getTime() > Date.now();
-  const deadlineError = submitted && !deadlineValid ? 'Дедлайн должен быть в будущем' : null;
-  const recipientError =
-    submitted && mode === 'selected' && selectedIDs.length === 0
-      ? 'Выберите хотя бы одного ученика'
-      : null;
-
-  async function handleSubmit() {
-    setSubmitted(true);
-    setError(null);
-
-    if (
-      assignment === null ||
-      deadlineDate === null ||
-      !deadlineValid ||
-      (mode === 'selected' && selectedIDs.length === 0)
-    ) {
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const result = await issueTaskTemplate(template.id, {
-        assignmentId: assignment.id,
-        deadlineAt: deadlineDate.toISOString(),
-        studentIds: mode === 'selected' ? selectedIDs : undefined,
-      });
-
-      notify({
-        tone: 'success',
-        title: 'Задание выдано из базы',
-        description: `${template.title} · ${assignment.groupCode}${
-          mode === 'selected' ? ` · ${selectedIDs.length} учеников` : ' · вся группа'
-        }${result.slotsCount > 0 ? ` · ${result.slotsCount} слота` : ''}.`,
-      });
-      onIssued();
-    } catch (cause) {
-      setError(teacherErrorMessage(cause, 'Не удалось выдать задание. Проверьте соединение.'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Выдать из базы"
-      subtitle={template.title}
-      size="lg"
-      footer={
-        <div className="flex w-full flex-col gap-2">
-          {error ? (
-            <p role="alert" className="text-[11px] leading-relaxed text-bad">
-              {error}
-            </p>
-          ) : null}
-          <div className="flex gap-2">
-            <Button variant="ghost" block onClick={onClose} disabled={submitting}>
-              Отмена
-            </Button>
-            <Button block loading={submitting} onClick={() => void handleSubmit()}>
-              <IconBolt className="h-4 w-4" />
-              Выдать
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-3.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone={TASK_TYPE_TONE[template.task_type]}>
-            {TASK_TYPE_LABEL[template.task_type]}
-          </Badge>
-          <Badge tone="indigo">{template.discipline_title}</Badge>
-          <Badge tone="slate">
-            {template.expected_hours} ч · {template.requirements_count} требований
-          </Badge>
-        </div>
-
-        {assignments.length === 0 ? (
-          <Callout tone="amber" icon={<IconAlert className="h-4 w-4" />} title="Нет назначений">
-            Выдача недоступна: администратор ещё не закрепил за вами поток.
-          </Callout>
-        ) : (
-          <>
-            <Field label="Поток">
-              <SelectInput
-                value={String(assignmentID)}
-                onChange={(event) => setAssignmentID(Number(event.target.value))}
-              >
-                {assignments.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.groupCode} · {item.disciplineTitle}
-                  </option>
-                ))}
-              </SelectInput>
-            </Field>
-
-            <Field label="Получатели" error={recipientError}>
-              <RecipientsField
-                mode={mode}
-                onModeChange={setMode}
-                members={members}
-                loading={membersLoading}
-                selectedIDs={selectedIDs}
-                onToggle={(studentID) =>
-                  setSelectedIDs((previous) =>
-                    previous.includes(studentID)
-                      ? previous.filter((id) => id !== studentID)
-                      : [...previous, studentID],
-                  )
-                }
-              />
-            </Field>
-
-            <Field label="Дедлайн" error={deadlineError}>
-              <DeadlineInput
-                value={deadline}
-                onChange={setDeadline}
-                invalid={Boolean(deadlineError)}
-              />
-            </Field>
-
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { label: '+1 день', days: 1 },
-                { label: '+3 дня', days: 3 },
-                { label: '+1 неделя', days: 7 },
-                { label: '+2 недели', days: 14 },
-              ].map((preset) => (
-                <Button
-                  key={preset.label}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDeadline(defaultDeadlineLocal(preset.days))}
-                >
-                  {preset.label}
-                </Button>
-              ))}
-            </div>
-          </>
-        )}
-
-        <p className="text-[11px] text-ink3">
-          Будет создано новое задание; карточки появятся у выбранных учеников
-          выбранного потока.
-        </p>
-      </div>
-    </Modal>
   );
 }
 
