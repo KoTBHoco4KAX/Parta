@@ -463,6 +463,7 @@ export interface GroupMember {
   fullName: string;
   role: Role;
   groupId: number | null;
+  groupCode: string | null;
 }
 
 /** Ответ GET /api/users?group_id= (контракт BUG-005). */
@@ -473,6 +474,7 @@ interface FilteredUsersResponse {
     full_name: string;
     role: Role;
     group_id: number | null;
+    group_code?: string;
   }[];
 }
 
@@ -491,6 +493,21 @@ export async function fetchGroupMembers(groupId: number): Promise<GroupMember[]>
     fullName: item.full_name,
     role: item.role,
     groupId: item.group_id,
+    groupCode: item.group_code ?? null,
+  }));
+}
+
+/** GET /api/users?all_students=true — вся база учеников с их группами. */
+export async function fetchAllStudents(): Promise<GroupMember[]> {
+  const response = await apiFetch<FilteredUsersResponse>('/users?all_students=true');
+
+  return (response.items ?? []).map((item) => ({
+    id: item.id,
+    email: item.email,
+    fullName: item.full_name,
+    role: item.role,
+    groupId: item.group_id,
+    groupCode: item.group_code ?? null,
   }));
 }
 

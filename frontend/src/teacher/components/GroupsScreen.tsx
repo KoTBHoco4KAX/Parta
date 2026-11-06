@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Group } from '../../core/types';
 import {
   createTeacherGroup,
+  fetchAllStudents,
   fetchGroupMembers,
   fetchTeacherAssignments,
   fetchTeacherGroups,
@@ -54,6 +55,8 @@ export function GroupsScreen({
   const [groups, setGroups] = useState<TeacherGroup[]>([]);
   const [assignments, setAssignments] = useState<TeacherAssignment[]>([]);
   const [members, setMembers] = useState<Record<number, GroupMember[]>>({});
+  const [allStudents, setAllStudents] = useState<GroupMember[]>([]);
+  const [addingGroup, setAddingGroup] = useState<TeacherGroup | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -64,9 +67,10 @@ export function GroupsScreen({
     setError(null);
 
     try {
-      const [nextAssignments, nextGroups] = await Promise.all([
+      const [nextAssignments, nextGroups, nextAllStudents] = await Promise.all([
         fetchTeacherAssignments(),
         fetchTeacherGroups(),
+        fetchAllStudents(),
       ]);
 
       const rosters = await Promise.all(
@@ -84,6 +88,7 @@ export function GroupsScreen({
       setAssignments(nextAssignments);
       setGroups(nextGroups);
       setMembers(byGroup);
+      setAllStudents(nextAllStudents);
     } catch (cause) {
       setError(teacherErrorMessage(cause, 'Не удалось загрузить группы. Проверьте соединение.'));
     } finally {
@@ -195,6 +200,15 @@ export function GroupsScreen({
                     </div>
                     <p className="mt-0.5 truncate text-[11px] text-ink3">{group.title}</p>
                   </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="shrink-0"
+                    onClick={() => setAddingGroup(group)}
+                  >
+                    <IconPlus className="h-3.5 w-3.5" />
+                    Добавить
+                  </Button>
                 </div>
 
                 {roster.length === 0 ? (
@@ -233,6 +247,19 @@ export function GroupsScreen({
           }}
         />
       ) : null}
+
+      {addingGroup ? (
+        <AssignStudentModal
+          group={addingGroup}
+          students={allStudents}
+          notify={notify}
+          onClose={() => setAddingGroup(null)}
+          onAssigned={() => {
+            setAddingGroup(null);
+            reload();
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -251,37 +278,8 @@ function MemberRow({
   notify: (toast: Omit<ToastData, 'id'>) => void;
   onChanged: () => void;
 }) {
-  const targets = groups.filter((group) => group.id !== currentGroupId);
-  const [targetGroupID, setTargetGroupID] = useState<number>(targets[0]?.id ?? 0);
+  const [moving, setMoving] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  async function move() {
-    if (targetGroupID <= 0 || busy) {
-      return;
-    }
-
-    setBusy(true);
-
-    try {
-      await updateUserGroup(member.id, targetGroupID);
-      notify({
-        tone: 'success',
-        title: 'Ученик переведён',
-        description: `${member.fullName} — в группу ${
-          groups.find((group) => group.id === targetGroupID)?.code ?? targetGroupID
-        }.`,
-      });
-      onChanged();
-    } catch (cause) {
-      notify({
-        tone: 'error',
-        title: 'Не удалось перевести',
-        description: teacherErrorMessage(cause, 'Проверьте соединение и повторите.'),
-      });
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function exclude() {
     if (busy) {
@@ -310,48 +308,243 @@ function MemberRow({
   }
 
   return (
-    <li className="flex flex-col gap-2 py-2.5 first:pt-0 last:pb-0 sm:flex-row sm:items-center">
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <li className="py-2.5 first:pt-0 last:pb-0">
+      <div className="flex min-w-0 items-center gap-2">
         <Avatar name={member.fullName} size="sm" />
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-[12px] font-medium text-ink">{member.fullName}</p>
           <p className="truncate text-[10px] text-ink3">{member.email}</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <SelectInput
-          value={String(targetGroupID)}
-          onChange={(event) => setTargetGroupID(Number(event.target.value))}
-          aria-label={`Перевести ${member.fullName} в группу`}
-          className="min-w-[8.5rem] py-1.5 text-xs"
-          disabled={busy || targets.length === 0}
-        >
-          {targets.length === 0 ? <option value="0">Других групп нет</option> : null}
-          {targets.map((group) => (
-            <option key={group.id} value={group.id}>
-              {group.code}
-            </option>
-          ))}
-        </SelectInput>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy || targets.length === 0 || targetGroupID <= 0}
-          onClick={() => void move()}
-        >
+      <div className="mt-1.5 flex flex-wrap gap-1.5">
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => setMoving(true)}>
           Перевести
         </Button>
-        <Button
-          size="sm"
-          variant="reject"
-          disabled={busy}
-          onClick={() => void exclude()}
-        >
+        <Button size="sm" variant="reject" disabled={busy} onClick={() => void exclude()}>
           Исключить
         </Button>
       </div>
+
+      {moving ? (
+        <MoveStudentModal
+          member={member}
+          currentGroupId={currentGroupId}
+          groups={groups}
+          notify={notify}
+          onClose={() => setMoving(false)}
+          onMoved={() => {
+            setMoving(false);
+            onChanged();
+          }}
+        />
+      ) : null}
     </li>
+  );
+}
+
+/** MoveStudentModal — выбор группы для перевода ученика. */
+function MoveStudentModal({
+  member,
+  currentGroupId,
+  groups,
+  notify,
+  onClose,
+  onMoved,
+}: {
+  member: GroupMember;
+  currentGroupId: number;
+  groups: TeacherGroup[];
+  notify: (toast: Omit<ToastData, 'id'>) => void;
+  onClose: () => void;
+  onMoved: () => void;
+}) {
+  const targets = groups.filter((group) => group.id !== currentGroupId);
+  const [busyID, setBusyID] = useState<number | null>(null);
+
+  async function move(group: TeacherGroup) {
+    if (busyID !== null) {
+      return;
+    }
+
+    setBusyID(group.id);
+
+    try {
+      await updateUserGroup(member.id, group.id);
+      notify({
+        tone: 'success',
+        title: 'Ученик переведён',
+        description: `${member.fullName} — в группу ${group.code}.`,
+      });
+      onMoved();
+    } catch (cause) {
+      notify({
+        tone: 'error',
+        title: 'Не удалось перевести',
+        description: teacherErrorMessage(cause, 'Проверьте соединение и повторите.'),
+      });
+      setBusyID(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Перевести ученика"
+      subtitle={member.fullName}
+      footer={
+        <Button variant="ghost" block onClick={onClose} disabled={busyID !== null}>
+          Отмена
+        </Button>
+      }
+    >
+      {targets.length === 0 ? (
+        <p className="text-xs text-ink3">
+          Других ваших групп нет. Создайте группу, чтобы перевести ученика.
+        </p>
+      ) : (
+        <ul className="space-y-1.5">
+          {targets.map((group) => (
+            <li key={group.id}>
+              <button
+                type="button"
+                disabled={busyID !== null}
+                onClick={() => void move(group)}
+                className="flex w-full items-center justify-between gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-left transition hover:border-line2 disabled:opacity-50"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[12px] font-medium text-ink">{group.code}</span>
+                  <span className="block truncate text-[10px] text-ink3">{group.title}</span>
+                </span>
+                <span className="shrink-0 text-[11px] text-brand">
+                  {busyID === group.id ? 'Переводим…' : 'Перевести'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+/** AssignStudentModal — вся база учеников с указанием текущей группы. */
+function AssignStudentModal({
+  group,
+  students,
+  notify,
+  onClose,
+  onAssigned,
+}: {
+  group: TeacherGroup;
+  students: GroupMember[];
+  notify: (toast: Omit<ToastData, 'id'>) => void;
+  onClose: () => void;
+  onAssigned: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [busyID, setBusyID] = useState<number | null>(null);
+
+  const visible = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+
+    if (needle === '') {
+      return students;
+    }
+
+    return students.filter(
+      (student) =>
+        student.fullName.toLowerCase().includes(needle) ||
+        student.email.toLowerCase().includes(needle),
+    );
+  }, [students, query]);
+
+  async function assign(student: GroupMember) {
+    if (busyID !== null) {
+      return;
+    }
+
+    setBusyID(student.id);
+
+    try {
+      await updateUserGroup(student.id, group.id);
+      notify({
+        tone: 'success',
+        title: 'Ученик добавлен в группу',
+        description: `${student.fullName} — ${group.code}.`,
+      });
+      onAssigned();
+    } catch (cause) {
+      notify({
+        tone: 'error',
+        title: 'Не удалось добавить ученика',
+        description: teacherErrorMessage(cause, 'Проверьте соединение и повторите.'),
+      });
+      setBusyID(null);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Добавить ученика"
+      subtitle={`Группа ${group.code} · ${group.title}`}
+      footer={
+        <Button variant="ghost" block onClick={onClose} disabled={busyID !== null}>
+          Закрыть
+        </Button>
+      }
+    >
+      <Field label="Поиск" htmlFor="student-search">
+        <TextInput
+          id="student-search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Имя или почта"
+          autoFocus
+        />
+      </Field>
+
+      <ul className="mt-3 max-h-[50vh] space-y-1.5 overflow-y-auto">
+        {visible.length === 0 ? (
+          <li className="rounded-xl border border-dashed border-line2 px-3 py-4 text-center text-xs text-ink3">
+            Ученики не найдены.
+          </li>
+        ) : (
+          visible.map((student) => {
+            const alreadyHere = student.groupId === group.id;
+
+            return (
+              <li key={student.id}>
+                <button
+                  type="button"
+                  disabled={alreadyHere || busyID !== null}
+                  onClick={() => void assign(student)}
+                  className="flex w-full items-center gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-left transition hover:border-line2 disabled:opacity-50"
+                >
+                  <Avatar name={student.fullName} size="sm" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-medium text-ink">
+                      {student.fullName}
+                    </span>
+                    <span className="block truncate text-[10px] text-ink3">{student.email}</span>
+                  </span>
+                  <span className="shrink-0 text-right text-[10px] text-ink3">
+                    {alreadyHere
+                      ? 'уже здесь'
+                      : student.groupCode && student.groupCode !== 'NO-GROUP'
+                        ? student.groupCode
+                        : 'без группы'}
+                  </span>
+                </button>
+              </li>
+            );
+          })
+        )}
+      </ul>
+    </Modal>
   );
 }
 

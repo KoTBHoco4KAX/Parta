@@ -30,11 +30,12 @@ const (
 
 // filteredUserItem — элемент GET /api/users?group_id= / ?unassigned=true.
 type filteredUserItem struct {
-	ID       int64  `json:"id"`
-	Email    string `json:"email"`
-	FullName string `json:"full_name"`
-	Role     string `json:"role"`
-	GroupID  *int64 `json:"group_id"`
+	ID        int64  `json:"id"`
+	Email     string `json:"email"`
+	FullName  string `json:"full_name"`
+	Role      string `json:"role"`
+	GroupID   *int64 `json:"group_id"`
+	GroupCode string `json:"group_code,omitempty"`
 }
 
 // filteredUsersResponse — конверт фильтрованного списка пользователей.
@@ -131,22 +132,22 @@ func (s *Server) handleUserGroupPatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Преподаватель работает только с учениками своих групп: чужой
-		// студент или ученик без группы — 403, а не «молчаливое присвоение».
-		if target.GroupID == nil {
-			writeError(w, domainerrors.ErrForbidden)
-
-			return
-		}
-
-		if _, allowed := groups[*target.GroupID]; !allowed {
-			writeError(w, domainerrors.ErrForbidden)
-
-			return
-		}
-
+		// Преподаватель может добавить любого ученика из общей базы, но только
+		// в свою группу. Исключать можно только ученика своей группы.
 		if groupID != nil {
 			if _, allowed := groups[*groupID]; !allowed {
+				writeError(w, domainerrors.ErrForbidden)
+
+				return
+			}
+		} else {
+			if target.GroupID == nil {
+				writeError(w, domainerrors.ErrForbidden)
+
+				return
+			}
+
+			if _, allowed := groups[*target.GroupID]; !allowed {
 				writeError(w, domainerrors.ErrForbidden)
 
 				return
@@ -207,10 +208,17 @@ func (s *Server) handleUsersListFiltered(w http.ResponseWriter, r *http.Request)
 	query := r.URL.Query()
 	_, hasGroup := query["group_id"]
 	_, hasUnassigned := query["unassigned"]
+	_, hasAllStudents := query["all_students"]
 
-	if !hasGroup && !hasUnassigned {
+	if !hasGroup && !hasUnassigned && !hasAllStudents {
 		// Backward compatibility: старый полный список, только для admin.
 		s.handleListUsers(w, r)
+
+		return
+	}
+
+	if hasAllStudents && (hasGroup || hasUnassigned) {
+		writeBadRequest(w, "pass exactly one filter")
 
 		return
 	}
@@ -224,11 +232,47 @@ func (s *Server) handleUsersListFiltered(w http.ResponseWriter, r *http.Request)
 	users, err := s.users.ListAll(r.Context())
 	if err != nil {
 		writeError(w, err)
-
 		return
 	}
 
+	groupCodes := make(map[int64]string)
+
+	groups, err := s.groups.List(r.Context())
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+
+	for i := range groups {
+		groupCodes[groups[i].ID] = groups[i].Code
+	}
+
 	items := make([]filteredUserItem, 0)
+
+	if hasAllStudents {
+		if query.Get("all_students") != "true" {
+			writeBadRequest(w, "all_students must be true")
+
+			return
+		}
+
+		for i := range users {
+			if users[i].Role != RoleStudent {
+				continue
+			}
+
+			code := ""
+			if users[i].GroupID != nil {
+				code = groupCodes[*users[i].GroupID]
+			}
+
+			items = append(items, newFilteredUserItem(&users[i], code))
+		}
+
+		writeJSON(w, http.StatusOK, filteredUsersResponse{Items: items})
+
+		return
+	}
 
 	if hasGroup {
 		groupID, err := parsePositiveInt64(query.Get("group_id"))
@@ -261,7 +305,7 @@ func (s *Server) handleUsersListFiltered(w http.ResponseWriter, r *http.Request)
 
 		for i := range users {
 			if users[i].GroupID != nil && *users[i].GroupID == groupID {
-				items = append(items, newFilteredUserItem(&users[i]))
+				items = append(items, newFilteredUserItem(&users[i], groupCodes[groupID]))
 			}
 		}
 	} else {
@@ -279,7 +323,7 @@ func (s *Server) handleUsersListFiltered(w http.ResponseWriter, r *http.Request)
 
 		for i := range users {
 			if users[i].GroupID == nil {
-				items = append(items, newFilteredUserItem(&users[i]))
+				items = append(items, newFilteredUserItem(&users[i], ""))
 			}
 		}
 	}
@@ -426,13 +470,14 @@ func (s *Server) teacherGroupIDs(ctx context.Context, teacherID int64) (map[int6
 }
 
 // newFilteredUserItem собирает DTO фильтрованного списка.
-func newFilteredUserItem(user *storage.User) filteredUserItem {
+func newFilteredUserItem(user *storage.User, groupCode string) filteredUserItem {
 	return filteredUserItem{
-		ID:       user.ID,
-		Email:    user.ExternalID,
-		FullName: user.DisplayName,
-		Role:     user.Role,
-		GroupID:  user.GroupID,
+		ID:        user.ID,
+		Email:     user.ExternalID,
+		FullName:  user.DisplayName,
+		Role:      user.Role,
+		GroupID:   user.GroupID,
+		GroupCode: groupCode,
 	}
 }
 

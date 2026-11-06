@@ -24,6 +24,22 @@ func TestTeacherListsAndCreatesOwnGroups(t *testing.T) {
 		t.Fatalf("teacher groups = %d (status %d), want 2", len(groups), status)
 	}
 
+	// Преподавателю доступна вся база студентов с указанием их группы.
+	status, allBody := h.request(t, http.MethodGet, "/api/users?all_students=true", teacherToken, nil)
+	if status != http.StatusOK {
+		t.Fatalf("all students status = %d (%v)", status, allBody)
+	}
+
+	allStudents, ok := allBody["items"].([]any)
+	if !ok || len(allStudents) < 3 {
+		t.Fatalf("all students = %v, want at least 3", allBody["items"])
+	}
+
+	first := allStudents[0].(map[string]any)
+	if _, exists := first["group_code"]; !exists {
+		t.Fatalf("all students item has no group_code: %v", first)
+	}
+
 	disciplineID := h.scalarInt(`SELECT id FROM disciplines WHERE code = 'DB'`)
 
 	status, body := h.request(t, http.MethodPost, "/api/groups", teacherToken, map[string]any{
@@ -93,12 +109,12 @@ func TestTeacherListsAndCreatesOwnGroups(t *testing.T) {
 		t.Fatalf("unassign own student status = %d, want 200 (%v)", status, body)
 	}
 
-	// Ученик без группы уже не «свой»: вернуть его может только админ.
+	// Ученика без группы преподаватель тоже может добавить в свою группу.
 	status, body = h.request(t, http.MethodPatch, userPath(ids.student1), teacherToken, map[string]any{
 		"group_id": groupID,
 	})
-	if status != http.StatusForbidden {
-		t.Fatalf("move unassigned student status = %d, want 403 (%v)", status, body)
+	if status != http.StatusOK {
+		t.Fatalf("add unassigned student status = %d, want 200 (%v)", status, body)
 	}
 
 	// Чужая группа администратора: перевод в неё запрещён.

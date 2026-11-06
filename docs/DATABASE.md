@@ -166,7 +166,21 @@ max_accounts ── users ── group_memberships ── groups
 - `storage/migrate.go` отключает FK на время миграции и пишет
   `schema_migrations`.
 
-## 10. Что дальше
+## 10. Демо-данные
+
+Фиксированные демо-данные не входят в миграции, чтобы не ломать ожидания
+тестов. Для локальной базы есть отдельная команда:
+
+```bash
+cd backend
+go run ./cmd/seed-demo -db ./parta.db -file ./demo/seed.sql
+```
+
+Она идемпотентна: добавляет группы IS-23…IS-26, преподавателей, учеников,
+задания, карточки, шаблон и обновляет `weekly_xp` на текущую неделю. Повторный
+запуск не создаёт дублей.
+
+## 11. Что дальше
 
 - API MAX: `GET /api/max/kanban?max_user_id=...` поверх
   `v_max_student_kanban`.
