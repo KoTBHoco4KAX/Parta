@@ -356,8 +356,7 @@ function TaskCard({
             {task.status !== 'PUBLISHED' ? <Badge tone="slate">{task.status}</Badge> : null}
           </div>
           <p className="mt-1 text-[10px] text-ink3">
-            {task.expected_hours} ч · {task.requirements_count} требований · бонусное окно{' '}
-            {task.speedrun_window_hours} ч
+            бонусное окно {task.speedrun_window_hours} ч
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -947,10 +946,6 @@ function IssueTaskModal({
                         {TASK_TYPE_LABEL[selectedTemplate.task_type]}
                       </Badge>
                       <Badge tone="indigo">{selectedTemplate.discipline_title}</Badge>
-                      <Badge tone="slate">
-                        {selectedTemplate.expected_hours} ч ·{' '}
-                        {selectedTemplate.requirements_count} требований
-                      </Badge>
                     </div>
                     {selectedTemplate.description_md.trim() !== '' ? (
                       <p className="whitespace-pre-line text-[11px] leading-relaxed text-ink3">

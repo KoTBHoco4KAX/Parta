@@ -219,9 +219,6 @@ function TemplateRow({
               {TASK_TYPE_LABEL[template.task_type]}
             </Badge>
             <Badge tone="indigo">{template.discipline_title}</Badge>
-            <Badge tone="slate">
-              {template.expected_hours} ч · {template.requirements_count} требований
-            </Badge>
             {template.team_size > 1 ? (
               <Badge tone="violet">
                 <IconUsers className="h-3 w-3" />
