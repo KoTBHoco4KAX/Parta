@@ -23,7 +23,6 @@ import {
   SelectInput,
   SkeletonList,
   TextArea,
-  TextInput,
 } from './ui';
 import { IconAlert, IconBook, IconPlus, IconTrash, IconUsers } from './icons';
 
@@ -266,8 +265,6 @@ function CreateTemplateModal({
   const [taskType, setTaskType] = useState<TaskType>('LAB_CODE');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [requirements, setRequirements] = useState(String(DEFAULT_REQUIREMENTS));
-  const [hours, setHours] = useState(String(DEFAULT_HOURS));
   const [speedrun, setSpeedrun] = useState(String(DEFAULT_BONUS_HOURS));
   const [teamSize, setTeamSize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
@@ -292,8 +289,10 @@ function CreateTemplateModal({
         title: title.trim(),
         description_md: description.trim(),
         task_type: taskType,
-        requirements_count: Math.max(1, Math.round(Number(requirements) || DEFAULT_REQUIREMENTS)),
-        expected_hours: Math.max(0.5, Number(hours) || DEFAULT_HOURS),
+        // Сложность не спрашиваем у преподавателя: базовые значения нужны
+        // только формуле XP, а не содержанию задания.
+        requirements_count: DEFAULT_REQUIREMENTS,
+        expected_hours: DEFAULT_HOURS,
         speedrun_window_hours: Math.max(1, Math.round(Number(speedrun) || DEFAULT_BONUS_HOURS)),
         team_size: taskType === 'TEAM_PROJECT' ? teamSize : 1,
       });
@@ -391,29 +390,6 @@ function CreateTemplateModal({
             placeholder={'1. ...\n2. ...'}
           />
         </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Требований" htmlFor="template-requirements">
-            <TextInput
-              id="template-requirements"
-              type="number"
-              min={1}
-              max={50}
-              value={requirements}
-              onChange={(event) => setRequirements(event.target.value)}
-            />
-          </Field>
-          <Field label="Ожидаемые часы" htmlFor="template-hours">
-            <TextInput
-              id="template-hours"
-              type="number"
-              min={0.5}
-              step={0.5}
-              value={hours}
-              onChange={(event) => setHours(event.target.value)}
-            />
-          </Field>
-        </div>
 
         <Field label="Бонусное окно" htmlFor="template-speedrun">
           <SelectInput
