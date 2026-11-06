@@ -67,7 +67,7 @@ export interface Profile {
 export interface LedgerEntry {
   id: number;
   amount: number;
-  reason: 'TASK_ACCEPT' | 'SPEEDRUN_BONUS' | 'STREAK_FREEZE' | 'ADMIN_ADJUSTMENT';
+  reason: 'TASK_ACCEPT' | 'SPEEDRUN_BONUS' | 'STREAK_FREEZE' | 'THEME_PURCHASE' | 'ADMIN_ADJUSTMENT';
   memo: string;
   createdAt: string;
 }

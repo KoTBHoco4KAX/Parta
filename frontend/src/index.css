@@ -96,3 +96,72 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/*
+ * «Идея Фикс» — тема хакатона: графитово-фиолетовая база, пурпурный акцент
+ * и пиксельный паттерн на сайдбаре и шапке профиля.
+ */
+.theme-ideya-fix {
+  --c-page: 15 9 25;
+  --c-card: 25 17 41;
+  --c-muted: 32 22 52;
+  --c-sunken: 42 29 66;
+  --c-line: 54 34 84;
+  --c-line2: 78 50 118;
+
+  --c-ink: 247 241 255;
+  --c-ink2: 232 219 250;
+  --c-ink3: 184 166 217;
+  --c-ink4: 139 119 174;
+
+  --c-brand: 157 78 221;
+  --c-brand-strong: 180 122 255;
+  --c-brand-soft: 42 23 69;
+  --c-brand-line: 86 53 128;
+
+  --c-ok: 76 176 80;
+  --c-ok-soft: 30 51 30;
+  --c-ok-line: 52 92 52;
+
+  --c-warn: 255 160 0;
+  --c-warn-soft: 61 46 16;
+  --c-warn-line: 97 74 26;
+
+  --c-bad: 255 92 92;
+  --c-bad-soft: 61 30 30;
+  --c-bad-line: 97 47 47;
+
+  --c-team: 196 139 255;
+  --c-team-soft: 52 32 82;
+  --c-team-line: 86 53 128;
+
+  color-scheme: dark;
+}
+
+.theme-ideya-fix[data-theme='light'] {
+  --c-page: 232 220 248;
+  --c-card: 246 240 255;
+  --c-muted: 237 227 251;
+  --c-sunken: 226 211 247;
+  --c-line: 210 189 240;
+  --c-line2: 190 162 228;
+
+  --c-ink: 26 11 46;
+  --c-ink2: 48 24 76;
+  --c-ink3: 107 85 136;
+  --c-ink4: 137 115 166;
+
+  --c-brand: 138 43 226;
+  --c-brand-strong: 111 31 184;
+  --c-brand-soft: 234 219 255;
+  --c-brand-line: 201 167 245;
+
+  color-scheme: light;
+}
+
+.theme-ideya-fix .theme-pattern {
+  background-color: rgb(var(--c-card));
+  background-image: url('/assets/themes/ideya-fix-pattern.png');
+  background-repeat: repeat;
+  background-size: 384px;
+}

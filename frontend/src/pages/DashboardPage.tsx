@@ -22,7 +22,7 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-line bg-card p-5">
+      <section className="theme-pattern rounded-2xl border border-line bg-card p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-ink">{user.display_name}</h1>

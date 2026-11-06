@@ -53,3 +53,7 @@ export function purchaseFreezes(quantity: number): Promise<PurchaseFreezesResult
   return store.purchaseFreezes(quantity);
 }
 
+export function purchaseTheme(themeId: string, price: number): Promise<{ xpBalance: number }> {
+  return store.purchaseTheme(themeId, price);
+}
+

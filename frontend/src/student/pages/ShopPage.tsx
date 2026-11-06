@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError } from '../../core/api';
-import { FREEZE_PRICE, purchaseFreezes, getProfile, getLedger, getStreakDays, subscribe } from '../api';
+import { FREEZE_PRICE, purchaseFreezes, purchaseTheme, getProfile, getLedger, getStreakDays, subscribe } from '../api';
+import { useTheme } from '../../core/theme';
 import { StreakCalendar } from '../components/StreakCalendar';
 import { Button } from '../../components/Button';
 import type { LedgerEntry, Profile } from '../types';
@@ -11,10 +12,42 @@ const XP_PER_LEVEL = 1500;
 
 const QUANTITIES = [1, 2, 3];
 
+const THEME_STORAGE_KEY = 'parta.themes.purchased';
+const THEME_PRICE = 500;
+
+const THEMES = [
+  {
+    id: 'default' as const,
+    title: 'Стандартная тема',
+    description: 'ПАРТА · VK Blue',
+  },
+  {
+    id: 'ideya-fix' as const,
+    title: 'Идея Фикс',
+    description: 'Официальная пиксельная тема хакатона',
+  },
+];
+
+function readPurchasedThemes(): string[] {
+  try {
+    const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+
+    if (Array.isArray(parsed)) {
+      return ['default', ...parsed.filter((item): item is string => typeof item === 'string' && item !== 'default')];
+    }
+  } catch {
+    // Нет доступа к localStorage — остаётся только стандартная тема.
+  }
+
+  return ['default'];
+}
+
 const REASON_LABEL: Record<LedgerEntry['reason'], string> = {
   TASK_ACCEPT: 'Принятая работа',
   SPEEDRUN_BONUS: 'Бонус за спидран',
   STREAK_FREEZE: 'Заморозка стрика',
+  THEME_PURCHASE: 'Покупка темы',
   ADMIN_ADJUSTMENT: 'Корректировка',
 };
 
@@ -46,6 +79,18 @@ export default function ShopPage() {
   const [buying, setBuying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const { skin, setSkin } = useTheme();
+  const [purchasedThemes, setPurchasedThemes] = useState<string[]>(readPurchasedThemes);
+  const [themeBusy, setThemeBusy] = useState(false);
+  const [themeError, setThemeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(purchasedThemes));
+    } catch {
+      // Покупки тем остаются в памяти текущей сессии.
+    }
+  }, [purchasedThemes]);
 
   const load = useCallback(async () => {
     try {
@@ -90,6 +135,38 @@ export default function ShopPage() {
       setError(cause instanceof ApiError ? cause.message : 'Не удалось купить заморозку.');
     } finally {
       setBuying(false);
+    }
+  }
+
+  async function handleTheme(themeID: 'default' | 'ideya-fix') {
+    if (themeID === skin) {
+      return;
+    }
+
+    if (themeID === 'default' || purchasedThemes.includes(themeID)) {
+      setSkin(themeID);
+      setThemeError(null);
+
+      return;
+    }
+
+    setThemeBusy(true);
+    setThemeError(null);
+
+    try {
+      const result = await purchaseTheme(themeID, THEME_PRICE);
+      setProfile((current) =>
+        current ? { ...current, xpBalance: result.xpBalance } : current,
+      );
+      setPurchasedThemes((current) => [...current, themeID]);
+      setSkin(themeID);
+      await load();
+    } catch (cause) {
+      setThemeError(
+        cause instanceof ApiError ? cause.message : 'Не удалось купить тему.',
+      );
+    } finally {
+      setThemeBusy(false);
     }
   }
 
@@ -256,6 +333,71 @@ export default function ShopPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Темы оформления */}
+      <section>
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink3">
+          Темы оформления
+        </h2>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {THEMES.map((theme) => {
+            const active = skin === theme.id;
+            const owned = theme.id === 'default' || purchasedThemes.includes(theme.id);
+            const label = active
+              ? '✓ Установлено'
+              : owned
+                ? 'Применить'
+                : `Купить за ${THEME_PRICE} XP`;
+
+            return (
+              <div
+                key={theme.id}
+                className={`rounded-xl border p-3 transition ${
+                  active ? 'border-brandLine bg-brandSoft/40' : 'border-line bg-card'
+                }`}
+              >
+                {theme.id === 'default' ? (
+                  <div className="flex h-10 items-stretch gap-1 rounded-md border border-line bg-[#222224] p-1">
+                    <span className="w-8 rounded-sm bg-[#0077FF]" />
+                    <span className="flex-1 rounded-sm bg-[#333336]" />
+                  </div>
+                ) : (
+                  <div
+                    className="h-10 rounded-md border border-[#362254] bg-[#191129] bg-[length:96px_96px] bg-repeat"
+                    style={{
+                      backgroundImage:
+                        "url('/assets/themes/ideya-fix-pattern.png')",
+                    }}
+                  />
+                )}
+
+                <div className="mt-2 min-w-0">
+                  <h3 className="truncate text-xs font-medium text-ink">{theme.title}</h3>
+                  <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-ink3">
+                    {theme.description}
+                  </p>
+                </div>
+
+                <Button
+                  size="sm"
+                  block
+                  className="mt-2"
+                  variant={active || owned ? 'secondary' : 'primary'}
+                  disabled={active || themeBusy}
+                  onClick={() => void handleTheme(theme.id)}
+                >
+                  {label}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
+        {themeError ? (
+          <p role="alert" className="mt-2 text-[11px] text-bad">
+            {themeError}
+          </p>
+        ) : null}
       </section>
 
       {/* История XP-проводок */}

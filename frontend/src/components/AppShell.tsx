@@ -48,7 +48,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
 
   return (
     <div className="min-h-screen bg-page text-ink">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-line bg-card md:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 theme-pattern hidden w-60 flex-col border-r border-line bg-card md:flex">
         <div className="px-4 pb-4 pt-5">
           <button
             type="button"
@@ -77,13 +77,13 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
                   onClick={item.onClick}
                   className={`group flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition ${
                     item.active
-                      ? 'bg-muted font-medium text-ink'
+                      ? 'bg-brandSoft font-medium text-brandStrong'
                       : 'text-ink3 hover:bg-muted/60 hover:text-ink2'
                   }`}
                 >
                   <span
                     className={`flex h-4 w-4 shrink-0 items-center justify-center ${
-                      item.active ? 'text-ink' : 'text-ink4 group-hover:text-ink2'
+                      item.active ? 'text-brand' : 'text-ink4 group-hover:text-ink2'
                     }`}
                   >
                     {item.icon}
@@ -132,7 +132,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
       </aside>
 
       <div className="min-w-0 md:pl-60">
-        <header className="sticky top-0 z-30 border-b border-line bg-card px-4 py-3 md:hidden">
+        <header className="sticky top-0 z-30 theme-pattern border-b border-line bg-card px-4 py-3 md:hidden">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-ink">ПАРТА</p>
@@ -172,7 +172,7 @@ export function AppShell({ subtitle, children, nav }: AppShellProps) {
                 aria-current={item.active ? 'page' : undefined}
                 onClick={item.onClick}
                 className={`relative flex w-full flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[9px] font-medium transition ${
-                  item.active ? 'text-ink' : 'text-ink4 hover:text-ink2'
+                  item.active ? 'text-brand' : 'text-ink4 hover:text-ink2'
                 }`}
               >
                 <span className="relative flex h-4 w-4 items-center justify-center">

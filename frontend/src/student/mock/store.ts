@@ -289,3 +289,24 @@ export async function purchaseFreezes(quantity: number): Promise<PurchaseFreezes
     xpBalance: db.profile.xpBalance,
   };
 }
+
+export async function purchaseTheme(
+  themeId: string,
+  price: number,
+): Promise<{ xpBalance: number }> {
+  await delay(260);
+
+  if (price > db.profile.xpBalance) {
+    throw new ApiError(
+      422,
+      'insufficient_xp',
+      `Недостаточно XP: тема стоит ${price} XP, баланс ${db.profile.xpBalance}.`,
+    );
+  }
+
+  db.profile.xpBalance -= price;
+  ledgerPost(-price, 'THEME_PURCHASE', `Покупка темы «Идея Фикс» (${themeId})`);
+  notify();
+
+  return { xpBalance: db.profile.xpBalance };
+}
