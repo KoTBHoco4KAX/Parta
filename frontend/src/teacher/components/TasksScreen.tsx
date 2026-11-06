@@ -66,6 +66,7 @@ import {
   IconBolt,
   IconCheck,
   IconClipboard,
+  IconPaperclip,
   IconPlus,
   IconRefresh,
   IconSparkles,
@@ -634,6 +635,7 @@ function IssueTaskModal({
         singleAssignment === null ||
         deadlineDate === null ||
         !deadlineValid ||
+        !bonusUntilValid ||
         (recipientMode === 'selected' && selectedStudentIDs.length === 0)
       ) {
         return;
@@ -645,6 +647,8 @@ function IssueTaskModal({
         const result = await issueTaskTemplate(selectedTemplate.id, {
           assignmentId: singleAssignment.id,
           deadlineAt: deadlineDate.toISOString(),
+          speedrunWindowHours: bonusWindowHours,
+          speedrunBonusUntil: bonusUntilDate ? bonusUntilDate.toISOString() : undefined,
           studentIds: recipientMode === 'selected' ? selectedStudentIDs : undefined,
         });
 
@@ -947,13 +951,25 @@ function IssueTaskModal({
                       </Badge>
                       <Badge tone="indigo">{selectedTemplate.discipline_title}</Badge>
                     </div>
-                    {selectedTemplate.description_md.trim() !== '' ? (
-                      <p className="whitespace-pre-line text-[11px] leading-relaxed text-ink3">
-                        {selectedTemplate.description_md}
-                      </p>
+                    {(selectedTemplate.attachments?.length ?? 0) > 0 ? (
+                      <ul className="space-y-0.5">
+                        {(selectedTemplate.attachments ?? []).map((file) => (
+                          <li key={file.url}>
+                            <a
+                              href={file.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex max-w-full items-center gap-1 text-[10px] text-brand hover:underline"
+                            >
+                              <IconPaperclip className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{file.name}</span>
+                            </a>
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
                     <p className="text-[10px] text-ink3">
-                      XP и бонусное окно рассчитаются по параметрам заготовки.
+                      Бонусное окно задаётся ниже; XP рассчитается по параметрам заготовки.
                     </p>
                   </Card>
                 ) : null}
@@ -1080,6 +1096,33 @@ function IssueTaskModal({
             </Button>
           ))}
         </div>
+
+        {sourceMode === 'bank' ? (
+          <Field
+            label="Бонус до (спидран)"
+            hint={
+              submitted && !bonusUntilValid
+                ? 'Дата должна быть в будущем и раньше дедлайна'
+                : !bonusTouched && autoBonusEnd
+                  ? `Автоматически: ${formatDeadline24(autoBonusEnd)} — можно изменить`
+                  : undefined
+            }
+            error={
+              submitted && !bonusUntilValid
+                ? 'Дата должна быть в будущем и раньше дедлайна'
+                : null
+            }
+          >
+            <DeadlineInput
+              value={bonusValue}
+              onChange={(next) => {
+                setBonusTouched(true);
+                setBonusUntilLocal(next);
+              }}
+              invalid={submitted && !bonusUntilValid}
+            />
+          </Field>
+        ) : null}
 
         {sourceMode === 'new' ? (
           <>

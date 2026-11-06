@@ -24,7 +24,7 @@ import {
   SkeletonList,
   TextArea,
 } from './ui';
-import { IconAlert, IconBook, IconPlus, IconTrash, IconUsers } from './icons';
+import { IconAlert, IconBook, IconFile, IconPaperclip, IconPlus, IconTrash, IconUsers } from './icons';
 
 const TASK_TYPES: TaskType[] = ['TEST', 'NOTES', 'ESSAY', 'LAB_CODE', 'TEAM_PROJECT'];
 const DEFAULT_REQUIREMENTS = 8;
@@ -226,10 +226,28 @@ function TemplateRow({
               </Badge>
             ) : null}
           </div>
-          {template.description_md.trim() !== '' ? (
-            <p className="mt-1 line-clamp-2 text-[11px] leading-relaxed text-ink3">
-              {template.description_md}
-            </p>
+          {(template.attachments?.length ?? 0) > 0 ? (
+            <div className="mt-1.5 space-y-1">
+              <Badge tone="slate">
+                <IconPaperclip className="h-3 w-3" />
+                {template.attachments?.length ?? 0}
+              </Badge>
+              <ul className="space-y-0.5">
+                {(template.attachments ?? []).map((file) => (
+                  <li key={file.url}>
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex max-w-full items-center gap-1 text-[10px] text-brand hover:underline"
+                    >
+                      <IconFile className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{file.name}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ) : null}
         </div>
         <Button
@@ -261,8 +279,7 @@ function CreateTemplateModal({
   const [disciplineID, setDisciplineID] = useState(String(disciplines[0]?.id ?? ''));
   const [taskType, setTaskType] = useState<TaskType>('LAB_CODE');
   const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [speedrun, setSpeedrun] = useState(String(DEFAULT_BONUS_HOURS));
+  const [files, setFiles] = useState<File[]>([]);
   const [teamSize, setTeamSize] = useState(2);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -284,15 +301,15 @@ function CreateTemplateModal({
       await createTaskTemplate({
         discipline_id: Number(disciplineID),
         title: title.trim(),
-        description_md: description.trim(),
+        description_md: '',
         task_type: taskType,
         // Сложность не спрашиваем у преподавателя: базовые значения нужны
         // только формуле XP, а не содержанию задания.
         requirements_count: DEFAULT_REQUIREMENTS,
         expected_hours: DEFAULT_HOURS,
-        speedrun_window_hours: Math.max(1, Math.round(Number(speedrun) || DEFAULT_BONUS_HOURS)),
+        speedrun_window_hours: DEFAULT_BONUS_HOURS,
         team_size: taskType === 'TEAM_PROJECT' ? teamSize : 1,
-      });
+      }, files);
 
       notify({ tone: 'success', title: 'Заготовка создана', description: title.trim() });
       onCreated();
@@ -376,28 +393,22 @@ function CreateTemplateModal({
         </Field>
 
         <Field
-          label="Подробности (необязательно)"
-          htmlFor="template-description"
-          hint="Требования, критерии, ссылки на методички."
+          label="Файлы задания"
+          htmlFor="template-files"
+          hint="Методички, шаблоны, тесты. До 5 файлов по 20 МБ."
         >
-          <TextArea
-            id="template-description"
-            value={description}
-            onChange={(event) => setDescription(event.target.value)}
-            placeholder={'1. ...\n2. ...'}
+          <input
+            id="template-files"
+            type="file"
+            multiple
+            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
           />
-        </Field>
-
-        <Field label="Бонусное окно" htmlFor="template-speedrun">
-          <SelectInput
-            id="template-speedrun"
-            value={speedrun}
-            onChange={(event) => setSpeedrun(event.target.value)}
-          >
-            <option value="24">24 часа</option>
-            <option value="48">48 часов</option>
-            <option value="72">72 часа</option>
-          </SelectInput>
+          {files.length > 0 ? (
+            <p className="mt-1 text-[10px] text-ink3">
+              {files.map((file) => file.name).join(', ')}
+            </p>
+          ) : null}
         </Field>
 
         {taskType === 'TEAM_PROJECT' ? (

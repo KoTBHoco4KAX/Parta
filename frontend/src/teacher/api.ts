@@ -537,8 +537,25 @@ export function fetchTaskTemplates(): Promise<TaskTemplate[]> {
 }
 
 /** POST /api/task-templates — сохранить заготовку в базу. */
-export function createTaskTemplate(input: CreateTaskTemplateRequest): Promise<TaskTemplate> {
-  return apiFetch<TaskTemplate>('/task-templates', { method: 'POST', body: input });
+export async function createTaskTemplate(
+  input: CreateTaskTemplateRequest,
+  files: File[] = [],
+): Promise<TaskTemplate> {
+  if (files.length === 0) {
+    return apiFetch<TaskTemplate>('/task-templates', { method: 'POST', body: input });
+  }
+
+  const form = new FormData();
+
+  for (const [key, value] of Object.entries(input)) {
+    form.append(key, String(value));
+  }
+
+  for (const file of files) {
+    form.append('file', file, file.name);
+  }
+
+  return apiFetch<TaskTemplate>('/task-templates', { method: 'POST', body: form });
 }
 
 /** DELETE /api/task-templates/{id} — удалить заготовку. */
@@ -565,7 +582,13 @@ function toIssuedTaskResult(response: CreateTaskResponseDto): IssuedTaskResult {
 /** POST /api/task-templates/{id}/issue — выдать шаблон в поток. */
 export async function issueTaskTemplate(
   templateId: number,
-  input: { assignmentId: number; deadlineAt: string; studentIds?: number[] },
+  input: {
+    assignmentId: number;
+    deadlineAt: string;
+    speedrunWindowHours: number;
+    speedrunBonusUntil?: string;
+    studentIds?: number[];
+  },
 ): Promise<IssuedTaskResult> {
   const response = await apiFetch<CreateTaskResponseDto>(
     `/task-templates/${templateId}/issue`,
@@ -574,6 +597,8 @@ export async function issueTaskTemplate(
       body: {
         assignment_id: input.assignmentId,
         deadline_at: input.deadlineAt,
+        speedrun_window_hours: input.speedrunWindowHours,
+        speedrun_bonus_until: input.speedrunBonusUntil,
         student_ids: input.studentIds,
       },
     },

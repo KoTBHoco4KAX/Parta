@@ -21,6 +21,7 @@ type TaskTemplate struct {
 	RequirementsCount   int
 	ExpectedHours       float64
 	SpeedrunWindowHours int
+	Attachments         string
 	TeamSize            int
 	CreatedAt           time.Time
 }
@@ -35,6 +36,7 @@ type CreateTaskTemplateInput struct {
 	RequirementsCount   int
 	ExpectedHours       float64
 	SpeedrunWindowHours int
+	Attachments         string
 	TeamSize            int
 }
 
@@ -50,7 +52,7 @@ func NewTaskTemplateRepo(db *sql.DB) *TaskTemplateRepo {
 
 const taskTemplateColumns = `tt.id, tt.teacher_id, tt.discipline_id, d.code, d.title,
 	tt.title, tt.description_md, tt.task_type, tt.requirements_count,
-	tt.expected_hours, tt.speedrun_window_hours, tt.team_size, tt.created_at`
+	tt.expected_hours, tt.speedrun_window_hours, tt.attachments, tt.team_size, tt.created_at`
 
 const taskTemplateSelect = `SELECT ` + taskTemplateColumns + `
 	FROM task_templates tt
@@ -64,12 +66,13 @@ func (r *TaskTemplateRepo) Create(
 	row := r.db.QueryRowContext(ctx,
 		`INSERT INTO task_templates (
 		     teacher_id, discipline_id, title, description_md, task_type,
-		     requirements_count, expected_hours, speedrun_window_hours, team_size
+		     requirements_count, expected_hours, speedrun_window_hours, attachments, team_size
 		 )
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 RETURNING id`,
 		in.TeacherID, in.DisciplineID, in.Title, in.DescriptionMD, in.TaskType,
-		in.RequirementsCount, in.ExpectedHours, in.SpeedrunWindowHours, in.TeamSize)
+		in.RequirementsCount, in.ExpectedHours, in.SpeedrunWindowHours,
+		in.Attachments, in.TeamSize)
 
 	var id int64
 	if err := row.Scan(&id); err != nil {
@@ -158,6 +161,7 @@ func scanTaskTemplate(from row) (*TaskTemplate, error) {
 		&template.RequirementsCount,
 		&template.ExpectedHours,
 		&template.SpeedrunWindowHours,
+		&template.Attachments,
 		&template.TeamSize,
 		&createdAt,
 	); err != nil {

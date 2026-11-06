@@ -258,6 +258,7 @@ export interface TaskTemplate {
   expected_hours: number;
   speedrun_window_hours: number;
   team_size: number;
+  attachments?: { name: string; url: string; size: number }[];
   created_at: string;
 }
 

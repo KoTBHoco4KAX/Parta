@@ -20,6 +20,15 @@ const (
 // uploadTaskAttachments сохраняет файлы задания в uploads и возвращает
 // JSON-массив вложений для tasks.attachments. Ошибки пишутся в ответ сами.
 func (s *Server) uploadTaskAttachments(w http.ResponseWriter, r *http.Request, groupID int64) (string, bool) {
+	return s.uploadAttachments(w, r, "submission", groupID)
+}
+
+// uploadTemplateAttachments сохраняет файлы заготовки базы заданий.
+func (s *Server) uploadTemplateAttachments(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return s.uploadAttachments(w, r, "template", 0)
+}
+
+func (s *Server) uploadAttachments(w http.ResponseWriter, r *http.Request, prefix string, groupID int64) (string, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxTaskAttachments*(maxTaskAttachmentBytes+1<<20))
 
 	if err := r.ParseMultipartForm(16 << 20); err != nil {
@@ -63,7 +72,13 @@ func (s *Server) uploadTaskAttachments(w http.ResponseWriter, r *http.Request, g
 			return "", false
 		}
 
-		url, _, _, err := s.storeUpload(src, header.Filename, -groupID)
+		var url string
+
+		if prefix == "submission" {
+			url, _, _, err = s.storeUpload(src, header.Filename, -groupID)
+		} else {
+			url, _, _, err = s.storeUploadPrefixed(src, header.Filename, prefix)
+		}
 		_ = src.Close()
 
 		if err != nil {

@@ -1,7 +1,11 @@
 package tests
 
 import (
+	"bytes"
+	"encoding/json"
+	"mime/multipart"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -249,5 +253,108 @@ func TestTaskTemplatesBaseAndIndividualIssue(t *testing.T) {
 	status, templates = h.getArray(t, "/api/task-templates", teacherToken)
 	if status != http.StatusOK || len(templates) != 0 {
 		t.Fatalf("templates after delete = %d (status %d), want 0", len(templates), status)
+	}
+}
+
+func TestTaskTemplateWithAttachmentAndIssueBonus(t *testing.T) {
+	h := newHarness(t)
+	_ = h.seed()
+
+	token := h.login(t, "teacher@parta.dev")
+	disciplineID := h.scalarInt(`SELECT id FROM disciplines WHERE code = 'DB'`)
+
+	var payloadBuf bytes.Buffer
+
+	writer := multipart.NewWriter(&payloadBuf)
+	if err := writer.WriteField("discipline_id", itoa64(disciplineID)); err != nil {
+		t.Fatalf("write discipline: %v", err)
+	}
+	if err := writer.WriteField("title", "Задание с файлом"); err != nil {
+		t.Fatalf("write title: %v", err)
+	}
+	if err := writer.WriteField("task_type", "LAB_CODE"); err != nil {
+		t.Fatalf("write type: %v", err)
+	}
+	if err := writer.WriteField("team_size", "1"); err != nil {
+		t.Fatalf("write team size: %v", err)
+	}
+
+	part, err := writer.CreateFormFile("file", "brief.txt")
+	if err != nil {
+		t.Fatalf("create file: %v", err)
+	}
+	if _, err := part.Write([]byte("методичка")); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("close writer: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, h.server.URL+"/api/task-templates", &payloadBuf)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		t.Fatalf("create template: %v", err)
+	}
+	defer resp.Body.Close()
+
+	payload := map[string]any{}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode template: %v", err)
+	}
+
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create template status = %d, want 201 (%v)", resp.StatusCode, payload)
+	}
+
+	templateID := int64(payload["id"].(float64))
+	attachments, ok := payload["attachments"].([]any)
+	if !ok || len(attachments) != 1 {
+		t.Fatalf("template attachments = %v, want 1", payload["attachments"])
+	}
+
+	deadline := time.Now().Add(48 * time.Hour).UTC()
+	bonus := time.Now().Add(24 * time.Hour).UTC()
+
+	status, body := h.request(t, http.MethodPost,
+		"/api/task-templates/"+itoa64(templateID)+"/issue", token, map[string]any{
+			"assignment_id":         h.scalarInt(`SELECT id FROM teacher_assignments WHERE group_id = 1 LIMIT 1`),
+			"deadline_at":           deadline.Format(time.RFC3339),
+			"speedrun_window_hours": 24,
+			"speedrun_bonus_until":  bonus.Format(time.RFC3339),
+		})
+	if status != http.StatusCreated {
+		t.Fatalf("issue template = %d %v", status, body)
+	}
+
+	taskID := int64(body["task_id"].(float64))
+
+	var (
+		window     int
+		bonusUntil string
+		taskFiles  string
+	)
+
+	if err := h.db.QueryRow(
+		`SELECT speedrun_window_hours, COALESCE(speedrun_bonus_until, ''), attachments
+		 FROM tasks WHERE id = ?`, taskID).Scan(&window, &bonusUntil, &taskFiles); err != nil {
+		t.Fatalf("read task: %v", err)
+	}
+
+	if window != 24 {
+		t.Fatalf("speedrun window = %d, want 24", window)
+	}
+
+	if bonusUntil == "" {
+		t.Fatalf("speedrun bonus until is empty")
+	}
+
+	if !strings.Contains(taskFiles, "brief.txt") {
+		t.Fatalf("task attachments = %s, want brief.txt", taskFiles)
 	}
 }

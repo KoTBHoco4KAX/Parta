@@ -13,19 +13,20 @@ import (
 
 // taskTemplateView — элемент GET /api/task-templates.
 type taskTemplateView struct {
-	ID                  int64   `json:"id"`
-	TeacherID           int64   `json:"teacher_id"`
-	DisciplineID        int64   `json:"discipline_id"`
-	DisciplineCode      string  `json:"discipline_code"`
-	DisciplineTitle     string  `json:"discipline_title"`
-	Title               string  `json:"title"`
-	DescriptionMD       string  `json:"description_md"`
-	TaskType            string  `json:"task_type"`
-	RequirementsCount   int     `json:"requirements_count"`
-	ExpectedHours       float64 `json:"expected_hours"`
-	SpeedrunWindowHours int     `json:"speedrun_window_hours"`
-	TeamSize            int     `json:"team_size"`
-	CreatedAt           string  `json:"created_at"`
+	ID                  int64            `json:"id"`
+	TeacherID           int64            `json:"teacher_id"`
+	DisciplineID        int64            `json:"discipline_id"`
+	DisciplineCode      string           `json:"discipline_code"`
+	DisciplineTitle     string           `json:"discipline_title"`
+	Title               string           `json:"title"`
+	DescriptionMD       string           `json:"description_md"`
+	TaskType            string           `json:"task_type"`
+	RequirementsCount   int              `json:"requirements_count"`
+	ExpectedHours       float64          `json:"expected_hours"`
+	SpeedrunWindowHours int              `json:"speedrun_window_hours"`
+	TeamSize            int              `json:"team_size"`
+	Attachments         []taskAttachment `json:"attachments"`
+	CreatedAt           string           `json:"created_at"`
 }
 
 // createTaskTemplateRequest — тело POST /api/task-templates.
@@ -43,9 +44,11 @@ type createTaskTemplateRequest struct {
 
 // issueTaskTemplateRequest — тело POST /api/task-templates/{id}/issue.
 type issueTaskTemplateRequest struct {
-	AssignmentID int64   `json:"assignment_id"`
-	DeadlineAt   string  `json:"deadline_at"`
-	StudentIDs   []int64 `json:"student_ids"`
+	AssignmentID        int64   `json:"assignment_id"`
+	DeadlineAt          string  `json:"deadline_at"`
+	SpeedrunWindowHours int     `json:"speedrun_window_hours"`
+	SpeedrunBonusUntil  string  `json:"speedrun_bonus_until"`
+	StudentIDs          []int64 `json:"student_ids"`
 }
 
 // handleListTaskTemplates отдаёт базу заданий: преподавателю — свою, админу — всю.
@@ -85,6 +88,7 @@ func (s *Server) handleListTaskTemplates(w http.ResponseWriter, r *http.Request)
 }
 
 // handleCreateTaskTemplate сохраняет заготовку в личную базу преподавателя.
+// Поддерживает JSON и multipart с файлами.
 func (s *Server) handleCreateTaskTemplate(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
 	if !ok {
@@ -95,12 +99,72 @@ func (s *Server) handleCreateTaskTemplate(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		s.handleCreateTaskTemplateMultipart(w, r, p)
+
+		return
+	}
+
 	var req createTaskTemplateRequest
 
 	if !decodeJSON(w, r, &req) {
 		return
 	}
 
+	s.createTaskTemplateResponse(w, r, p, req, "[]")
+}
+
+// handleCreateTaskTemplateMultipart читает поля формы и сохраняет файлы.
+func (s *Server) handleCreateTaskTemplateMultipart(
+	w http.ResponseWriter,
+	r *http.Request,
+	p principal,
+) {
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Error: "invalid multipart form",
+			Code:  CodeInvalidMultipart,
+		})
+
+		return
+	}
+
+	value := func(key string) string {
+		if r.MultipartForm == nil || len(r.MultipartForm.Value[key]) == 0 {
+			return ""
+		}
+
+		return r.MultipartForm.Value[key][0]
+	}
+
+	req := createTaskTemplateRequest{
+		DisciplineID:        parseInt64OrZero(value("discipline_id")),
+		DisciplineCode:      value("discipline_code"),
+		Title:               value("title"),
+		DescriptionMD:       value("description_md"),
+		TaskType:            value("task_type"),
+		RequirementsCount:   int(parseInt64OrZero(value("requirements_count"))),
+		ExpectedHours:       parseFloatOrZero(value("expected_hours")),
+		SpeedrunWindowHours: int(parseInt64OrZero(value("speedrun_window_hours"))),
+		TeamSize:            int(parseInt64OrZero(value("team_size"))),
+	}
+
+	attachments, ok := s.uploadTemplateAttachments(w, r)
+	if !ok {
+		return
+	}
+
+	s.createTaskTemplateResponse(w, r, p, req, attachments)
+}
+
+// createTaskTemplateResponse проверяет поля и создаёт заготовку.
+func (s *Server) createTaskTemplateResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	p principal,
+	req createTaskTemplateRequest,
+	attachments string,
+) {
 	if !validTaskType(req.TaskType) {
 		writeError(w, domainerrors.ErrInvalidArgument)
 
@@ -160,6 +224,7 @@ func (s *Server) handleCreateTaskTemplate(w http.ResponseWriter, r *http.Request
 		RequirementsCount:   requirementsCount,
 		ExpectedHours:       expectedHours,
 		SpeedrunWindowHours: speedrunWindow,
+		Attachments:         attachments,
 		TeamSize:            teamSize,
 	})
 	if err != nil {
@@ -286,6 +351,22 @@ func (s *Server) handleIssueTaskTemplate(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	speedrunWindow := req.SpeedrunWindowHours
+	if speedrunWindow <= 0 {
+		speedrunWindow = template.SpeedrunWindowHours
+	}
+
+	if speedrunWindow <= 0 {
+		speedrunWindow = defaultSpeedrunWindowHours
+	}
+
+	bonusUntil, err := parseSpeedrunBonus(req.SpeedrunBonusUntil, deadline, s.now())
+	if err != nil {
+		writeError(w, domainerrors.ErrInvalidArgument)
+
+		return
+	}
+
 	students, err := s.resolveStudents(r.Context(), groupID, req.StudentIDs)
 	if err != nil {
 		writeError(w, err)
@@ -294,17 +375,19 @@ func (s *Server) handleIssueTaskTemplate(w http.ResponseWriter, r *http.Request)
 	}
 
 	response, err := s.issueTask(r.Context(), p, issueTaskInput{
-		AssignmentID:      req.AssignmentID,
-		GroupID:           groupID,
-		Topic:             template.Title,
-		Title:             template.Title,
-		DescriptionMD:     template.DescriptionMD,
-		TaskType:          template.TaskType,
-		RequirementsCount: template.RequirementsCount,
-		ExpectedHours:     template.ExpectedHours,
-		Deadline:          deadline,
-		SpeedrunWindow:    template.SpeedrunWindowHours,
-		TeamSize:          template.TeamSize,
+		AssignmentID:       req.AssignmentID,
+		GroupID:            groupID,
+		Topic:              template.Title,
+		Title:              template.Title,
+		DescriptionMD:      template.DescriptionMD,
+		TaskType:           template.TaskType,
+		RequirementsCount:  template.RequirementsCount,
+		ExpectedHours:      template.ExpectedHours,
+		Deadline:           deadline,
+		SpeedrunWindow:     speedrunWindow,
+		SpeedrunBonusUntil: bonusUntil,
+		Attachments:        template.Attachments,
+		TeamSize:           template.TeamSize,
 	}, students)
 	if err != nil {
 		writeError(w, err)
@@ -348,6 +431,7 @@ func newTaskTemplateView(template *storage.TaskTemplate) taskTemplateView {
 		ExpectedHours:       template.ExpectedHours,
 		SpeedrunWindowHours: template.SpeedrunWindowHours,
 		TeamSize:            template.TeamSize,
+		Attachments:         parseTaskAttachments(template.Attachments),
 		CreatedAt:           formatTimestamp(template.CreatedAt),
 	}
 }
