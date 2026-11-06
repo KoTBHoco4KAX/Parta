@@ -207,10 +207,14 @@ export function TasksScreen({
 
   const upcoming = grouped.filter((item) => !item.past);
   const past = grouped.filter((item) => item.past);
+  const reviewTotal = grouped.reduce((sum, item) => sum + item.counts.REVIEW, 0);
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-ink3">
+          Активных: {upcoming.length} · Прошедших: {past.length} · На проверке: {reviewTotal}
+        </p>
         <Button size="sm" onClick={() => setCreating(true)} disabled={assignments.length === 0}>
           <IconPlus className="h-4 w-4" />
           Выдать

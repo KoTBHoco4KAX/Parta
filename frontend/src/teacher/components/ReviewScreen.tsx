@@ -37,6 +37,8 @@ export function ReviewScreen({
 
   return (
     <div>
+      <div className="mb-3 text-[11px] text-ink3">В очереди: {items.length}</div>
+
       {loading ? <SkeletonList rows={3} /> : null}
 
       {error && !loading ? <ErrorState message={error} onRetry={reload} /> : null}

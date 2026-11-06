@@ -106,9 +106,23 @@ export default function ShopPage() {
   const inLevel = profile.xpBalance % XP_PER_LEVEL;
   const progress = Math.round((inLevel / XP_PER_LEVEL) * 100);
   const totalPrice = FREEZE_PRICE * quantity;
+  const achievements = achievementsFor(
+    profile.xpBalance,
+    profile.onTimeStreak,
+    profile.streakFreezes,
+  );
+  const unlockedCount = achievements.filter((achievement) => achievement.unlocked).length;
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink3">
+        <span>Начислений: {ledger.length}</span>
+        <span>
+          Достижений: {unlockedCount}/{achievements.length}
+        </span>
+        <span>Заморозок: {profile.streakFreezes}</span>
+      </div>
+
       {/* Панель XP */}
       <section className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]">
         <div className="flex items-end justify-between gap-3">

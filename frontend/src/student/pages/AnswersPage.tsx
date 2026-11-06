@@ -126,6 +126,11 @@ export default function AnswersPage() {
           Отправьте черновик на взаимопроверку, получите два отзыва и решите, был ли
           он полезен. Награда проверяющим выплачивается после приёмки работы учителем.
         </p>
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink3">
+          <span>Заданий: {overview.tasks.length}</span>
+          <span>Черновиков: {overview.drafts.length}</span>
+          <span>Проверок: {overview.reviews.length}</span>
+        </div>
       </div>
 
       {error ? (

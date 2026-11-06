@@ -101,6 +101,9 @@ export default function LeaderboardPage() {
           <p className="mt-0.5 text-xs text-ink3">
             Группа {data.group} · {data.group_title}
           </p>
+          <p className="mt-1 text-[11px] text-ink3">
+            Участников: {data.top.length} · Прорывов: {data.breakthrough.length}
+          </p>
         </div>
         <div className="shrink-0 rounded-xl border border-line bg-card px-2.5 py-2 text-right">
           <p className="text-[9px] uppercase tracking-wide text-ink4">Итоги недели через</p>

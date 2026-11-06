@@ -132,7 +132,11 @@ export function TaskBankScreen({
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-ink3">
+          Заготовок: {templates.length} · С файлами:{' '}
+          {templates.filter((template) => (template.attachments?.length ?? 0) > 0).length}
+        </p>
         <Button
           size="sm"
           onClick={() => setCreating(true)}

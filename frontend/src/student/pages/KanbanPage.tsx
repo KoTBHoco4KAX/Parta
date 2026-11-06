@@ -56,6 +56,14 @@ export default function KanbanPage() {
     return { task: card.task, submission: card.submission };
   }, [cards, selectedTaskId]);
 
+  const totalCount = cards.length;
+  const workCount = cards.filter((card) => card.status === 'IN_PROGRESS').length;
+  const reviewCount = cards.filter((card) => card.status === 'REVIEW').length;
+  const overdueCount = cards.filter(
+    (card) =>
+      card.status !== 'DONE' && new Date(card.task.deadline_at).getTime() < Date.now(),
+  ).length;
+
   async function handleCardClick(task: Task) {
     if (busy) {
       return;
@@ -101,6 +109,15 @@ export default function KanbanPage() {
 
   return (
     <div>
+      <div className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-ink3">
+        <span>Всего: {totalCount}</span>
+        <span>В работе: {workCount}</span>
+        <span>На проверке: {reviewCount}</span>
+        <span className={overdueCount > 0 ? 'text-bad' : undefined}>
+          Просрочено: {overdueCount}
+        </span>
+      </div>
+
       {error ? (
         <p role="alert" className="mb-3 rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}

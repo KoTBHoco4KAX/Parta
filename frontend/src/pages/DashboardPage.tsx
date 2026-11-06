@@ -1,8 +1,20 @@
+import { useEffect, useState } from 'react';
 import { useAuth } from '../core/auth';
+import { fetchSubmissions } from '../core/api';
+import type { Submission } from '../core/types';
 
 // DashboardPage — карточка ученика: имя, баланс XP, стрик и заморозки.
 export function DashboardPage() {
   const { user, connection } = useAuth();
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+
+  useEffect(() => {
+    fetchSubmissions()
+      .then(setSubmissions)
+      .catch(() => {
+        // Счётчики — вспомогательные: карточка работает и без них.
+      });
+  }, []);
 
   if (!user) {
     return null;
@@ -36,6 +48,26 @@ export function DashboardPage() {
           <Stat label="Заморозки" value={user.streak_freezes} />
         </dl>
       </section>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Counter label="К выполнению" value={countByStatus(submissions, 'TODO')} />
+        <Counter label="В работе" value={countByStatus(submissions, 'IN_PROGRESS')} />
+        <Counter label="На проверке" value={countByStatus(submissions, 'REVIEW')} />
+        <Counter label="Готово" value={countByStatus(submissions, 'DONE')} />
+      </div>
+    </div>
+  );
+}
+
+function countByStatus(submissions: Submission[], status: Submission['status']): number {
+  return submissions.filter((submission) => submission.status === status).length;
+}
+
+function Counter({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-xl border border-line bg-card px-3 py-2">
+      <p className="text-[10px] text-ink4">{label}</p>
+      <p className="text-base font-semibold tabular-nums text-ink">{value}</p>
     </div>
   );
 }
