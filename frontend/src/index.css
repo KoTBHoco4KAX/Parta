@@ -160,8 +160,29 @@ body {
 }
 
 .theme-ideya-fix .theme-pattern {
+  position: relative;
+  isolation: isolate;
   background-color: rgb(var(--c-card));
+  overflow: hidden;
+}
+
+.theme-ideya-fix .theme-pattern::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
   background-image: url('/assets/themes/ideya-fix-pattern.png');
   background-repeat: repeat;
   background-size: 384px;
+  opacity: 0.18;
+}
+
+.theme-ideya-fix .theme-pattern > * {
+  position: relative;
+  z-index: 1;
+}
+
+.theme-ideya-fix[data-theme='light'] .theme-pattern::before {
+  opacity: 0.14;
 }
