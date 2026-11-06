@@ -12,6 +12,7 @@ import {
   type TeacherAssignment,
 } from '../api';
 import type { ToastData } from '../types';
+import { pluralize } from '../lib/format';
 import {
   Avatar,
   Badge,
@@ -116,9 +117,15 @@ export function GroupsScreen({
 
   const reload = useCallback(() => setReloadKey((value) => value + 1), []);
 
+  const totalStudents = Object.values(members).reduce((sum, list) => sum + list.length, 0);
+
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-ink3">
+          {groups.length} {pluralize(groups.length, ['поток', 'потока', 'потоков'])} ·{' '}
+          {totalStudents} {pluralStudents(totalStudents)}
+        </p>
         <Button
           size="sm"
           onClick={() => setCreating(true)}
