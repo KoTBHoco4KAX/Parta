@@ -3,16 +3,18 @@ import { AppShell } from '../components/AppShell';
 import { useAuth } from '../core/auth';
 import type { ToastData } from './types';
 import { fetchAllSubmissions } from './api';
+import { GroupsScreen } from './components/GroupsScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { TasksScreen } from './components/TasksScreen';
 import { ReviewScreen } from './components/ReviewScreen';
 import { Toast, cn } from './components/ui';
-import { IconClipboard, IconInbox, IconUser } from './components/icons';
+import { IconClipboard, IconInbox, IconUser, IconUsers } from './components/icons';
 
-export type TeacherTab = 'profile' | 'tasks' | 'review';
+export type TeacherTab = 'profile' | 'tasks' | 'review' | 'groups';
 
 const TABS: { id: TeacherTab; label: string; icon: typeof IconInbox }[] = [
   { id: 'profile', label: 'Профиль', icon: IconUser },
+  { id: 'groups', label: 'Группы', icon: IconUsers },
   { id: 'tasks', label: 'Задания', icon: IconClipboard },
   { id: 'review', label: 'Проверка', icon: IconInbox },
 ];
@@ -164,7 +166,9 @@ export default function TeacherApp() {
         </nav>
       }
     >
-      {tab === 'profile' ? <ProfileScreen /> : null}
+      {tab === 'profile' ? <ProfileScreen onNavigate={navigate} /> : null}
+
+      {tab === 'groups' ? <GroupsScreen notify={notify} /> : null}
 
       {tab === 'tasks' ? (
         <TasksScreen

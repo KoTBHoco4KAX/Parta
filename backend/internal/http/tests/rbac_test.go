@@ -21,6 +21,11 @@ func TestStudentCannotCallStaffEndpoints(t *testing.T) {
 		body   any
 	}{
 		{http.MethodPost, "/api/tasks", map[string]any{}},
+		{http.MethodPost, "/api/tasks/1/repeat", map[string]any{}},
+		{http.MethodGet, "/api/task-templates", nil},
+		{http.MethodPost, "/api/task-templates", map[string]any{}},
+		{http.MethodDelete, "/api/task-templates/1", nil},
+		{http.MethodPost, "/api/task-templates/1/issue", map[string]any{}},
 		{http.MethodGet, "/api/users", nil},
 		{http.MethodPost, "/api/users", map[string]any{}},
 		{http.MethodDelete, "/api/users/1", nil},
@@ -82,8 +87,9 @@ func TestTeacherCannotCallStudentEndpoints(t *testing.T) {
 	}
 }
 
-// TestTeacherCannotCallAdminEndpoints: управление пользователями и группами
-// доступно только администратору.
+// TestTeacherCannotCallAdminEndpoints: управление пользователями и удаление
+// групп доступно только администратору. GET/POST /api/groups преподавателю
+// разрешены отдельно: он видит и создаёт только свои группы (см. teacher_api).
 func TestTeacherCannotCallAdminEndpoints(t *testing.T) {
 	h := newHarness(t)
 	_ = h.seed()
@@ -97,8 +103,6 @@ func TestTeacherCannotCallAdminEndpoints(t *testing.T) {
 		{http.MethodGet, "/api/users", nil},
 		{http.MethodPost, "/api/users", map[string]any{}},
 		{http.MethodDelete, "/api/users/1", nil},
-		{http.MethodGet, "/api/groups", nil},
-		{http.MethodPost, "/api/groups", map[string]any{}},
 		{http.MethodDelete, "/api/groups/1", nil},
 	}
 

@@ -44,6 +44,8 @@ export interface CreateTaskRequest {
   /** Бонус до (дата преподавателя); пусто — deadline − speedrun-окно. */
   speedrun_bonus_until?: string;
   team_size: number;
+  /** Индивидуальная выдача: пусто — вся группа. */
+  student_ids?: number[];
 }
 
 export interface CreateTaskResponse {
@@ -233,9 +235,40 @@ export interface PeerReview {
 
 export interface Assignment {
   id: number;
+  group_id: number;
   group_code: string;
   group_title: string;
+  discipline_id: number;
   discipline_code: string;
   discipline_title: string;
   teacher_name: string;
+}
+
+/** Заготовка задания в личной базе преподавателя. */
+export interface TaskTemplate {
+  id: number;
+  teacher_id: number;
+  discipline_id: number;
+  discipline_code: string;
+  discipline_title: string;
+  title: string;
+  description_md: string;
+  task_type: TaskType;
+  requirements_count: number;
+  expected_hours: number;
+  speedrun_window_hours: number;
+  team_size: number;
+  created_at: string;
+}
+
+/** Тело POST /api/task-templates. */
+export interface CreateTaskTemplateRequest {
+  discipline_id: number;
+  title: string;
+  description_md: string;
+  task_type: TaskType;
+  requirements_count: number;
+  expected_hours: number;
+  speedrun_window_hours: number;
+  team_size: number;
 }

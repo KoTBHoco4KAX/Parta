@@ -3,10 +3,13 @@ import { readStoredToken } from '../core/session';
 import type {
   Assignment as AssignmentDto,
   CreateTaskResponse as CreateTaskResponseDto,
+  CreateTaskTemplateRequest,
+  Group,
   PeerReview as PeerReviewDto,
   Role,
   Submission,
   Task,
+  TaskTemplate,
   TaskType,
   VerdictResponse,
 } from '../core/types';
@@ -121,8 +124,10 @@ export async function fetchPeerReviewSessions(): Promise<PeerReview[]> {
 // TeacherAssignment — назначение «группа + дисциплина» для формы задачи.
 export interface TeacherAssignment {
   id: number;
+  groupId: number;
   groupCode: string;
   groupTitle: string;
+  disciplineId: number;
   disciplineCode: string;
   disciplineTitle: string;
 }
@@ -133,8 +138,10 @@ export async function fetchTeacherAssignments(): Promise<TeacherAssignment[]> {
 
   return rows.map((row) => ({
     id: row.id,
+    groupId: row.group_id,
     groupCode: row.group_code,
     groupTitle: row.group_title,
+    disciplineId: row.discipline_id,
     disciplineCode: row.discipline_code,
     disciplineTitle: row.discipline_title,
   }));
@@ -159,6 +166,8 @@ export interface TeacherTaskInput {
   teamSize: number;
   /** XP за задание, назначенный преподавателем. */
   xp?: number;
+  /** Индивидуальная выдача: пусто — вся группа назначения. */
+  studentIds?: number[];
   /** Файлы, приложенные преподавателем к заданию. */
   files?: File[];
 }
@@ -209,6 +218,7 @@ export async function createTeacherTask(
         speedrun_bonus_until: input.speedrunBonusUntil,
         team_size: input.teamSize,
         xp: input.xp,
+        student_ids: input.studentIds,
       },
     });
   } else {
@@ -218,6 +228,10 @@ export async function createTeacherTask(
 
     for (const [key, value] of Object.entries(fields)) {
       form.append(key, value);
+    }
+
+    for (const studentId of input.studentIds ?? []) {
+      form.append('student_ids', String(studentId));
     }
 
     for (const file of files) {
@@ -478,4 +492,139 @@ export async function fetchGroupMembers(groupId: number): Promise<GroupMember[]>
     role: item.role,
     groupId: item.group_id,
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Группы преподавателя: список, создание, перевод и исключение учеников.
+// ---------------------------------------------------------------------------
+
+/** GET /api/groups — преподаватель видит только свои группы. */
+export function fetchTeacherGroups(): Promise<Group[]> {
+  return apiFetch<Group[]>('/groups');
+}
+
+/** POST /api/groups — группа сразу закрепляется за преподавателем. */
+export function createTeacherGroup(input: {
+  code: string;
+  title: string;
+  disciplineId: number;
+}): Promise<Group> {
+  return apiFetch<Group>('/groups', {
+    method: 'POST',
+    body: {
+      code: input.code,
+      title: input.title,
+      discipline_id: input.disciplineId,
+    },
+  });
+}
+
+/** PATCH /api/users/{id} — перевод в другую группу или исключение (null). */
+export async function updateUserGroup(userId: number, groupId: number | null): Promise<void> {
+  await apiFetch<unknown>(`/users/${userId}`, {
+    method: 'PATCH',
+    body: { group_id: groupId },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// База заданий: шаблоны, выдача и повтор.
+// ---------------------------------------------------------------------------
+
+/** GET /api/task-templates — личная база заданий преподавателя. */
+export function fetchTaskTemplates(): Promise<TaskTemplate[]> {
+  return apiFetch<TaskTemplate[]>('/task-templates');
+}
+
+/** POST /api/task-templates — сохранить заготовку в базу. */
+export function createTaskTemplate(input: CreateTaskTemplateRequest): Promise<TaskTemplate> {
+  return apiFetch<TaskTemplate>('/task-templates', { method: 'POST', body: input });
+}
+
+/** DELETE /api/task-templates/{id} — удалить заготовку. */
+export async function deleteTaskTemplate(templateId: number): Promise<void> {
+  await apiFetch<void>(`/task-templates/${templateId}`, { method: 'DELETE' });
+}
+
+export interface IssuedTaskResult {
+  taskId: number;
+  baseXP: number;
+  slotsCount: number;
+  bonusUntil: string;
+}
+
+function toIssuedTaskResult(response: CreateTaskResponseDto): IssuedTaskResult {
+  return {
+    taskId: response.task_id,
+    baseXP: response.base_xp_computed,
+    slotsCount: response.slots_count ?? 0,
+    bonusUntil: response.speedrun_bonus_until ?? '',
+  };
+}
+
+/** POST /api/task-templates/{id}/issue — выдать шаблон в поток. */
+export async function issueTaskTemplate(
+  templateId: number,
+  input: { assignmentId: number; deadlineAt: string; studentIds?: number[] },
+): Promise<IssuedTaskResult> {
+  const response = await apiFetch<CreateTaskResponseDto>(
+    `/task-templates/${templateId}/issue`,
+    {
+      method: 'POST',
+      body: {
+        assignment_id: input.assignmentId,
+        deadline_at: input.deadlineAt,
+        student_ids: input.studentIds,
+      },
+    },
+  );
+
+  return toIssuedTaskResult(response);
+}
+
+/** POST /api/tasks/{id}/repeat — выдать копию задания с новым дедлайном. */
+export async function repeatTeacherTask(
+  taskId: number,
+  input: { deadlineAt: string; studentIds?: number[] },
+): Promise<IssuedTaskResult> {
+  const response = await apiFetch<CreateTaskResponseDto>(`/tasks/${taskId}/repeat`, {
+    method: 'POST',
+    body: {
+      deadline_at: input.deadlineAt,
+      student_ids: input.studentIds,
+    },
+  });
+
+  return toIssuedTaskResult(response);
+}
+
+/**
+ * teacherErrorMessage — человекочитаемая ошибка для тостов.
+ *
+ * Backend отдаёт машинный code и короткий текст; в интерфейсе показываем
+ * понятную причину, а не «forbidden» или «invalid argument».
+ */
+export function teacherErrorMessage(cause: unknown, fallback: string): string {
+  if (!(cause instanceof ApiError)) {
+    return fallback;
+  }
+
+  switch (cause.code) {
+    case 'forbidden':
+      return 'Действие доступно только для ваших групп и учеников.';
+    case 'not_found':
+      return 'Запись не найдена: возможно, её уже удалили. Обновите список.';
+    case 'already_exists':
+      return 'Такая запись уже есть. Проверьте код группы или название.';
+    case 'invalid_argument':
+      return 'Проверьте заполнение полей: сервер отклонил данные.';
+    case 'guard_failed':
+      return 'Действие нарушает ограничения: проверьте состав учеников и дедлайн.';
+    case 'deadline_passed':
+      return 'Дедлайн уже прошёл — выберите будущую дату.';
+    case 'invalid_json':
+      return 'Сервер не смог разобрать запрос. Обновите страницу и попробуйте снова.';
+    default:
+      return cause.message.trim() !== '' ? cause.message : fallback;
+  }
 }

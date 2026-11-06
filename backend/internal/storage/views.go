@@ -292,8 +292,10 @@ func (r *PeerReviewRepo) listViews(ctx context.Context, query string, args ...an
 // AssignmentView — назначение «преподаватель + группа + дисциплина».
 type AssignmentView struct {
 	ID              int64
+	GroupID         int64
 	GroupCode       string
 	GroupTitle      string
+	DisciplineID    int64
 	DisciplineCode  string
 	DisciplineTitle string
 	TeacherName     string
@@ -301,7 +303,8 @@ type AssignmentView struct {
 
 // ListAssignments возвращает назначения; teacherID = 0 означает «все».
 func (r *TaskRepo) ListAssignments(ctx context.Context, teacherID int64) ([]AssignmentView, error) {
-	query := `SELECT ta.id, g.code, g.title, d.code, d.title, u.display_name
+	query := `SELECT ta.id, ta.group_id, g.code, g.title,
+		       ta.discipline_id, d.code, d.title, u.display_name
 		FROM teacher_assignments ta
 		JOIN groups g ON g.id = ta.group_id
 		JOIN disciplines d ON d.id = ta.discipline_id
@@ -327,8 +330,10 @@ func (r *TaskRepo) ListAssignments(ctx context.Context, teacherID int64) ([]Assi
 		var view AssignmentView
 		if err := rows.Scan(
 			&view.ID,
+			&view.GroupID,
 			&view.GroupCode,
 			&view.GroupTitle,
+			&view.DisciplineID,
 			&view.DisciplineCode,
 			&view.DisciplineTitle,
 			&view.TeacherName,

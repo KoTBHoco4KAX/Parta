@@ -62,6 +62,36 @@ func (r *GroupRepo) List(ctx context.Context) ([]Group, error) {
 	return groups, MapSQLError(rows.Err())
 }
 
+// ListForTeacher возвращает только группы, закреплённые за преподавателем.
+// Подзапрос по teacher_assignments не порождает дублей, даже если у
+// преподавателя несколько дисциплин в одной группе.
+func (r *GroupRepo) ListForTeacher(ctx context.Context, teacherID int64) ([]Group, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+groupColumns+`
+		 FROM groups
+		 WHERE id IN (
+		     SELECT group_id FROM teacher_assignments WHERE teacher_id = ?
+		 )
+		 ORDER BY code`, teacherID)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+	defer rows.Close()
+
+	groups := make([]Group, 0)
+
+	for rows.Next() {
+		group, err := scanGroup(rows)
+		if err != nil {
+			return nil, MapSQLError(err)
+		}
+
+		groups = append(groups, *group)
+	}
+
+	return groups, MapSQLError(rows.Err())
+}
+
 // Create заводит новую группу.
 func (r *GroupRepo) Create(ctx context.Context, code, title string) (*Group, error) {
 	row := r.db.QueryRowContext(ctx,
@@ -71,6 +101,45 @@ func (r *GroupRepo) Create(ctx context.Context, code, title string) (*Group, err
 	group, err := scanGroup(row)
 
 	return group, MapSQLError(err)
+}
+
+// CreateWithAssignment создаёт группу и сразу закрепляет её за преподавателем.
+// Обе записи коммитятся одной транзакцией: группы без назначения не остаётся.
+func (r *GroupRepo) CreateWithAssignment(
+	ctx context.Context,
+	code, title string,
+	teacherID, disciplineID int64,
+) (*Group, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	defer func() {
+		// No-op после Commit: откат завершённой транзакции безопасен.
+		_ = tx.Rollback()
+	}()
+
+	row := tx.QueryRowContext(ctx,
+		`INSERT INTO groups (code, title) VALUES (?, ?)
+		 RETURNING `+groupColumns, code, title)
+
+	group, err := scanGroup(row)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO teacher_assignments (teacher_id, group_id, discipline_id)
+		 VALUES (?, ?, ?)`, teacherID, group.ID, disciplineID); err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	return group, nil
 }
 
 // Update меняет код и название группы.

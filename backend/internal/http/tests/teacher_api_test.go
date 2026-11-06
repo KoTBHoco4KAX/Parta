@@ -93,6 +93,14 @@ func TestUserGroupPatchTeacherRestrictions(t *testing.T) {
 	if status != http.StatusUnprocessableEntity {
 		t.Fatalf("non-student status = %d, want 422 (%v)", status, body)
 	}
+
+	// Для преподавателя чужой контур (даже не студент) — 403.
+	status, body = h.request(t, http.MethodPatch, userPath(ids.admin), teacherToken, map[string]any{
+		"group_id": ids.groupIS21,
+	})
+	if status != http.StatusForbidden {
+		t.Fatalf("teacher patch non-student status = %d, want 403 (%v)", status, body)
+	}
 }
 
 func TestUserGroupPatchMissingField(t *testing.T) {

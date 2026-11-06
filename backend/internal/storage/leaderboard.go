@@ -74,12 +74,16 @@ func (r *LeaderboardRepo) ForGroup(
 		 ),
 		 ranked AS (
 		    SELECT id, display_name, weekly_xp,
-		           DENSE_RANK() OVER (ORDER BY weekly_xp DESC) AS rank
+		           ROW_NUMBER() OVER (
+		               ORDER BY weekly_xp DESC,
+		                        display_name COLLATE NOCASE,
+		                        id
+		           ) AS rank
 		    FROM effective
 		 )
 		 SELECT id, display_name, weekly_xp, rank
 		 FROM ranked
-		 ORDER BY rank, display_name COLLATE NOCASE`,
+		 ORDER BY rank`,
 		weekKey, groupID)
 	if err != nil {
 		return nil, MapSQLError(err)

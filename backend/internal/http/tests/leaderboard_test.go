@@ -73,12 +73,23 @@ func TestLeaderboardRanksWithinGroupAndResetsStaleWeek(t *testing.T) {
 		t.Fatalf("student1 rank = %d, want 1", ranks[ids.student1])
 	}
 
-	if ranks[ids.student2] != 2 || ranks[third] != 2 {
-		t.Fatalf("tie ranks = %d/%d, want 2/2", ranks[ids.student2], ranks[third])
+	// При равном weekly_xp места всё равно уникальны: тай-брейк по имени.
+	// «Сидоров С.С.» идёт раньше «Третий Ученик» (COLLATE NOCASE, затем id).
+	if ranks[ids.student2] != 2 || ranks[third] != 3 {
+		t.Fatalf("tie ranks = %d/%d, want 2/3", ranks[ids.student2], ranks[third])
 	}
 
-	if ranks[stale] != 3 {
-		t.Fatalf("stale rank = %d, want 3 (weekly_xp reset)", ranks[stale])
+	if ranks[stale] != 4 {
+		t.Fatalf("stale rank = %d, want 4 (weekly_xp reset)", ranks[stale])
+	}
+
+	unique := make(map[int]struct{}, len(ranks))
+	for _, rank := range ranks {
+		if _, duplicate := unique[rank]; duplicate {
+			t.Fatalf("rank %d is not unique: %v", rank, ranks)
+		}
+
+		unique[rank] = struct{}{}
 	}
 
 	if _, found := ranks[outsider]; found {

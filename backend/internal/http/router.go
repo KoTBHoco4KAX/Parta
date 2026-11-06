@@ -30,7 +30,9 @@ type Server struct {
 
 	users       *storage.UserRepo
 	groups      *storage.GroupRepo
+	disciplines *storage.DisciplineRepo
 	tasks       *storage.TaskRepo
+	templates   *storage.TaskTemplateRepo
 	submissions *storage.SubmissionRepo
 	ledger      *storage.XPLedgerRepo
 	peerReviews *storage.PeerReviewRepo
@@ -64,7 +66,9 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		publisher:   events.NoopPublisher{},
 		users:       storage.NewUserRepo(db),
 		groups:      storage.NewGroupRepo(db),
+		disciplines: storage.NewDisciplineRepo(db),
 		tasks:       storage.NewTaskRepo(db),
+		templates:   storage.NewTaskTemplateRepo(db),
 		submissions: storage.NewSubmissionRepo(db),
 		ledger:      storage.NewXPLedgerRepo(db),
 		peerReviews: storage.NewPeerReviewRepo(db),
@@ -99,6 +103,11 @@ func (s *Server) Handler() http.Handler {
 	protected := http.NewServeMux()
 	protected.Handle("GET /api/tasks", http.HandlerFunc(s.handleListTasks))
 	protected.Handle("POST /api/tasks", teacherOnly(http.HandlerFunc(s.handleCreateTask)))
+	protected.Handle("POST /api/tasks/{id}/repeat", teacherOnly(http.HandlerFunc(s.handleRepeatTask)))
+	protected.Handle("GET /api/task-templates", staffOnly(http.HandlerFunc(s.handleListTaskTemplates)))
+	protected.Handle("POST /api/task-templates", teacherOnly(http.HandlerFunc(s.handleCreateTaskTemplate)))
+	protected.Handle("DELETE /api/task-templates/{id}", staffOnly(http.HandlerFunc(s.handleDeleteTaskTemplate)))
+	protected.Handle("POST /api/task-templates/{id}/issue", teacherOnly(http.HandlerFunc(s.handleIssueTaskTemplate)))
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))
 	protected.Handle("POST /api/submissions", studentOnly(http.HandlerFunc(s.handleCreateSubmission)))
 	protected.Handle("POST /api/submissions/{id}/submit", studentOnly(http.HandlerFunc(s.handleSubmitFile)))
@@ -115,8 +124,8 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("POST /api/users", adminOnly(http.HandlerFunc(s.handleCreateUser)))
 	protected.Handle("PATCH /api/users/{id}", staffOnly(http.HandlerFunc(s.handleUserGroupPatch)))
 	protected.Handle("DELETE /api/users/{id}", adminOnly(http.HandlerFunc(s.handleDeleteUser)))
-	protected.Handle("GET /api/groups", adminOnly(http.HandlerFunc(s.handleListGroups)))
-	protected.Handle("POST /api/groups", adminOnly(http.HandlerFunc(s.handleCreateGroup)))
+	protected.Handle("GET /api/groups", staffOnly(http.HandlerFunc(s.handleListGroups)))
+	protected.Handle("POST /api/groups", staffOnly(http.HandlerFunc(s.handleCreateGroup)))
 	protected.Handle("DELETE /api/groups/{id}", adminOnly(http.HandlerFunc(s.handleDeleteGroup)))
 	protected.Handle("GET /api/attachments", anyRole(http.HandlerFunc(s.handleAttachmentsList)))
 	protected.Handle("GET /api/attachments/{id}", anyRole(http.HandlerFunc(s.handleAttachmentDownload)))

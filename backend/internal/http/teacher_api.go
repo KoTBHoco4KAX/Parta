@@ -109,8 +109,15 @@ func (s *Server) handleUserGroupPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Группа есть только у студентов; teacher/admin с group_id запрещены.
+	// Группа есть только у студентов. Для администратора это невалидный
+	// аргумент (422), для преподавателя — выход за его контур (403).
 	if target.Role != RoleStudent {
+		if p.Role == RoleTeacher {
+			writeError(w, domainerrors.ErrForbidden)
+
+			return
+		}
+
 		writeError(w, domainerrors.ErrInvalidArgument)
 
 		return
@@ -124,12 +131,18 @@ func (s *Server) handleUserGroupPatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if target.GroupID != nil {
-			if _, allowed := groups[*target.GroupID]; !allowed {
-				writeError(w, domainerrors.ErrForbidden)
+		// Преподаватель работает только с учениками своих групп: чужой
+		// студент или ученик без группы — 403, а не «молчаливое присвоение».
+		if target.GroupID == nil {
+			writeError(w, domainerrors.ErrForbidden)
 
-				return
-			}
+			return
+		}
+
+		if _, allowed := groups[*target.GroupID]; !allowed {
+			writeError(w, domainerrors.ErrForbidden)
+
+			return
 		}
 
 		if groupID != nil {

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strconv"
@@ -54,6 +55,8 @@ type createTaskRequest struct {
 	// XP — XP за задание, назначенный преподавателем. 0 — расчёт по формуле.
 	XP       int `json:"xp"`
 	TeamSize int `json:"team_size"`
+	// StudentIDs — индивидуальная выдача: пусто — вся группа назначения.
+	StudentIDs []int64 `json:"student_ids"`
 }
 
 // createTaskResponse — ответ на создание задания.
@@ -128,6 +131,13 @@ func (s *Server) handleCreateTaskMultipart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	studentIDs, err := parseStudentIDs(form.Value["student_ids"])
+	if err != nil {
+		writeError(w, domainerrors.ErrInvalidArgument)
+
+		return
+	}
+
 	req := createTaskRequest{
 		AssignmentID:        parseInt64OrZero(value("assignment_id")),
 		Topic:               value("topic"),
@@ -141,6 +151,7 @@ func (s *Server) handleCreateTaskMultipart(w http.ResponseWriter, r *http.Reques
 		SpeedrunBonusUntil:  value("speedrun_bonus_until"),
 		XP:                  int(parseInt64OrZero(value("xp"))),
 		TeamSize:            int(parseInt64OrZero(value("team_size"))),
+		StudentIDs:          studentIDs,
 	}
 
 	// Дата бонуса из формы (datetime-local) приводится к RFC3339.
@@ -179,72 +190,128 @@ func (s *Server) createTaskResponse(
 	}
 
 	// Список учеников читается до транзакции: внутри withTx нельзя ходить в *sql.DB.
-	students, err := s.users.ListByGroup(r.Context(), groupID)
+	students, err := s.resolveStudents(r.Context(), groupID, req.StudentIDs)
 	if err != nil {
 		writeError(w, err)
 
 		return
 	}
 
-	now := s.now()
-
-	baseXP := xp.ComputeBaseXP(xp.BaseXPInput{
-		TaskType:          economy.TaskType(req.TaskType),
-		RequirementsCount: req.RequirementsCount,
-		ExpectedHours:     req.ExpectedHours,
-		CreatedAt:         now,
-		DeadlineAt:        deadline,
-		TeamSize:          req.TeamSize,
-	})
-
-	// Преподаватель может назначить XP сам — оно важнее расчётного.
-	if req.XP > 0 {
-		baseXP = req.XP
-	}
-
-	requirementsCount := req.RequirementsCount
-	if requirementsCount <= 0 {
-		requirementsCount = defaultTaskRequirements
-	}
-
-	expectedHours := req.ExpectedHours
-	if expectedHours <= 0 {
-		expectedHours = defaultTaskHours
-	}
-
-	in := storage.CreateTaskInput{
+	response, err := s.issueTask(r.Context(), p, issueTaskInput{
 		AssignmentID:       req.AssignmentID,
+		GroupID:            groupID,
 		Topic:              req.Topic,
 		Title:              req.Title,
 		DescriptionMD:      req.DescriptionMD,
 		TaskType:           req.TaskType,
-		RequirementsCount:  requirementsCount,
-		ExpectedHours:      expectedHours,
-		DeadlineAt:         storage.FormatTimestamp(deadline),
+		RequirementsCount:  req.RequirementsCount,
+		ExpectedHours:      req.ExpectedHours,
+		Deadline:           deadline,
 		SpeedrunWindow:     req.SpeedrunWindowHours,
 		SpeedrunBonusUntil: bonusUntil,
 		Attachments:        attachmentsJSON,
 		TeamSize:           req.TeamSize,
+		XP:                 req.XP,
+	}, students)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, response)
+}
+
+// issueTaskInput — проверенные параметры создания задания и карточек учеников.
+// Используется и обычной выдачей, и базой заданий, и повтором.
+type issueTaskInput struct {
+	AssignmentID       int64
+	GroupID            int64
+	Topic              string
+	Title              string
+	DescriptionMD      string
+	TaskType           string
+	RequirementsCount  int
+	ExpectedHours      float64
+	Deadline           time.Time
+	SpeedrunWindow     int
+	SpeedrunBonusUntil *string
+	Attachments        string
+	TeamSize           int
+	XP                 int
+}
+
+// issueTask создаёт задание, карточки TODO выбранным ученикам и слоты
+// командного проекта. Возвращает DTO ответа POST /api/tasks.
+func (s *Server) issueTask(
+	ctx context.Context,
+	p principal,
+	in issueTaskInput,
+	students []storage.User,
+) (*createTaskResponse, error) {
+	now := s.now()
+
+	if in.SpeedrunWindow <= 0 {
+		in.SpeedrunWindow = defaultSpeedrunWindowHours
+	}
+
+	baseXP := xp.ComputeBaseXP(xp.BaseXPInput{
+		TaskType:          economy.TaskType(in.TaskType),
+		RequirementsCount: in.RequirementsCount,
+		ExpectedHours:     in.ExpectedHours,
+		CreatedAt:         now,
+		DeadlineAt:        in.Deadline,
+		TeamSize:          in.TeamSize,
+	})
+
+	// Преподаватель может назначить XP сам — оно важнее расчётного.
+	if in.XP > 0 {
+		baseXP = in.XP
+	}
+
+	requirementsCount := in.RequirementsCount
+	if requirementsCount <= 0 {
+		requirementsCount = defaultTaskRequirements
+	}
+
+	expectedHours := in.ExpectedHours
+	if expectedHours <= 0 {
+		expectedHours = defaultTaskHours
+	}
+
+	storageInput := storage.CreateTaskInput{
+		AssignmentID:       in.AssignmentID,
+		Topic:              in.Topic,
+		Title:              in.Title,
+		DescriptionMD:      in.DescriptionMD,
+		TaskType:           in.TaskType,
+		RequirementsCount:  requirementsCount,
+		ExpectedHours:      expectedHours,
+		DeadlineAt:         storage.FormatTimestamp(in.Deadline),
+		SpeedrunWindow:     in.SpeedrunWindow,
+		SpeedrunBonusUntil: in.SpeedrunBonusUntil,
+		Attachments:        in.Attachments,
+		TeamSize:           in.TeamSize,
 		BaseXP:             baseXP,
 		Status:             "PUBLISHED",
 	}
 
-	seeds := teamSlotSeeds(req.TaskType, req.TeamSize)
+	seeds := teamSlotSeeds(in.TaskType, in.TeamSize)
 
 	var taskID int64
 
-	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
-		task, err := s.tasks.CreateTx(r.Context(), tx, in)
+	err := s.withTx(ctx, func(tx *sql.Tx) error {
+		task, err := s.tasks.CreateTx(ctx, tx, storageInput)
 		if err != nil {
 			return err
 		}
 
 		taskID = task.ID
 
-		// Каждый ученик группы сразу получает карточку TODO: ученик не создаёт
+		// Каждый получатель сразу получает карточку TODO: ученик не создаёт
 		// задачи и не вводит id вручную.
 		for i := range students {
-			if err := s.submissions.CreateTodoTx(r.Context(), tx, task.ID, students[i].ID); err != nil {
+			if err := s.submissions.CreateTodoTx(ctx, tx, task.ID, students[i].ID); err != nil {
 				return err
 			}
 		}
@@ -253,12 +320,10 @@ func (s *Server) createTaskResponse(
 			return nil
 		}
 
-		return s.teamSlots.CreateSlots(r.Context(), tx, task.ID, seeds)
+		return s.teamSlots.CreateSlots(ctx, tx, task.ID, seeds)
 	})
 	if err != nil {
-		writeError(w, err)
-
-		return
+		return nil, err
 	}
 
 	// Публикация после Commit: ученики группы получают карточку без ручного
@@ -266,26 +331,26 @@ func (s *Server) createTaskResponse(
 	event := events.New(
 		events.TypeTaskCreated,
 		p.UserID,
-		events.RoomGroup(groupID),
+		events.RoomGroup(in.GroupID),
 		taskCreatedPayload{
 			TaskID:     taskID,
-			GroupID:    groupID,
-			Title:      req.Title,
-			DeadlineAt: eventTime(deadline),
+			GroupID:    in.GroupID,
+			Title:      in.Title,
+			DeadlineAt: eventTime(in.Deadline),
 			Status:     "PUBLISHED",
 		},
 	)
-	s.publisher.Publish(r.Context(), event)
-	s.publisher.Publish(r.Context(), event.InRoom(events.RoomTeacher(p.UserID)))
+	s.publisher.Publish(ctx, event)
+	s.publisher.Publish(ctx, event.InRoom(events.RoomTeacher(p.UserID)))
 
-	writeJSON(w, http.StatusCreated, createTaskResponse{
+	return &createTaskResponse{
 		TaskID:             taskID,
 		BaseXP:             baseXP,
 		Status:             "PUBLISHED",
 		SlotsCount:         len(seeds),
-		SpeedrunBonusUntil: formatSpeedrunBonus(deadline, bonusUntil, time.Duration(req.SpeedrunWindowHours)*time.Hour),
-		AttachmentsCount:   len(parseTaskAttachments(attachmentsJSON)),
-	})
+		SpeedrunBonusUntil: formatSpeedrunBonus(in.Deadline, in.SpeedrunBonusUntil, time.Duration(in.SpeedrunWindow)*time.Hour),
+		AttachmentsCount:   len(parseTaskAttachments(in.Attachments)),
+	}, nil
 }
 
 // formatSpeedrunBonus возвращает дату окончания бонуса для ответа API.

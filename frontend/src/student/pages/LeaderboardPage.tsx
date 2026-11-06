@@ -178,8 +178,13 @@ function TopWeek({ data }: { data: Leaderboard }) {
   return (
     <section className="space-y-2">
       <ul className="space-y-2">
-        {top3.map((entry, index) => (
-          <LeaderRow key={entry.user_id} entry={entry} medal={MEDALS[index]} current={entry.user_id === data.me.user_id} />
+        {top3.map((entry) => (
+          <LeaderRow
+            key={entry.user_id}
+            entry={entry}
+            medal={MEDALS[entry.rank - 1]}
+            current={entry.user_id === data.me.user_id}
+          />
         ))}
       </ul>
 

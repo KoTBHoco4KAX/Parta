@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../core/auth';
 import { fetchAllSubmissions, fetchTeacherAssignments, fetchTeacherTasks } from '../api';
-import { Card, ScreenHeader, Skeleton, cn } from './ui';
+import { Card, ScreenHeader, Skeleton, StatTile } from './ui';
+
+/** Разделы кабинета, в которые ведут плитки профиля. */
+export type ProfileSection = 'groups' | 'tasks' | 'review';
 
 /**
  * ProfileScreen — минимальная карточка преподавателя.
@@ -10,7 +13,11 @@ import { Card, ScreenHeader, Skeleton, cn } from './ui';
  * почта, число потоков, заданий и работ на проверке плюс переходы в остальные
  * разделы кабинета.
  */
-export function ProfileScreen() {
+export function ProfileScreen({
+  onNavigate,
+}: {
+  onNavigate: (section: ProfileSection) => void;
+}) {
   const { user } = useAuth();
   const [counts, setCounts] = useState<{ streams: number; tasks: number; review: number } | null>(
     null,
@@ -25,7 +32,9 @@ export function ProfileScreen() {
       ]);
 
       setCounts({
-        streams: assignments.length,
+        // Потоки считаем по уникальным группам: у преподавателя может быть
+        // несколько дисциплин в одной группе, но поток один.
+        streams: new Set(assignments.map((assignment) => assignment.groupId)).size,
         tasks: tasks.length,
         review: submissions.filter((item) => item.status === 'REVIEW').length,
       });
@@ -67,27 +76,29 @@ export function ProfileScreen() {
           </>
         ) : (
           <>
-            <Stat label="Потоки" value={counts.streams} />
-            <Stat label="Задания" value={counts.tasks} />
-            <Stat label="На проверке" value={counts.review} highlight={counts.review > 0} />
+            <StatTile
+              label="Потоки"
+              value={counts.streams}
+              onClick={() => onNavigate('groups')}
+            />
+            <StatTile
+              label="Задания"
+              value={counts.tasks}
+              onClick={() => onNavigate('tasks')}
+            />
+            <StatTile
+              label="На проверке"
+              value={counts.review}
+              tone={counts.review > 0 ? 'amber' : 'slate'}
+              onClick={() => onNavigate('review')}
+            />
           </>
         )}
       </div>
-    </div>
-  );
-}
 
-function Stat({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
-  return (
-    <div className="rounded-2xl border border-line bg-card px-3 py-2.5">
-      <p className="text-[10px] uppercase tracking-wide text-ink4">{label}</p>
-      <p
-        className={cn(
-          'mt-0.5 text-lg font-bold tabular-nums',
-          highlight ? 'text-warn' : 'text-ink',
-        )}
-      >
-        {value}
+      <p className="mt-3 text-[11px] leading-relaxed text-ink3">
+        Плитки кликабельны: «Потоки» ведут к группам и составу, «Задания» — к
+        выдаче, «На проверке» — к работам, ожидающим вердикта.
       </p>
     </div>
   );

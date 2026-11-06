@@ -35,6 +35,17 @@ type groupListView struct {
 	Title string `json:"title"`
 }
 
+// createGroupRequest — тело POST /api/groups.
+//
+// Администратору достаточно code/title. Преподаватель дополнительно указывает
+// дисциплину (по id или коду): вместе с группой создаётся teacher_assignment.
+type createGroupRequest struct {
+	Code           string `json:"code"`
+	Title          string `json:"title"`
+	DisciplineID   int64  `json:"discipline_id"`
+	DisciplineCode string `json:"discipline_code"`
+}
+
 // handleListUsers отдаёт всех пользователей администратору.
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
@@ -157,18 +168,28 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNoContent, nil)
 }
 
-// handleListGroups отдаёт группы администратору.
+// handleListGroups отдаёт группы: администратору — все, преподавателю — свои.
 func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
 	if !ok {
 		return
 	}
 
-	if !requireRole(w, p, RoleAdmin) {
+	if !requireRole(w, p, RoleAdmin, RoleTeacher) {
 		return
 	}
 
-	groups, err := s.groups.List(r.Context())
+	var (
+		groups []storage.Group
+		err    error
+	)
+
+	if p.Role == RoleTeacher {
+		groups, err = s.groups.ListForTeacher(r.Context(), p.UserID)
+	} else {
+		groups, err = s.groups.List(r.Context())
+	}
+
 	if err != nil {
 		writeError(w, err)
 
@@ -188,17 +209,20 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCreateGroup заводит учебную группу.
+//
+// Преподаватель обязан указать дисциплину: созданная группа сразу закрепляется
+// за ним через teacher_assignment, иначе он не смог бы выдавать в неё задания.
 func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	p, ok := s.principalOr401(w, r)
 	if !ok {
 		return
 	}
 
-	if !requireRole(w, p, RoleAdmin) {
+	if !requireRole(w, p, RoleAdmin, RoleTeacher) {
 		return
 	}
 
-	var req groupListView
+	var req createGroupRequest
 
 	if !decodeJSON(w, r, &req) {
 		return
@@ -213,11 +237,31 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	group, err := s.groups.Create(r.Context(), code, title)
-	if err != nil {
-		writeError(w, err)
+	var group *storage.Group
 
-		return
+	if p.Role == RoleTeacher {
+		discipline, err := s.resolveDiscipline(r.Context(), req.DisciplineID, req.DisciplineCode)
+		if err != nil {
+			writeError(w, err)
+
+			return
+		}
+
+		group, err = s.groups.CreateWithAssignment(r.Context(), code, title, p.UserID, discipline.ID)
+		if err != nil {
+			writeError(w, err)
+
+			return
+		}
+	} else {
+		var err error
+
+		group, err = s.groups.Create(r.Context(), code, title)
+		if err != nil {
+			writeError(w, err)
+
+			return
+		}
 	}
 
 	writeJSON(w, http.StatusCreated, groupListView{

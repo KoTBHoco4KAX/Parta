@@ -104,8 +104,10 @@ type peerReviewListView struct {
 // assignmentListView — элемент GET /api/assignments.
 type assignmentListView struct {
 	ID              int64  `json:"id"`
+	GroupID         int64  `json:"group_id"`
 	GroupCode       string `json:"group_code"`
 	GroupTitle      string `json:"group_title"`
+	DisciplineID    int64  `json:"discipline_id"`
 	DisciplineCode  string `json:"discipline_code"`
 	DisciplineTitle string `json:"discipline_title"`
 	TeacherName     string `json:"teacher_name"`
@@ -291,8 +293,10 @@ func (s *Server) handleListAssignments(w http.ResponseWriter, r *http.Request) {
 	for _, item := range items {
 		views = append(views, assignmentListView{
 			ID:              item.ID,
+			GroupID:         item.GroupID,
 			GroupCode:       item.GroupCode,
 			GroupTitle:      item.GroupTitle,
+			DisciplineID:    item.DisciplineID,
 			DisciplineCode:  item.DisciplineCode,
 			DisciplineTitle: item.DisciplineTitle,
 			TeacherName:     item.TeacherName,
