@@ -49,7 +49,7 @@ export function DashboardPage() {
         </dl>
       </section>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="flex divide-x divide-line border-y border-line/70 py-3">
         <Counter label="К выполнению" value={countByStatus(submissions, 'TODO')} />
         <Counter label="В работе" value={countByStatus(submissions, 'IN_PROGRESS')} />
         <Counter label="На проверке" value={countByStatus(submissions, 'REVIEW')} />
@@ -65,7 +65,7 @@ function countByStatus(submissions: Submission[], status: Submission['status']):
 
 function Counter({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-line bg-card px-3 py-2">
+    <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">
       <p className="text-[10px] text-ink4">{label}</p>
       <p className="text-base font-semibold tabular-nums text-ink">{value}</p>
     </div>

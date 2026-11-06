@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ApiError, submitWorkFile } from '../../core/api';
 import type { Submission, Task } from '../../core/types';
 import { Button } from '../../components/Button';
+import { FileDropzone } from '../../components/FileDropzone';
 import { Modal } from '../../components/Modal';
 
 interface TaskDetailsModalProps {
@@ -120,12 +121,11 @@ export default function TaskDetailsModal({
             <label className="mb-1.5 block text-xs font-medium text-ink2" htmlFor="work-file">
               Файл работы
             </label>
-            <input
-              id="work-file"
-              type="file"
-              onChange={(event) => handleFile(event.target.files?.[0])}
+            <FileDropzone
+              files={file ? [file] : []}
+              onFiles={(next) => handleFile(next[0])}
               disabled={submitting}
-              className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
+              hint="Один файл до 20 МБ"
             />
             <p className="mt-1.5 text-[11px] text-ink3">
               {file

@@ -12,15 +12,22 @@ import TeacherApp from './teacher';
 import AdminApp from './admin';
 import { AppShell } from './components/AppShell';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import {
+  IconChart,
+  IconGift,
+  IconInbox,
+  IconLayers,
+  IconTrend,
+} from './teacher/components/icons';
 
 // Меню ученика: отдельной экономики нет — покупки живут в магазине,
 // а бонус за спидран назначается на самом задании.
 const NAV = [
-  { path: '/', label: 'Главная' },
-  { path: '/kanban', label: 'Канбан' },
-  { path: '/shop', label: 'Магазин' },
-  { path: '/answers', label: 'Ответы' },
-  { path: '/leaderboard', label: 'Рейтинг' },
+  { path: '/', label: 'Главная', icon: <IconChart className="h-4 w-4" /> },
+  { path: '/kanban', label: 'Канбан', icon: <IconLayers className="h-4 w-4" /> },
+  { path: '/shop', label: 'Магазин', icon: <IconGift className="h-4 w-4" /> },
+  { path: '/answers', label: 'Ответы', icon: <IconInbox className="h-4 w-4" /> },
+  { path: '/leaderboard', label: 'Рейтинг', icon: <IconTrend className="h-4 w-4" /> },
 ] as const;
 
 // useHashRoute — минимальный роутер без внешних зависимостей: hash переживает
@@ -100,32 +107,13 @@ function Shell() {
   return (
     <AppShell
       subtitle="Кабинет ученика"
-      bottomNav={
-        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-          <ul className="flex gap-1 overflow-x-auto">
-            {NAV.map((item) => {
-              const active = item.path === route || (item.path === '/' && route === '/');
-
-              return (
-                <li key={item.path} className="min-w-[64px] flex-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => navigate(item.path)}
-                    className={[
-                      'w-full whitespace-nowrap rounded-lg px-2 py-2 text-[10px] font-medium transition',
-                      active
-                        ? 'bg-brandSoft text-brand'
-                        : 'text-ink3 hover:bg-muted',
-                    ].join(' ')}
-                  >
-                    {item.label}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      }
+      nav={NAV.map((item) => ({
+        id: item.path,
+        label: item.label,
+        icon: item.icon,
+        active: item.path === route || (item.path === '/' && route === '/'),
+        onClick: () => navigate(item.path),
+      }))}
     >
       <ErrorBoundary key={route}>
         {route === '/kanban' ? <KanbanPage /> : null}

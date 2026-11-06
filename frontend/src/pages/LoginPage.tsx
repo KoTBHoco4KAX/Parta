@@ -3,9 +3,7 @@ import { Button } from '../components/Button';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { useAuth } from '../core/auth';
 
-// LoginPage — минимальная форма входа: без выбора роли и демо-подсказок.
-// Роль приходит с сервера вместе с профилем, поэтому пользователю достаточно
-// email и пароля. Оформление — токены темы Сферума (светлая/тёмная).
+// LoginPage — вход по email и паролю. Роль определяет сервер.
 export function LoginPage() {
   const { login, busy, error } = useAuth();
   const [email, setEmail] = useState('');
@@ -26,74 +24,92 @@ export function LoginPage() {
   const emailError = submitted && email.trim() === '';
   const passwordError = submitted && password.trim() === '';
 
+  const inputClass = (invalid: boolean) =>
+    [
+      'w-full rounded-lg border bg-card px-3 py-2.5 text-sm text-ink placeholder:text-ink4 transition',
+      'focus:border-ink/40 focus:outline-none focus:ring-2 focus:ring-ink/10',
+      invalid ? 'border-bad' : 'border-line',
+    ].join(' ');
+
   return (
-    <div className="flex min-h-screen justify-center bg-page">
-      <div className="flex min-h-screen w-full max-w-md flex-col bg-page text-ink">
-        <header className="flex items-center justify-between px-5 pt-5">
-          <p className="text-xs font-bold uppercase tracking-[0.3em] text-brand">ПАРТА</p>
-          <ThemeToggle />
-        </header>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4 py-10">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -left-32 top-[-10rem] h-96 w-96 rounded-full bg-brand/10 blur-3xl" />
+        <div className="absolute -right-24 bottom-[-12rem] h-[28rem] w-[28rem] rounded-full bg-brand/5 blur-3xl" />
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,rgb(var(--c-line)/0.18)_1px,transparent_1px),linear-gradient(to_bottom,rgb(var(--c-line)/0.18)_1px,transparent_1px)] bg-[size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
+      </div>
 
-        <div className="flex flex-1 flex-col justify-center px-5 pb-16">
-          <div className="rounded-2xl border border-line bg-card p-5 shadow-[var(--shadow-card)] sm:p-6">
-            <form onSubmit={handleSubmit} className="space-y-4" noValidate>
-              <div>
-                <label
-                  htmlFor="login-email"
-                  className="mb-1.5 block text-xs font-medium text-ink2"
-                >
-                  Email
-                </label>
-                <input
-                  id="login-email"
-                  type="email"
-                  autoComplete="username"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  className={[
-                    'w-full rounded-lg border bg-card px-3 py-2.5 text-sm text-ink placeholder:text-ink4 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine',
-                    emailError ? 'border-bad' : 'border-line2',
-                  ].join(' ')}
-                />
-                {emailError ? <p className="mt-1 text-[11px] text-bad">Введите email.</p> : null}
-              </div>
-
-              <div>
-                <label
-                  htmlFor="login-password"
-                  className="mb-1.5 block text-xs font-medium text-ink2"
-                >
-                  Пароль
-                </label>
-                <input
-                  id="login-password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  className={[
-                    'w-full rounded-lg border bg-card px-3 py-2.5 text-sm text-ink placeholder:text-ink4 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine',
-                    passwordError ? 'border-bad' : 'border-line2',
-                  ].join(' ')}
-                />
-                {passwordError ? <p className="mt-1 text-[11px] text-bad">Введите пароль.</p> : null}
-              </div>
-
-              {error ? (
-                <p
-                  role="alert"
-                  className="rounded-lg border border-badLine bg-badSoft p-3 text-sm text-bad"
-                >
-                  {error}
-                </p>
-              ) : null}
-
-              <Button type="submit" block loading={busy}>
-                Войти
-              </Button>
-            </form>
+      <div className="relative w-full max-w-sm">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[13px] font-bold tracking-[0.24em] text-ink">ПАРТА</span>
+            <span className="rounded-md border border-line px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-ink3">
+              вход
+            </span>
           </div>
+          <ThemeToggle />
         </div>
+
+        <div className="mt-12">
+          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-ink4">
+            Учебный контур
+          </p>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
+            Войти в ПАРТУ
+          </h1>
+          <p className="mt-1.5 text-sm leading-relaxed text-ink3">
+            Задания, канбан и обратная связь — в одном месте.
+          </p>
+        </div>
+
+        <form
+          onSubmit={handleSubmit}
+          className="mt-7 space-y-3.5 rounded-xl border border-line/80 bg-card/80 p-4 backdrop-blur"
+          noValidate
+        >
+          <div>
+            <label htmlFor="login-email" className="mb-1.5 block text-[11px] font-medium text-ink2">
+              Email
+            </label>
+            <input
+              id="login-email"
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              className={inputClass(emailError)}
+            />
+            {emailError ? <p className="mt-1 text-[11px] text-bad">Введите email.</p> : null}
+          </div>
+
+          <div>
+            <label htmlFor="login-password" className="mb-1.5 block text-[11px] font-medium text-ink2">
+              Пароль
+            </label>
+            <input
+              id="login-password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              className={inputClass(passwordError)}
+            />
+            {passwordError ? <p className="mt-1 text-[11px] text-bad">Введите пароль.</p> : null}
+          </div>
+
+          {error ? (
+            <p
+              role="alert"
+              className="rounded-lg border border-badLine bg-badSoft px-3 py-2 text-xs text-bad"
+            >
+              {error}
+            </p>
+          ) : null}
+
+          <Button type="submit" block loading={busy}>
+            Войти
+          </Button>
+        </form>
       </div>
     </div>
   );

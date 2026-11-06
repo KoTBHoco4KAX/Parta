@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiFetch, ApiError } from '../../core/api';
 import { Button } from '../../components/Button';
+import { FileDropzone } from '../../components/FileDropzone';
+import { Select } from '../../components/Select';
 
 // AnswersPage — взаимопроверка «Ответы».
 //
@@ -246,19 +248,19 @@ function UploadDraftSection({ tasks, onUploaded }: { tasks: AnswerTask[]; onUplo
           <label className="mt-3 block text-[11px] font-medium text-ink2" htmlFor="answer-task">
             Задание
           </label>
-          <select
-            id="answer-task"
-            value={submissionId}
-            onChange={(event) => setSubmissionId(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-line2 bg-card px-3 py-2 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brandLine"
-          >
-            <option value="">Выберите задание</option>
-            {tasks.map((task) => (
-              <option key={task.submission_id} value={task.submission_id}>
-                {task.task_title}
-              </option>
-            ))}
-          </select>
+          <div className="mt-1">
+            <Select
+              id="answer-task"
+              value={submissionId}
+              placeholder="Выберите задание"
+              options={tasks.map((task) => ({
+                value: String(task.submission_id),
+                label: task.task_title,
+                description: `${task.task_type} · ${task.escrow_pool_xp} XP`,
+              }))}
+              onChange={setSubmissionId}
+            />
+          </div>
 
           {selected && pool ? (
             <div className="mt-3 rounded-xl border border-brandLine bg-brandSoft p-3">
@@ -294,12 +296,13 @@ function UploadDraftSection({ tasks, onUploaded }: { tasks: AnswerTask[]; onUplo
           <label className="mt-3 block text-[11px] font-medium text-ink2" htmlFor="answer-file">
             Файл (необязательно)
           </label>
-          <input
-            id="answer-file"
-            type="file"
-            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-            className="mt-1 w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs"
-          />
+          <div className="mt-1">
+            <FileDropzone
+              files={file ? [file] : []}
+              onFiles={(next) => setFile(next[0] ?? null)}
+              hint="Черновик, скриншот или документ"
+            />
+          </div>
 
           {error ? (
             <p role="alert" className="mt-2 text-[11px] text-bad">

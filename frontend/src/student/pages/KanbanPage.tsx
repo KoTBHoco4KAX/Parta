@@ -129,19 +129,19 @@ export default function KanbanPage() {
           Заданий пока нет — они появятся, когда преподаватель опубликует работу.
         </p>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {columns.map((column) => {
             const columnCards = cards.filter((card) => card.status === column.id);
 
             return (
-              <section key={column.id} className="rounded-2xl border border-line bg-muted p-3">
+              <section key={column.id} className="min-w-0 rounded-xl border border-line/70 bg-card/30 p-2.5">
                 <h2 className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-ink3">
                   <span>{column.title}</span>
                   <span className="tabular-nums">{columnCards.length}</span>
                 </h2>
 
                 <div className="space-y-2">
-                  {columnCards.map(({ task, submission }) => (
+                  {columnCards.map(({ task }) => (
                     <article
                       key={task.id}
                       role="button"
@@ -162,30 +162,14 @@ export default function KanbanPage() {
                           +{task.base_xp_computed}
                         </span>
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-ink3">{task.description_md}</p>
                       <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
                         <span className="rounded-full bg-sunken px-2 py-0.5 text-ink3">
                           {task.task_type}
                         </span>
                         <span className="text-ink4">до {new Date(task.deadline_at).toLocaleDateString()}</span>
-                        {submission?.status === 'TODO' ? (
-                          <span className="text-brand">нажмите, чтобы взять в работу</span>
-                        ) : null}
-                        {submission?.status === 'REJECTED' ? (
-                          <span className="text-warn">нажмите, чтобы вернуть в работу</span>
-                        ) : null}
-                        {submission?.status === 'IN_PROGRESS' ? (
-                          <span className="text-brand">нажмите, чтобы сдать</span>
-                        ) : null}
                       </div>
                     </article>
                   ))}
-
-                  {columnCards.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-line px-2 py-4 text-center text-[11px] text-ink4">
-                      пусто
-                    </p>
-                  ) : null}
                 </div>
               </section>
             );

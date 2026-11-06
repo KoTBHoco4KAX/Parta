@@ -244,7 +244,7 @@ export function Card({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-line bg-card shadow-[var(--shadow-card)]',
+        'rounded-xl border border-line/70 bg-card',
         padded && 'p-4',
         className,
       )}

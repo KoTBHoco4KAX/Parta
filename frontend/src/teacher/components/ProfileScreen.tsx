@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../core/auth';
 import { fetchAllSubmissions, fetchTeacherAssignments, fetchTeacherTasks } from '../api';
-import { Card, Skeleton, StatTile } from './ui';
+import { Skeleton } from './ui';
 
 /** Разделы кабинета, в которые ведут плитки профиля. */
 export type ProfileSection = 'groups' | 'tasks' | 'review';
@@ -52,47 +52,74 @@ export function ProfileScreen({
 
   return (
     <div>
-      <Card className="flex items-center gap-3">
-        <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brandSoft text-xl font-bold text-brandStrong">
+      <div className="flex items-center gap-3 rounded-xl border border-line/70 bg-card/50 p-4">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-muted text-lg font-semibold text-ink2">
           {initial}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-ink">
+          <p className="truncate text-[15px] font-semibold text-ink">
             {user?.display_name ?? 'Преподаватель'}
           </p>
           <p className="truncate text-xs text-ink3">{user?.external_id ?? '—'}</p>
-          <p className="mt-1 text-[11px] text-ink4">Преподаватель</p>
+          <p className="mt-0.5 text-[11px] text-ink4">Преподаватель</p>
         </div>
-      </Card>
+      </div>
 
-      <div className="mt-3 grid grid-cols-3 gap-2">
+      <div className="mt-4 flex divide-x divide-line border-y border-line/70 py-3">
         {counts === null ? (
           <>
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
-            <Skeleton className="h-16" />
+            <Skeleton className="mx-3 h-10 flex-1" />
+            <Skeleton className="mx-3 h-10 flex-1" />
+            <Skeleton className="mx-3 h-10 flex-1" />
           </>
         ) : (
           <>
-            <StatTile
+            <ProfileMetric
               label="Потоки"
               value={counts.streams}
               onClick={() => onNavigate('groups')}
             />
-            <StatTile
+            <ProfileMetric
               label="Задания"
               value={counts.tasks}
               onClick={() => onNavigate('tasks')}
             />
-            <StatTile
+            <ProfileMetric
               label="На проверке"
               value={counts.review}
-              tone={counts.review > 0 ? 'amber' : 'slate'}
+              tone={counts.review > 0 ? 'text-warn' : undefined}
               onClick={() => onNavigate('review')}
             />
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function ProfileMetric({
+  label,
+  value,
+  tone,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="min-w-0 flex-1 px-3 text-left transition first:pl-0 last:pr-0 hover:opacity-80"
+    >
+      <span className={`block text-lg font-semibold tabular-nums ${tone ?? 'text-ink'}`}>
+        {value}
+      </span>
+      <span className="mt-0.5 block truncate text-[10px] uppercase tracking-wide text-ink3">
+        {label}
+      </span>
+    </button>
   );
 }

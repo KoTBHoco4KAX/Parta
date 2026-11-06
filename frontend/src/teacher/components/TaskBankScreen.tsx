@@ -10,6 +10,8 @@ import {
   type TeacherAssignment,
 } from '../api';
 import type { ToastData } from '../types';
+import { FileDropzone } from '../../components/FileDropzone';
+import { Select } from '../../components/Select';
 import { TASK_TYPE_HINT, TASK_TYPE_LABEL, TASK_TYPE_TONE } from '../lib/labels';
 import {
   Badge,
@@ -20,7 +22,6 @@ import {
   ErrorState,
   Field,
   Modal,
-  SelectInput,
   SkeletonList,
   TextArea,
 } from './ui';
@@ -462,17 +463,15 @@ function CreateTemplateModal({
     >
       <div className="space-y-3.5">
         <Field label="Дисциплина" htmlFor="template-discipline">
-          <SelectInput
+          <Select
             id="template-discipline"
             value={disciplineID}
-            onChange={(event) => setDisciplineID(event.target.value)}
-          >
-            {disciplines.map((discipline) => (
-              <option key={discipline.id} value={discipline.id}>
-                {discipline.code} · {discipline.title}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={setDisciplineID}
+            options={disciplines.map((discipline) => ({
+              value: String(discipline.id),
+              label: `${discipline.code} · ${discipline.title}`,
+            }))}
+          />
         </Field>
 
         <Field label="Тип задания">
@@ -532,30 +531,25 @@ function CreateTemplateModal({
               ))}
             </ul>
           ) : null}
-          <input
-            id="template-files"
-            type="file"
+          <FileDropzone
+            files={files}
+            onFiles={setFiles}
             multiple
-            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-            className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
+            hint="До 5 файлов по 20 МБ"
           />
-          {files.length > 0 ? (
-            <p className="mt-1 text-[10px] text-ink3">
-              {files.map((file) => file.name).join(', ')}
-            </p>
-          ) : null}
         </Field>
 
         {taskType === 'TEAM_PROJECT' ? (
           <Field label="Размер команды">
-            <SelectInput
+            <Select
               value={String(teamSize)}
-              onChange={(event) => setTeamSize(Number(event.target.value))}
-            >
-              <option value="2">2 участника</option>
-              <option value="3">3 участника</option>
-              <option value="4">4 участника</option>
-            </SelectInput>
+              onChange={(next) => setTeamSize(Number(next))}
+              options={[
+                { value: '2', label: '2 участника' },
+                { value: '3', label: '3 участника' },
+                { value: '4', label: '4 участника' },
+              ]}
+            />
           </Field>
         ) : null}
       </div>

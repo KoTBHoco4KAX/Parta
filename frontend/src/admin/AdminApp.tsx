@@ -6,7 +6,7 @@ import { AdminOverview } from './components/AdminOverview';
 import { UsersPanel } from './components/UsersPanel';
 import { GroupsPanel } from './components/GroupsPanel';
 import { AssignmentsPanel } from './components/AssignmentsPanel';
-import { Toast, cn } from './components/ui';
+import { Toast } from './components/ui';
 import {
   IconChart,
   IconClipboard,
@@ -91,38 +91,20 @@ export default function AdminApp() {
   return (
     <AppShell
       subtitle="Админка"
-      bottomNav={
-        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-          <ul className="flex gap-1 overflow-x-auto">
-            {TABS.map((item) => {
-              const Icon = item.icon;
-              const active = tab === item.id;
+      nav={TABS.map((item) => {
+        const Icon = item.icon;
 
-              return (
-                <li key={item.id} className="min-w-[72px] flex-1 shrink-0">
-                  <button
-                    type="button"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => {
-                      setTab(item.id);
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    className={cn(
-                      'flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand',
-                      active
-                        ? 'bg-brandSoft text-brandStrong'
-                        : 'text-ink3 hover:bg-card hover:text-ink2',
-                    )}
-                  >
-                    <Icon className="h-4 w-4" />
-                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      }
+        return {
+          id: item.id,
+          label: item.label,
+          icon: <Icon className="h-4 w-4" />,
+          active: tab === item.id,
+          onClick: () => {
+            setTab(item.id);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          },
+        };
+      })}
     >
       {tab === 'overview' ? (
         <AdminOverview onNavigate={setTab} reloadSignal={reloadSignal} />
@@ -140,8 +122,8 @@ export default function AdminApp() {
 
       {tab === 'assignments' ? <AssignmentsPanel reloadSignal={reloadSignal} /> : null}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20">
-        <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20 md:bottom-6 md:left-auto md:right-6 md:block md:w-80 md:pb-0">
+        <div className="pointer-events-auto flex w-full flex-col gap-2">
           {toasts.map((toast) => (
             <Toast key={toast.id} toast={toast} onDismiss={() => dismissToast(toast.id)} />
           ))}

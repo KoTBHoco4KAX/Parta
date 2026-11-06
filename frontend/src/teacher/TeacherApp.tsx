@@ -8,7 +8,7 @@ import { TaskBankScreen } from './components/TaskBankScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { TasksScreen } from './components/TasksScreen';
 import { ReviewScreen } from './components/ReviewScreen';
-import { Toast, cn } from './components/ui';
+import { Toast } from './components/ui';
 import { IconBook, IconClipboard, IconInbox, IconUser, IconUsers } from './components/icons';
 
 export type TeacherTab = 'profile' | 'groups' | 'tasks' | 'bank' | 'review';
@@ -129,43 +129,18 @@ export default function TeacherApp() {
   return (
     <AppShell
       subtitle="Кабинет преподавателя"
-      bottomNav={
-        <nav className="fixed bottom-0 left-1/2 z-40 w-full max-w-md -translate-x-1/2 border-t border-line bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur">
-          <ul className="flex gap-1 overflow-x-auto">
-            {TABS.map((item) => {
-              const Icon = item.icon;
-              const active = tab === item.id;
-              const badge = item.id === 'review' && reviewCount > 0 ? reviewCount : null;
+      nav={TABS.map((item) => {
+        const Icon = item.icon;
 
-              return (
-                <li key={item.id} className="min-w-[64px] flex-1 shrink-0">
-                  <button
-                    type="button"
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => navigate(item.id)}
-                    className={cn(
-                      'relative flex w-full flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand',
-                      active
-                        ? 'bg-brandSoft text-brandStrong'
-                        : 'text-ink3 hover:bg-card hover:text-ink2',
-                    )}
-                  >
-                    <span className="relative">
-                      <Icon className="h-4 w-4" />
-                      {badge !== null ? (
-                        <span className="absolute -right-2 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[9px] font-bold text-white">
-                          {badge > 99 ? '99+' : badge}
-                        </span>
-                      ) : null}
-                    </span>
-                    <span className="text-[10px] font-medium leading-none">{item.label}</span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </nav>
-      }
+        return {
+          id: item.id,
+          label: item.label,
+          icon: <Icon className="h-4 w-4" />,
+          active: tab === item.id,
+          badge: item.id === 'review' ? reviewCount : undefined,
+          onClick: () => navigate(item.id),
+        };
+      })}
     >
       {tab === 'profile' ? <ProfileScreen onNavigate={navigate} /> : null}
 
@@ -185,8 +160,8 @@ export default function TeacherApp() {
         <ReviewScreen notify={notify} onReviewed={refreshReviewCount} />
       ) : null}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20">
-        <div className="pointer-events-auto flex w-full max-w-md flex-col gap-2">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center px-4 pb-20 md:bottom-6 md:left-auto md:right-6 md:block md:w-80 md:pb-0">
+        <div className="pointer-events-auto flex w-full flex-col gap-2">
           {toasts.map((toast) => (
             <Toast key={toast.id} toast={toast} onDismiss={() => dismissToast(toast.id)} />
           ))}

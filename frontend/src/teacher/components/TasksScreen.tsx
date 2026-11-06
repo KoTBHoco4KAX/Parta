@@ -40,6 +40,8 @@ import {
   TASK_TYPE_TONE,
   slotRoleTitle,
 } from '../lib/labels';
+import { FileDropzone } from '../../components/FileDropzone';
+import { Select } from '../../components/Select';
 import { DeadlineInput } from './DeadlineInput';
 import {
   Badge,
@@ -52,7 +54,6 @@ import {
   Field,
   Modal,
   Segmented,
-  SelectInput,
   SkeletonList,
   StackedProgress,
   TextArea,
@@ -363,37 +364,13 @@ function TaskCard({
             title: STATUS_LABEL[status],
           }))}
         />
-        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-ink3">
-          {STATUS_SEGMENTS.map((status) => (
-            <span key={status} className="inline-flex items-center gap-1">
-              <span
-                className={cn(
-                  'h-1.5 w-1.5 rounded-full',
-                  status === 'TODO'
-                    ? 'bg-line2'
-                    : status === 'IN_PROGRESS'
-                      ? 'bg-brand'
-                      : status === 'REVIEW'
-                        ? 'bg-warn'
-                        : 'bg-brand',
-                )}
-              />
-              {STATUS_LABEL[status]} {counts[status]}
-            </span>
-          ))}
-          <span className="ml-auto tabular-nums">
+        <div className="mt-1.5 flex items-center justify-between gap-2 text-[10px] text-ink3">
+          <span className="tabular-nums">
             {total} {pluralize(total, ['карточка', 'карточки', 'карточек'])}
+            {reviewCount > 0 ? ` · на проверке ${reviewCount}` : ''}
           </span>
+          <span>дедлайн {formatDateTime(task.deadline_at)}</span>
         </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[10px] text-ink3">
-          {reviewCount > 0 ? `На проверке: ${reviewCount}` : 'Проверять пока нечего'}
-        </span>
-        <span className="ml-auto self-center text-[10px] text-ink3">
-          дедлайн {formatDateTime(task.deadline_at)}
-        </span>
       </div>
     </Card>
   );
@@ -922,21 +899,20 @@ function IssueTaskModal({
               </Callout>
             ) : (
               <>
-                <SelectInput
+                <Select
                   value={selectedTemplateID === null ? '' : String(selectedTemplateID)}
-                  onChange={(event) =>
-                    setSelectedTemplateID(
-                      event.target.value === '' ? null : Number(event.target.value),
-                    )
+                  placeholder="Выберите заготовку"
+                  options={[
+                    { value: '', label: 'Выберите заготовку' },
+                    ...availableTemplates.map((template) => ({
+                      value: String(template.id),
+                      label: template.title,
+                    })),
+                  ]}
+                  onChange={(next) =>
+                    setSelectedTemplateID(next === '' ? null : Number(next))
                   }
-                >
-                  <option value="">Выберите заготовку</option>
-                  {availableTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.title}
-                    </option>
-                  ))}
-                </SelectInput>
+                />
 
                 {selectedTemplate ? (
                   <Card className="mt-2 space-y-2 bg-muted">
@@ -1021,16 +997,12 @@ function IssueTaskModal({
           htmlFor="task-files"
           hint="Методички, шаблоны, тесты. До 5 файлов по 20 МБ."
         >
-          <input
-            id="task-files"
-            type="file"
+          <FileDropzone
+            files={files}
+            onFiles={setFiles}
             multiple
-            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
-            className="w-full rounded-lg border border-line2 bg-card px-3 py-2 text-xs text-ink2 file:mr-3 file:rounded-md file:border-0 file:bg-sunken file:px-2 file:py-1 file:text-xs file:text-ink2"
+            hint="До 5 файлов по 20 МБ"
           />
-          {files.length > 0 ? (
-            <p className="mt-1 text-[10px] text-ink3">{files.map((file) => file.name).join(', ')}</p>
-          ) : null}
             </Field>
           </>
         ) : null}
@@ -1134,14 +1106,15 @@ function IssueTaskModal({
 
         {taskType === 'TEAM_PROJECT' ? (
           <Field label="Размер команды" hint="Каждый слот — отдельная зона ответственности.">
-            <SelectInput
+            <Select
               value={String(teamSize)}
-              onChange={(event) => setTeamSize(Number(event.target.value))}
-            >
-              <option value="2">2 участника</option>
-              <option value="3">3 участника</option>
-              <option value="4">4 участника</option>
-            </SelectInput>
+              onChange={(next) => setTeamSize(Number(next))}
+              options={[
+                { value: '2', label: '2 участника' },
+                { value: '3', label: '3 участника' },
+                { value: '4', label: '4 участника' },
+              ]}
+            />
           </Field>
         ) : null}
 

@@ -13,17 +13,16 @@ import {
 } from '../api';
 import type { ToastData } from '../types';
 import { pluralize } from '../lib/format';
+import { Select } from '../../components/Select';
 import {
   Avatar,
   Badge,
   Button,
   Callout,
-  Card,
   EmptyState,
   ErrorState,
   Field,
   Modal,
-  SelectInput,
   SkeletonList,
   TextInput,
 } from './ui';
@@ -175,19 +174,20 @@ export function GroupsScreen({
             const groupDisciplines = disciplinesForGroup(assignments, group.id);
 
             return (
-              <Card key={group.id} className="space-y-3">
-                <div className="flex items-start gap-2.5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brandSoft text-brandStrong">
-                    <IconUsers className="h-4 w-4" />
-                  </span>
+              <section
+                key={group.id}
+                className="border-b border-line/70 pb-4 last:border-0 last:pb-0"
+              >
+                <div className="flex items-start gap-2.5 py-2">
+                  <IconUsers className="mt-0.5 h-4 w-4 shrink-0 text-ink3" />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <h2 className="truncate text-sm font-semibold text-ink">{group.code}</h2>
-                      <Badge tone="slate">
+                      <span className="text-[11px] text-ink3">
                         {roster.length} {pluralStudents(roster.length)}
-                      </Badge>
+                      </span>
                       {groupDisciplines.map((discipline) => (
-                        <Badge key={discipline.id} tone="indigo">
+                        <Badge key={discipline.id} tone="slate">
                           {discipline.title}
                         </Badge>
                       ))}
@@ -196,7 +196,7 @@ export function GroupsScreen({
                   </div>
                   <Button
                     size="sm"
-                    variant="secondary"
+                    variant="ghost"
                     className="shrink-0"
                     onClick={() => setAddingGroup(group)}
                   >
@@ -206,12 +206,9 @@ export function GroupsScreen({
                 </div>
 
                 {roster.length === 0 ? (
-                  <p className="rounded-lg border border-dashed border-line2 px-3 py-2.5 text-[11px] text-ink3">
-                    В группе пока нет учеников. Перевести студента можно из другой
-                    вашей группы.
-                  </p>
+                  <p className="py-2 text-[11px] text-ink4">В группе пока нет учеников.</p>
                 ) : (
-                  <ul className="divide-y divide-line">
+                  <ul className="divide-y divide-line/60">
                     {roster.map((member) => (
                       <MemberRow
                         key={member.id}
@@ -224,7 +221,7 @@ export function GroupsScreen({
                     ))}
                   </ul>
                 )}
-              </Card>
+              </section>
             );
           })}
         </div>
@@ -315,7 +312,13 @@ function MemberRow({
         <Button size="sm" variant="outline" disabled={busy} onClick={() => setMoving(true)}>
           Перевести
         </Button>
-        <Button size="sm" variant="reject" disabled={busy} onClick={() => void exclude()}>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="text-bad hover:bg-badSoft"
+          disabled={busy}
+          onClick={() => void exclude()}
+        >
           Исключить
         </Button>
       </div>
@@ -646,17 +649,15 @@ function CreateGroupModal({
           htmlFor="group-discipline"
           hint="Из дисциплин, на которые вас назначил администратор."
         >
-          <SelectInput
+          <Select
             id="group-discipline"
             value={String(disciplineID)}
-            onChange={(event) => setDisciplineID(Number(event.target.value))}
-          >
-            {disciplines.map((discipline) => (
-              <option key={discipline.id} value={discipline.id}>
-                {discipline.code} · {discipline.title}
-              </option>
-            ))}
-          </SelectInput>
+            onChange={(next) => setDisciplineID(Number(next))}
+            options={disciplines.map((discipline) => ({
+              value: String(discipline.id),
+              label: `${discipline.code} · ${discipline.title}`,
+            }))}
+          />
         </Field>
       </div>
     </Modal>

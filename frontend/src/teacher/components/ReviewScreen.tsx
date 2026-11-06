@@ -4,8 +4,8 @@ import { fetchTeacherTasks } from '../api';
 import type { ReviewInboxItem, ToastData } from '../types';
 import { useReviewInbox } from '../hooks/useReviewInbox';
 import { ReviewDetailModal } from './ReviewDetailModal';
-import { Badge, Card, EmptyState, ErrorState, SkeletonList } from './ui';
-import { IconCheckCircle, IconChevronRight, IconInbox } from './icons';
+import { Badge, EmptyState, ErrorState, SkeletonList } from './ui';
+import { IconCheckCircle, IconChevronRight } from './icons';
 
 /**
  * ReviewScreen — очередь проверки работ учеников.
@@ -13,6 +13,12 @@ import { IconCheckCircle, IconChevronRight, IconInbox } from './icons';
  * Обновляется сама: по WebSocket о новых сдачах, при возврате на вкладку и
  * страховочным опросом. Нажатие на карточку открывает сдачу и вердикт.
  */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).slice(0, 2);
+
+  return parts.map((part) => part.charAt(0).toUpperCase()).join('') || '?';
+}
+
 export function ReviewScreen({
   notify,
   onReviewed,
@@ -52,41 +58,36 @@ export function ReviewScreen({
       ) : null}
 
       {!loading && !error && items.length > 0 ? (
-        <ul className="space-y-2">
+        <ul className="divide-y divide-line/70 border-y border-line/70">
           {items.map((item) => (
             <li key={item.id}>
               <button
                 type="button"
                 onClick={() => setSelected(item)}
-                className="block w-full rounded-2xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+                className="flex w-full items-center gap-3 py-3 text-left transition hover:bg-muted/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-ink/20"
               >
-                <Card className="flex items-center gap-3 transition hover:border-line2">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brandSoft text-brandStrong">
-                    <IconInbox className="h-4 w-4" />
-                  </span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-[10px] font-semibold text-ink2">
+                  {initials(item.studentName)}
+                </span>
 
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-semibold text-ink">
-                      {item.taskTitle}
-                    </span>
-                    <span className="mt-0.5 block truncate text-xs text-ink3">
-                      {item.studentName} · {item.groupCode}
-                    </span>
-                    <span className="mt-1 flex flex-wrap items-center gap-1">
-                      <Badge tone={item.onTime ? 'emerald' : 'amber'}>
-                        {item.onTime ? 'в срок' : 'просрочено'}
-                      </Badge>
-                      {item.attempt > 1 ? (
-                        <Badge tone="slate">попытка {item.attempt}</Badge>
-                      ) : null}
-                    </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-ink">
+                    {item.taskTitle}
                   </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-ink3">
+                    {item.studentName} · {item.groupCode}
+                  </span>
+                </span>
 
-                  <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-brand">
+                <span className="flex shrink-0 items-center gap-2">
+                  <Badge tone={item.onTime ? 'emerald' : 'amber'}>
+                    {item.onTime ? 'в срок' : 'просрочено'}
+                  </Badge>
+                  <span className="hidden items-center gap-1 text-[11px] text-ink3 sm:inline-flex">
                     Проверить
-                    <IconChevronRight className="h-4 w-4" />
+                    <IconChevronRight className="h-3.5 w-3.5" />
                   </span>
-                </Card>
+                </span>
               </button>
             </li>
           ))}
