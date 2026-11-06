@@ -129,7 +129,7 @@ func (s *Server) storeAnswerUpload(src io.Reader, originalName string) (string, 
 func (s *Server) storeUploadPrefixed(src io.Reader, originalName, prefix string) (string, string, string, error) {
 	dir := s.cfg.UploadDir
 	if dir == "" {
-		dir = "./uploads"
+		dir = "../uploads"
 	}
 
 	if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -358,3 +358,52 @@ func TestTaskTemplateWithAttachmentAndIssueBonus(t *testing.T) {
 		t.Fatalf("task attachments = %s, want brief.txt", taskFiles)
 	}
 }
+
+func TestUpdateTaskTemplate(t *testing.T) {
+	h := newHarness(t)
+	_ = h.seed()
+
+	token := h.login(t, "teacher@parta.dev")
+	disciplineID := h.scalarInt(`SELECT id FROM disciplines WHERE code = 'DB'`)
+
+	status, body := h.request(t, http.MethodPost, "/api/task-templates", token, map[string]any{
+		"discipline_id": disciplineID,
+		"title":         "Старое название",
+		"task_type":     "LAB_CODE",
+		"team_size":     1,
+	})
+	if status != http.StatusCreated {
+		t.Fatalf("create template = %d %v", status, body)
+	}
+
+	templateID := int64(body["id"].(float64))
+
+	status, body = h.request(t, http.MethodPatch,
+		"/api/task-templates/"+itoa64(templateID), token, map[string]any{
+			"discipline_id": disciplineID,
+			"title":         "Новое название",
+			"task_type":     "ESSAY",
+			"team_size":     1,
+		})
+	if status != http.StatusOK {
+		t.Fatalf("update template = %d %v", status, body)
+	}
+
+	if body["title"] != "Новое название" || body["task_type"] != "ESSAY" {
+		t.Fatalf("updated template = %v", body)
+	}
+
+	h.addTeacher("teacher2@parta.dev")
+	foreignToken := h.login(t, "teacher2@parta.dev")
+
+	status, body = h.request(t, http.MethodPatch,
+		"/api/task-templates/"+itoa64(templateID), foreignToken, map[string]any{
+			"discipline_id": disciplineID,
+			"title":         "Чужое изменение",
+			"task_type":     "TEST",
+			"team_size":     1,
+		})
+	if status != http.StatusForbidden {
+		t.Fatalf("foreign update = %d, want 403 (%v)", status, body)
+	}
+}

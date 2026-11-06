@@ -82,6 +82,37 @@ func (r *TaskTemplateRepo) Create(
 	return r.GetByID(ctx, id)
 }
 
+// Update переписывает поля шаблона и возвращает его.
+func (r *TaskTemplateRepo) Update(
+	ctx context.Context,
+	id int64,
+	in CreateTaskTemplateInput,
+) (*TaskTemplate, error) {
+	result, err := r.db.ExecContext(ctx,
+		`UPDATE task_templates
+		 SET discipline_id = ?, title = ?, description_md = ?, task_type = ?,
+		     requirements_count = ?, expected_hours = ?, speedrun_window_hours = ?,
+		     attachments = ?, team_size = ?
+		 WHERE id = ?`,
+		in.DisciplineID, in.Title, in.DescriptionMD, in.TaskType,
+		in.RequirementsCount, in.ExpectedHours, in.SpeedrunWindowHours,
+		in.Attachments, in.TeamSize, id)
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return nil, MapSQLError(err)
+	}
+
+	if affected == 0 {
+		return nil, domainerrors.ErrNotFound
+	}
+
+	return r.GetByID(ctx, id)
+}
+
 // GetByID возвращает шаблон по идентификатору.
 func (r *TaskTemplateRepo) GetByID(ctx context.Context, id int64) (*TaskTemplate, error) {
 	row := r.db.QueryRowContext(ctx, taskTemplateSelect+` WHERE tt.id = ?`, id)

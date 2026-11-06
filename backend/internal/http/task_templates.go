@@ -165,17 +165,37 @@ func (s *Server) createTaskTemplateResponse(
 	req createTaskTemplateRequest,
 	attachments string,
 ) {
-	if !validTaskType(req.TaskType) {
-		writeError(w, domainerrors.ErrInvalidArgument)
+	input, err := s.buildTaskTemplateInput(r.Context(), p.UserID, req, attachments)
+	if err != nil {
+		writeError(w, err)
 
 		return
 	}
 
-	title := strings.TrimSpace(req.Title)
-	if title == "" {
-		writeError(w, domainerrors.ErrInvalidArgument)
+	template, err := s.templates.Create(r.Context(), *input)
+	if err != nil {
+		writeError(w, err)
 
 		return
+	}
+
+	writeJSON(w, http.StatusCreated, newTaskTemplateView(template))
+}
+
+// buildTaskTemplateInput нормализует и проверяет поля заготовки.
+func (s *Server) buildTaskTemplateInput(
+	ctx context.Context,
+	teacherID int64,
+	req createTaskTemplateRequest,
+	attachments string,
+) (*storage.CreateTaskTemplateInput, error) {
+	if !validTaskType(req.TaskType) {
+		return nil, domainerrors.ErrInvalidArgument
+	}
+
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		return nil, domainerrors.ErrInvalidArgument
 	}
 
 	requirementsCount := req.RequirementsCount
@@ -196,27 +216,21 @@ func (s *Server) createTaskTemplateResponse(
 	teamSize := req.TeamSize
 	if req.TaskType == string(economy.TaskTypeTeamProject) {
 		if teamSize < 2 {
-			writeError(w, domainerrors.ErrInvalidArgument)
-
-			return
+			return nil, domainerrors.ErrInvalidArgument
 		}
 	} else if teamSize == 0 {
 		teamSize = 1
 	} else if teamSize != 1 {
-		writeError(w, domainerrors.ErrInvalidArgument)
-
-		return
+		return nil, domainerrors.ErrInvalidArgument
 	}
 
-	discipline, err := s.resolveDiscipline(r.Context(), req.DisciplineID, req.DisciplineCode)
+	discipline, err := s.resolveDiscipline(ctx, req.DisciplineID, req.DisciplineCode)
 	if err != nil {
-		writeError(w, err)
-
-		return
+		return nil, err
 	}
 
-	template, err := s.templates.Create(r.Context(), storage.CreateTaskTemplateInput{
-		TeacherID:           p.UserID,
+	return &storage.CreateTaskTemplateInput{
+		TeacherID:           teacherID,
 		DisciplineID:        discipline.ID,
 		Title:               title,
 		DescriptionMD:       req.DescriptionMD,
@@ -226,14 +240,114 @@ func (s *Server) createTaskTemplateResponse(
 		SpeedrunWindowHours: speedrunWindow,
 		Attachments:         attachments,
 		TeamSize:            teamSize,
-	})
+	}, nil
+}
+
+// handleUpdateTaskTemplate редактирует заготовку. Файлы можно заменить
+// multipart-загрузкой; если файлов нет, старые вложения сохраняются.
+func (s *Server) handleUpdateTaskTemplate(w http.ResponseWriter, r *http.Request) {
+	p, ok := s.principalOr401(w, r)
+	if !ok {
+		return
+	}
+
+	if !requireRole(w, p, RoleTeacher, RoleAdmin) {
+		return
+	}
+
+	id, err := parsePathID(r, "id")
 	if err != nil {
 		writeError(w, err)
 
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, newTaskTemplateView(template))
+	template, err := s.templates.GetByID(r.Context(), id)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	if p.Role == RoleTeacher && template.TeacherID != p.UserID {
+		writeError(w, domainerrors.ErrForbidden)
+
+		return
+	}
+
+	req := createTaskTemplateRequest{
+		DisciplineID:        template.DisciplineID,
+		Title:               template.Title,
+		DescriptionMD:       template.DescriptionMD,
+		TaskType:            template.TaskType,
+		RequirementsCount:   template.RequirementsCount,
+		ExpectedHours:       template.ExpectedHours,
+		SpeedrunWindowHours: template.SpeedrunWindowHours,
+		TeamSize:            template.TeamSize,
+	}
+	attachments := template.Attachments
+
+	if strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(16 << 20); err != nil {
+			writeJSON(w, http.StatusBadRequest, errorBody{
+				Error: "invalid multipart form",
+				Code:  CodeInvalidMultipart,
+			})
+
+			return
+		}
+
+		if r.MultipartForm != nil {
+			defer func() { _ = r.MultipartForm.RemoveAll() }()
+		}
+
+		value := func(key string) string {
+			if r.MultipartForm == nil || len(r.MultipartForm.Value[key]) == 0 {
+				return ""
+			}
+
+			return r.MultipartForm.Value[key][0]
+		}
+
+		req = createTaskTemplateRequest{
+			DisciplineID:        parseInt64OrZero(value("discipline_id")),
+			DisciplineCode:      value("discipline_code"),
+			Title:               value("title"),
+			DescriptionMD:       value("description_md"),
+			TaskType:            value("task_type"),
+			RequirementsCount:   int(parseInt64OrZero(value("requirements_count"))),
+			ExpectedHours:       parseFloatOrZero(value("expected_hours")),
+			SpeedrunWindowHours: int(parseInt64OrZero(value("speedrun_window_hours"))),
+			TeamSize:            int(parseInt64OrZero(value("team_size"))),
+		}
+
+		if r.MultipartForm != nil && len(r.MultipartForm.File["file"]) > 0 {
+			uploaded, ok := s.uploadTemplateAttachments(w, r)
+			if !ok {
+				return
+			}
+
+			attachments = uploaded
+		}
+	} else if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	input, err := s.buildTaskTemplateInput(r.Context(), template.TeacherID, req, attachments)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	updated, err := s.templates.Update(r.Context(), id, *input)
+	if err != nil {
+		writeError(w, err)
+
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newTaskTemplateView(updated))
 }
 
 // handleDeleteTaskTemplate удаляет шаблон: преподаватель — только свой,

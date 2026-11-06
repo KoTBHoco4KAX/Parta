@@ -5,6 +5,7 @@ import {
   deleteTaskTemplate,
   fetchTaskTemplates,
   fetchTeacherAssignments,
+  updateTaskTemplate,
   teacherErrorMessage,
   type TeacherAssignment,
 } from '../api';
@@ -24,7 +25,16 @@ import {
   SkeletonList,
   TextArea,
 } from './ui';
-import { IconAlert, IconBook, IconFile, IconPaperclip, IconPlus, IconTrash, IconUsers } from './icons';
+import {
+  IconAlert,
+  IconBook,
+  IconChevronRight,
+  IconFile,
+  IconPaperclip,
+  IconPlus,
+  IconTrash,
+  IconUsers,
+} from './icons';
 
 const TASK_TYPES: TaskType[] = ['TEST', 'NOTES', 'ESSAY', 'LAB_CODE', 'TEAM_PROJECT'];
 const DEFAULT_REQUIREMENTS = 8;
@@ -54,6 +64,8 @@ export function TaskBankScreen({
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<TaskTemplate | null>(null);
+  const [editing, setEditing] = useState<TaskTemplate | null>(null);
   const [deletingID, setDeletingID] = useState<number | null>(null);
 
   const load = useCallback(async () => {
@@ -171,11 +183,7 @@ export function TaskBankScreen({
             <ul className="space-y-2">
               {templates.map((template) => (
                 <li key={template.id}>
-                  <TemplateRow
-                    template={template}
-                    deleting={deletingID === template.id}
-                    onDelete={() => void remove(template)}
-                  />
+                  <TemplateRow template={template} onOpen={() => setSelected(template)} />
                 </li>
               ))}
             </ul>
@@ -194,93 +202,182 @@ export function TaskBankScreen({
           }}
         />
       ) : null}
+
+      {selected ? (
+        <TemplateDetailModal
+          template={selected}
+          deleting={deletingID === selected.id}
+          onClose={() => setSelected(null)}
+          onEdit={() => {
+            setEditing(selected);
+            setSelected(null);
+          }}
+          onDelete={() => {
+            void remove(selected).then(() => setSelected(null));
+          }}
+        />
+      ) : null}
+
+      {editing ? (
+        <CreateTemplateModal
+          template={editing}
+          disciplines={disciplines}
+          notify={notify}
+          onClose={() => setEditing(null)}
+          onCreated={() => {
+            setEditing(null);
+            setReloadKey((value) => value + 1);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
 function TemplateRow({
   template,
+  onOpen,
+}: {
+  template: TaskTemplate;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="block w-full rounded-2xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
+    >
+      <Card className="space-y-2.5 transition hover:border-line2">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0 flex-1">
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink">
+              {template.title}
+            </h3>
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              <Badge tone={TASK_TYPE_TONE[template.task_type]}>
+                {TASK_TYPE_LABEL[template.task_type]}
+              </Badge>
+              <Badge tone="indigo">{template.discipline_title}</Badge>
+              {template.team_size > 1 ? (
+                <Badge tone="violet">
+                  <IconUsers className="h-3 w-3" />
+                  {template.team_size}
+                </Badge>
+              ) : null}
+            </div>
+            {(template.attachments?.length ?? 0) > 0 ? (
+              <div className="mt-1.5">
+                <Badge tone="slate">
+                  <IconPaperclip className="h-3 w-3" />
+                  {template.attachments?.length ?? 0}
+                </Badge>
+              </div>
+            ) : null}
+          </div>
+          <IconChevronRight className="mt-1 h-4 w-4 shrink-0 text-ink3" />
+        </div>
+      </Card>
+    </button>
+  );
+}
+
+function TemplateDetailModal({
+  template,
   deleting,
+  onClose,
+  onEdit,
   onDelete,
 }: {
   template: TaskTemplate;
   deleting: boolean;
+  onClose: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   return (
-    <Card className="space-y-2.5">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-ink">
-            {template.title}
-          </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-1">
-            <Badge tone={TASK_TYPE_TONE[template.task_type]}>
-              {TASK_TYPE_LABEL[template.task_type]}
+    <Modal
+      open
+      onClose={onClose}
+      title={template.title}
+      subtitle="Заготовка из базы заданий"
+      footer={
+        <div className="flex w-full gap-2">
+          <Button
+            variant="reject"
+            block
+            disabled={deleting}
+            onClick={onDelete}
+          >
+            <IconTrash className="h-4 w-4" />
+            Удалить
+          </Button>
+          <Button block onClick={onEdit} disabled={deleting}>
+            Редактировать
+          </Button>
+        </div>
+      }
+    >
+      <div className="space-y-3">
+        <div className="flex flex-wrap gap-1.5">
+          <Badge tone={TASK_TYPE_TONE[template.task_type]}>
+            {TASK_TYPE_LABEL[template.task_type]}
+          </Badge>
+          <Badge tone="indigo">{template.discipline_title}</Badge>
+          {template.team_size > 1 ? (
+            <Badge tone="violet">
+              <IconUsers className="h-3 w-3" />
+              {template.team_size}
             </Badge>
-            <Badge tone="indigo">{template.discipline_title}</Badge>
-            {template.team_size > 1 ? (
-              <Badge tone="violet">
-                <IconUsers className="h-3 w-3" />
-                {template.team_size}
-              </Badge>
-            ) : null}
-          </div>
-          {(template.attachments?.length ?? 0) > 0 ? (
-            <div className="mt-1.5 space-y-1">
-              <Badge tone="slate">
-                <IconPaperclip className="h-3 w-3" />
-                {template.attachments?.length ?? 0}
-              </Badge>
-              <ul className="space-y-0.5">
-                {(template.attachments ?? []).map((file) => (
-                  <li key={file.url}>
-                    <a
-                      href={file.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex max-w-full items-center gap-1 text-[10px] text-brand hover:underline"
-                    >
-                      <IconFile className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{file.name}</span>
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
           ) : null}
         </div>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="shrink-0 text-bad hover:bg-badSoft"
-          disabled={deleting}
-          onClick={onDelete}
-        >
-          <IconTrash className="h-3.5 w-3.5" />
-          Удалить
-        </Button>
+
+        <section className="rounded-xl border border-line bg-muted p-3">
+          <h4 className="text-xs font-semibold text-ink2">Файлы задания</h4>
+          {(template.attachments?.length ?? 0) === 0 ? (
+            <p className="mt-1 text-[11px] text-ink3">Файлов нет.</p>
+          ) : (
+            <ul className="mt-1.5 space-y-1">
+              {(template.attachments ?? []).map((file) => (
+                <li key={file.url}>
+                  <a
+                    href={file.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1.5 text-[11px] text-brand hover:underline"
+                  >
+                    <IconFile className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </div>
-    </Card>
+    </Modal>
   );
 }
 
 function CreateTemplateModal({
+  template,
   disciplines,
   notify,
   onClose,
   onCreated,
 }: {
+  template?: TaskTemplate;
   disciplines: DisciplineOption[];
   notify: (toast: Omit<ToastData, 'id'>) => void;
   onClose: () => void;
   onCreated: () => void;
 }) {
-  const [disciplineID, setDisciplineID] = useState(String(disciplines[0]?.id ?? ''));
-  const [taskType, setTaskType] = useState<TaskType>('LAB_CODE');
-  const [title, setTitle] = useState('');
+  const [disciplineID, setDisciplineID] = useState(
+    String(template?.discipline_id ?? disciplines[0]?.id ?? ''),
+  );
+  const [taskType, setTaskType] = useState<TaskType>(template?.task_type ?? 'LAB_CODE');
+  const [title, setTitle] = useState(template?.title ?? '');
   const [files, setFiles] = useState<File[]>([]);
-  const [teamSize, setTeamSize] = useState(2);
+  const [teamSize, setTeamSize] = useState(template?.team_size ?? 2);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -297,24 +394,39 @@ function CreateTemplateModal({
 
     setSubmitting(true);
 
-    try {
-      await createTaskTemplate({
-        discipline_id: Number(disciplineID),
-        title: title.trim(),
-        description_md: '',
-        task_type: taskType,
-        // Сложность не спрашиваем у преподавателя: базовые значения нужны
-        // только формуле XP, а не содержанию задания.
-        requirements_count: DEFAULT_REQUIREMENTS,
-        expected_hours: DEFAULT_HOURS,
-        speedrun_window_hours: DEFAULT_BONUS_HOURS,
-        team_size: taskType === 'TEAM_PROJECT' ? teamSize : 1,
-      }, files);
+    const input = {
+      discipline_id: Number(disciplineID),
+      title: title.trim(),
+      description_md: '',
+      task_type: taskType,
+      // Сложность не спрашиваем у преподавателя: базовые значения нужны
+      // только формуле XP, а не содержанию задания.
+      requirements_count: DEFAULT_REQUIREMENTS,
+      expected_hours: DEFAULT_HOURS,
+      speedrun_window_hours: DEFAULT_BONUS_HOURS,
+      team_size: taskType === 'TEAM_PROJECT' ? teamSize : 1,
+    };
 
-      notify({ tone: 'success', title: 'Заготовка создана', description: title.trim() });
+    try {
+      if (template) {
+        await updateTaskTemplate(template.id, input, files);
+      } else {
+        await createTaskTemplate(input, files);
+      }
+
+      notify({
+        tone: 'success',
+        title: template ? 'Заготовка обновлена' : 'Заготовка создана',
+        description: title.trim(),
+      });
       onCreated();
     } catch (cause) {
-      setError(teacherErrorMessage(cause, 'Не удалось создать заготовку.'));
+      setError(
+        teacherErrorMessage(
+          cause,
+          template ? 'Не удалось сохранить изменения.' : 'Не удалось создать заготовку.',
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -324,8 +436,12 @@ function CreateTemplateModal({
     <Modal
       open
       onClose={onClose}
-      title="Новое задание в базу"
-      subtitle="Заготовка не выдаётся сразу — её можно выбрать при выдаче."
+      title={template ? 'Редактировать задание' : 'Новое задание в базу'}
+      subtitle={
+        template
+          ? 'Изменения сохранятся в базе заданий.'
+          : 'Заготовка не выдаётся сразу — её можно выбрать при выдаче.'
+      }
       size="lg"
       footer={
         <div className="flex w-full flex-col gap-2">
@@ -340,7 +456,7 @@ function CreateTemplateModal({
             </Button>
             <Button block loading={submitting} onClick={() => void submit()}>
               <IconBook className="h-4 w-4" />
-              Сохранить в базу
+              {template ? 'Сохранить изменения' : 'Сохранить в базу'}
             </Button>
           </div>
         </div>
@@ -395,8 +511,29 @@ function CreateTemplateModal({
         <Field
           label="Файлы задания"
           htmlFor="template-files"
-          hint="Методички, шаблоны, тесты. До 5 файлов по 20 МБ."
+          hint={
+            template && (template.attachments?.length ?? 0) > 0
+              ? 'Выбранные файлы заменят текущие.'
+              : 'Методички, шаблоны, тесты. До 5 файлов по 20 МБ.'
+          }
         >
+          {template && (template.attachments?.length ?? 0) > 0 ? (
+            <ul className="mb-1.5 space-y-0.5">
+              {(template.attachments ?? []).map((file) => (
+                <li key={file.url}>
+                  <a
+                    href={file.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex max-w-full items-center gap-1 text-[10px] text-brand hover:underline"
+                  >
+                    <IconFile className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <input
             id="template-files"
             type="file"

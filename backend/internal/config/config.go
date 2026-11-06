@@ -20,7 +20,8 @@ const (
 	defaultEnv       = "dev"
 	defaultDBPath    = "./parta.db"
 	defaultAddr      = ":8080"
-	defaultUploadDir = "./uploads"
+	// Файлы лежат вне Go-модуля: иначе загруженный .go-файл ломает go build ./...
+	defaultUploadDir = "../uploads"
 )
 
 // JWTIssuer is the iss claim of every issued token (spec/04_API.md auth rules).

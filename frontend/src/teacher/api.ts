@@ -558,6 +558,35 @@ export async function createTaskTemplate(
   return apiFetch<TaskTemplate>('/task-templates', { method: 'POST', body: form });
 }
 
+/** PATCH /api/task-templates/{id} — отредактировать заготовку. */
+export async function updateTaskTemplate(
+  templateId: number,
+  input: CreateTaskTemplateRequest,
+  files: File[] = [],
+): Promise<TaskTemplate> {
+  if (files.length === 0) {
+    return apiFetch<TaskTemplate>(`/task-templates/${templateId}`, {
+      method: 'PATCH',
+      body: input,
+    });
+  }
+
+  const form = new FormData();
+
+  for (const [key, value] of Object.entries(input)) {
+    form.append(key, String(value));
+  }
+
+  for (const file of files) {
+    form.append('file', file, file.name);
+  }
+
+  return apiFetch<TaskTemplate>(`/task-templates/${templateId}`, {
+    method: 'PATCH',
+    body: form,
+  });
+}
+
 /** DELETE /api/task-templates/{id} — удалить заготовку. */
 export async function deleteTaskTemplate(templateId: number): Promise<void> {
   await apiFetch<void>(`/task-templates/${templateId}`, { method: 'DELETE' });

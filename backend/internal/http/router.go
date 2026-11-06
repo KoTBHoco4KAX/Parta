@@ -106,6 +106,7 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("POST /api/tasks/{id}/repeat", teacherOnly(http.HandlerFunc(s.handleRepeatTask)))
 	protected.Handle("GET /api/task-templates", staffOnly(http.HandlerFunc(s.handleListTaskTemplates)))
 	protected.Handle("POST /api/task-templates", teacherOnly(http.HandlerFunc(s.handleCreateTaskTemplate)))
+	protected.Handle("PATCH /api/task-templates/{id}", staffOnly(http.HandlerFunc(s.handleUpdateTaskTemplate)))
 	protected.Handle("DELETE /api/task-templates/{id}", staffOnly(http.HandlerFunc(s.handleDeleteTaskTemplate)))
 	protected.Handle("POST /api/task-templates/{id}/issue", teacherOnly(http.HandlerFunc(s.handleIssueTaskTemplate)))
 	protected.Handle("GET /api/submissions", http.HandlerFunc(s.handleListSubmissions))

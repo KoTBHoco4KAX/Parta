@@ -880,6 +880,34 @@ function IssueTaskModal({
           </div>
         </Field>
 
+        {singleAssignment ? (
+          <Field
+            label="Получатели"
+            error={recipientError}
+            hint="Можно выдать всей группе или отметить отдельных учеников."
+          >
+            <RecipientsField
+              mode={recipientMode}
+              onModeChange={setRecipientMode}
+              members={members}
+              loading={membersLoading}
+              selectedIDs={selectedStudentIDs}
+              onToggle={(studentID) =>
+                setSelectedStudentIDs((previous) =>
+                  previous.includes(studentID)
+                    ? previous.filter((id) => id !== studentID)
+                    : [...previous, studentID],
+                )
+              }
+            />
+          </Field>
+        ) : selectedAssignments.length > 1 ? (
+          <Callout tone="slate" title="Пакетная выдача">
+            Выбрано потоков: {selectedAssignments.length}. Чтобы выдать задание
+            отдельным ученикам, оставьте один поток.
+          </Callout>
+        ) : null}
+
         <Field label="Источник задания">
           <div className="grid grid-cols-2 gap-1 rounded-xl border border-line bg-card p-1">
             {[
@@ -976,34 +1004,6 @@ function IssueTaskModal({
               </>
             )}
           </Field>
-        ) : null}
-
-        {singleAssignment ? (
-          <Field
-            label="Получатели"
-            error={recipientError}
-            hint="Можно выдать всей группе или отметить отдельных учеников."
-          >
-            <RecipientsField
-              mode={recipientMode}
-              onModeChange={setRecipientMode}
-              members={members}
-              loading={membersLoading}
-              selectedIDs={selectedStudentIDs}
-              onToggle={(studentID) =>
-                setSelectedStudentIDs((previous) =>
-                  previous.includes(studentID)
-                    ? previous.filter((id) => id !== studentID)
-                    : [...previous, studentID],
-                )
-              }
-            />
-          </Field>
-        ) : selectedAssignments.length > 1 ? (
-          <Callout tone="slate" title="Пакетная выдача">
-            Выбрано потоков: {selectedAssignments.length}. Чтобы выдать задание
-            отдельным ученикам, оставьте один поток.
-          </Callout>
         ) : null}
 
         {sourceMode === 'new' ? (
