@@ -101,13 +101,6 @@ export default function KanbanPage() {
 
   return (
     <div>
-      <div className="mb-4">
-        <h1 className="text-xl font-semibold text-ink">Канбан-доска</h1>
-        <p className="mt-0.5 text-sm text-ink3">
-          Нажмите на карточку: откроется задание, а входящая сразу перейдёт в работу.
-        </p>
-      </div>
-
       {error ? (
         <p role="alert" className="mb-3 rounded-xl border border-badLine bg-badSoft px-3 py-2 text-xs text-bad">
           {error}

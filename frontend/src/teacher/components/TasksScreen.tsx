@@ -10,7 +10,6 @@ import {
   fetchTeacherAssignments,
   fetchTeacherTasks,
   issueTaskTemplate,
-  repeatTeacherTask,
   teacherErrorMessage,
   type GroupMember,
   type TeacherAssignment,
@@ -52,7 +51,6 @@ import {
   ErrorState,
   Field,
   Modal,
-  ScreenHeader,
   Segmented,
   SelectInput,
   SkeletonList,
@@ -68,7 +66,6 @@ import {
   IconClipboard,
   IconPaperclip,
   IconPlus,
-  IconRefresh,
   IconSparkles,
   IconUsers,
 } from './icons';
@@ -104,7 +101,6 @@ export function TasksScreen({
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
-  const [repeatingTask, setRepeatingTask] = useState<Task | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,17 +210,12 @@ export function TasksScreen({
 
   return (
     <div>
-      <ScreenHeader
-        eyebrow="Задания"
-        title="Выдача заданий"
-        description="Одна форма — карточки на досках всех учеников потока."
-        action={
-          <Button size="sm" onClick={() => setCreating(true)} disabled={assignments.length === 0}>
-            <IconPlus className="h-4 w-4" />
-            Выдать
-          </Button>
-        }
-      />
+      <div className="mb-4 flex justify-end">
+        <Button size="sm" onClick={() => setCreating(true)} disabled={assignments.length === 0}>
+          <IconPlus className="h-4 w-4" />
+          Выдать
+        </Button>
+      </div>
 
       {loading ? <SkeletonList rows={3} /> : null}
 
@@ -265,7 +256,6 @@ export function TasksScreen({
                   counts={item.counts}
                   total={item.total}
                   groupCode={item.groupCode}
-                  onRepeat={() => setRepeatingTask(item.task)}
                 />
               ))}
             </div>
@@ -282,7 +272,6 @@ export function TasksScreen({
                   total={item.total}
                   groupCode={item.groupCode}
                   muted
-                  onRepeat={() => setRepeatingTask(item.task)}
                 />
               ))}
             </div>
@@ -303,18 +292,6 @@ export function TasksScreen({
           }}
         />
       ) : null}
-
-      {repeatingTask ? (
-        <RepeatTaskModal
-          task={repeatingTask}
-          notify={notify}
-          onClose={() => setRepeatingTask(null)}
-          onIssued={() => {
-            setRepeatingTask(null);
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      ) : null}
     </div>
   );
 }
@@ -326,14 +303,12 @@ function TaskCard({
   total,
   groupCode,
   muted = false,
-  onRepeat,
 }: {
   task: Task;
   counts: Record<Submission['status'], number>;
   total: number;
   groupCode: string | null;
   muted?: boolean;
-  onRepeat?: () => void;
 }) {
   const bonusEnd = task.speedrun_bonus_until || speedrunEndsAt(task.deadline_at, task.speedrun_window_hours).toISOString();
   const reviewCount = counts.REVIEW;
@@ -412,18 +387,7 @@ function TaskCard({
         <span className="text-[10px] text-ink3">
           {reviewCount > 0 ? `На проверке: ${reviewCount}` : 'Проверять пока нечего'}
         </span>
-        {onRepeat ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="ml-auto"
-            onClick={onRepeat}
-          >
-            <IconRefresh className="h-3.5 w-3.5" />
-            Повторить
-          </Button>
-        ) : null}
-        <span className={cn('self-center text-[10px] text-ink3', onRepeat ? '' : 'ml-auto')}>
+        <span className="ml-auto self-center text-[10px] text-ink3">
           дедлайн {formatDateTime(task.deadline_at)}
         </span>
       </div>
@@ -1291,178 +1255,4 @@ function RecipientsField({
   );
 }
 
-/** RepeatTaskModal — повтор выданного задания с новым дедлайном. */
-function RepeatTaskModal({
-  task,
-  notify,
-  onClose,
-  onIssued,
-}: {
-  task: Task;
-  notify: (toast: Omit<ToastData, 'id'>) => void;
-  onClose: () => void;
-  onIssued: () => void;
-}) {
-  const [deadline, setDeadline] = useState(() => defaultDeadlineLocal(7));
-  const [mode, setMode] = useState<'group' | 'selected'>('group');
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(true);
-  const [selectedIDs, setSelectedIDs] = useState<number[]>([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    setMembersLoading(true);
-
-    fetchGroupMembers(task.group_id)
-      .then((nextMembers) => {
-        if (!cancelled) {
-          setMembers(nextMembers);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMembers([]);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setMembersLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [task.group_id]);
-
-  const deadlineDate = parseLocalInput(deadline);
-  const deadlineValid = deadlineDate !== null && deadlineDate.getTime() > Date.now();
-  const deadlineError = submitted && !deadlineValid ? 'Дедлайн должен быть в будущем' : null;
-  const recipientError =
-    submitted && mode === 'selected' && selectedIDs.length === 0
-      ? 'Выберите хотя бы одного ученика'
-      : null;
-
-  async function handleSubmit() {
-    setSubmitted(true);
-    setError(null);
-
-    if (
-      deadlineDate === null ||
-      !deadlineValid ||
-      (mode === 'selected' && selectedIDs.length === 0)
-    ) {
-      return;
-    }
-
-    setSubmitting(true);
-
-    try {
-      const result = await repeatTeacherTask(task.id, {
-        deadlineAt: deadlineDate.toISOString(),
-        studentIds: mode === 'selected' ? selectedIDs : undefined,
-      });
-
-      notify({
-        tone: 'success',
-        title: 'Задание повторено',
-        description: `${task.title} · новый дедлайн ${
-          deadlineDate ? formatDeadline24(deadlineDate) : '—'
-        }${result.slotsCount > 0 ? ` · ${result.slotsCount} слота` : ''}.`,
-      });
-      onIssued();
-    } catch (cause) {
-      setError(teacherErrorMessage(cause, 'Не удалось повторить задание. Проверьте соединение.'));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Повторить задание"
-      subtitle={task.title}
-      size="lg"
-      footer={
-        <div className="flex w-full flex-col gap-2">
-          {error ? (
-            <p role="alert" className="text-[11px] leading-relaxed text-bad">
-              {error}
-            </p>
-          ) : null}
-          <div className="flex gap-2">
-            <Button variant="ghost" block onClick={onClose} disabled={submitting}>
-              Отмена
-            </Button>
-            <Button block loading={submitting} onClick={() => void handleSubmit()}>
-              <IconRefresh className="h-4 w-4" />
-              Повторить
-            </Button>
-          </div>
-        </div>
-      }
-    >
-      <div className="space-y-3.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <Badge tone={TASK_TYPE_TONE[task.task_type]}>{TASK_TYPE_LABEL[task.task_type]}</Badge>
-          <Badge tone="slate">группа #{task.group_id}</Badge>
-          <Badge tone="indigo">{formatNumber(task.base_xp_computed)} XP</Badge>
-        </div>
-
-        <Field label="Получатели" error={recipientError}>
-          <RecipientsField
-            mode={mode}
-            onModeChange={setMode}
-            members={members}
-            loading={membersLoading}
-            selectedIDs={selectedIDs}
-            onToggle={(studentID) =>
-              setSelectedIDs((previous) =>
-                previous.includes(studentID)
-                  ? previous.filter((id) => id !== studentID)
-                  : [...previous, studentID],
-              )
-            }
-          />
-        </Field>
-
-        <Field label="Новый дедлайн" error={deadlineError}>
-          <DeadlineInput
-            value={deadline}
-            onChange={setDeadline}
-            invalid={Boolean(deadlineError)}
-          />
-        </Field>
-
-        <div className="flex flex-wrap gap-1.5">
-          {[
-            { label: '+1 день', days: 1 },
-            { label: '+3 дня', days: 3 },
-            { label: '+1 неделя', days: 7 },
-            { label: '+2 недели', days: 14 },
-          ].map((preset) => (
-            <Button
-              key={preset.label}
-              size="sm"
-              variant="outline"
-              onClick={() => setDeadline(defaultDeadlineLocal(preset.days))}
-            >
-              {preset.label}
-            </Button>
-          ))}
-        </div>
-
-        <p className="text-[11px] text-ink3">
-          Создаётся новая копия задания с тем же текстом и типом. Старые карточки
-          и их статусы не меняются.
-        </p>
-      </div>
-    </Modal>
-  );
-}

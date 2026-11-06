@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../core/auth';
 import { fetchAllSubmissions, fetchTeacherAssignments, fetchTeacherTasks } from '../api';
-import { Card, ScreenHeader, Skeleton, StatTile } from './ui';
+import { Card, Skeleton, StatTile } from './ui';
 
 /** Разделы кабинета, в которые ведут плитки профиля. */
 export type ProfileSection = 'groups' | 'tasks' | 'review';
@@ -52,8 +52,6 @@ export function ProfileScreen({
 
   return (
     <div>
-      <ScreenHeader eyebrow="Кабинет" title="Профиль" />
-
       <Card className="flex items-center gap-3">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-brandSoft text-xl font-bold text-brandStrong">
           {initial}
@@ -95,11 +93,6 @@ export function ProfileScreen({
           </>
         )}
       </div>
-
-      <p className="mt-3 text-[11px] leading-relaxed text-ink3">
-        Плитки кликабельны: «Потоки» ведут к группам и составу, «Задания» — к
-        выдаче, «На проверке» — к работам, ожидающим вердикта.
-      </p>
     </div>
   );
 }

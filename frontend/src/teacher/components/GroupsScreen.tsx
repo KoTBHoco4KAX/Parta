@@ -12,7 +12,6 @@ import {
   type TeacherAssignment,
 } from '../api';
 import type { ToastData } from '../types';
-import { pluralize } from '../lib/format';
 import {
   Avatar,
   Badge,
@@ -23,7 +22,6 @@ import {
   ErrorState,
   Field,
   Modal,
-  ScreenHeader,
   SelectInput,
   SkeletonList,
   TextInput,
@@ -118,29 +116,18 @@ export function GroupsScreen({
 
   const reload = useCallback(() => setReloadKey((value) => value + 1), []);
 
-  const totalStudents = Object.values(members).reduce((sum, list) => sum + list.length, 0);
-
   return (
     <div>
-      <ScreenHeader
-        eyebrow="Группы"
-        title="Мои группы"
-        description={
-          groups.length > 0
-            ? `${groups.length} ${pluralize(groups.length, ['поток', 'потока', 'потоков'])} · ${totalStudents} ${pluralStudents(totalStudents)}`
-            : 'Здесь появятся потоки, закреплённые за вами.'
-        }
-        action={
-          <Button
-            size="sm"
-            onClick={() => setCreating(true)}
-            disabled={disciplines.length === 0}
-          >
-            <IconPlus className="h-4 w-4" />
-            Группа
-          </Button>
-        }
-      />
+      <div className="mb-4 flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => setCreating(true)}
+          disabled={disciplines.length === 0}
+        >
+          <IconPlus className="h-4 w-4" />
+          Группа
+        </Button>
+      </div>
 
       {loading ? <SkeletonList rows={3} /> : null}
 

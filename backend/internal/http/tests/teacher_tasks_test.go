@@ -230,26 +230,6 @@ func TestTaskTemplatesBaseAndIndividualIssue(t *testing.T) {
 		t.Fatalf("direct task submission student = %d, want %d", got, ids.student2)
 	}
 
-	// Повтор задания с новым дедлайном и другим получателем.
-	status, repeated := h.request(t, http.MethodPost,
-		"/api/tasks/"+itoa64(taskID)+"/repeat", teacherToken, map[string]any{
-			"deadline_at": deadline,
-			"student_ids": []int64{ids.student2},
-		})
-	if status != http.StatusCreated {
-		t.Fatalf("repeat task status = %d, want 201 (%v)", status, repeated)
-	}
-
-	repeatedID := int64(repeated["task_id"].(float64))
-
-	if repeatedID == taskID {
-		t.Fatalf("repeat returned the same task id")
-	}
-
-	if got := h.scalarInt(`SELECT student_id FROM submissions WHERE task_id = ?`, repeatedID); got != ids.student2 {
-		t.Fatalf("repeat submission student = %d, want %d", got, ids.student2)
-	}
-
 	// Чужой преподаватель не может удалить шаблон.
 	h.addTeacher("teacher2@parta.dev")
 	foreignToken := h.login(t, "teacher2@parta.dev")

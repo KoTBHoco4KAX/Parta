@@ -20,7 +20,6 @@ import {
   ErrorState,
   Field,
   Modal,
-  ScreenHeader,
   SelectInput,
   SkeletonList,
   TextArea,
@@ -133,21 +132,16 @@ export function TaskBankScreen({
 
   return (
     <div>
-      <ScreenHeader
-        eyebrow="База"
-        title="База заданий"
-        description="Заготовки, которые можно выдать в любой свой поток без повторного заполнения."
-        action={
-          <Button
-            size="sm"
-            onClick={() => setCreating(true)}
-            disabled={disciplines.length === 0}
-          >
-            <IconPlus className="h-4 w-4" />
-            Создать задание
-          </Button>
-        }
-      />
+      <div className="mb-4 flex justify-end">
+        <Button
+          size="sm"
+          onClick={() => setCreating(true)}
+          disabled={disciplines.length === 0}
+        >
+          <IconPlus className="h-4 w-4" />
+          Создать задание
+        </Button>
+      </div>
 
       {loading ? <SkeletonList rows={3} /> : null}
 

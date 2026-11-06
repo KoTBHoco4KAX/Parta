@@ -4,7 +4,7 @@ import { fetchTeacherTasks } from '../api';
 import type { ReviewInboxItem, ToastData } from '../types';
 import { useReviewInbox } from '../hooks/useReviewInbox';
 import { ReviewDetailModal } from './ReviewDetailModal';
-import { Badge, Card, EmptyState, ErrorState, ScreenHeader, SkeletonList } from './ui';
+import { Badge, Card, EmptyState, ErrorState, SkeletonList } from './ui';
 import { IconCheckCircle, IconChevronRight, IconInbox } from './icons';
 
 /**
@@ -37,12 +37,6 @@ export function ReviewScreen({
 
   return (
     <div>
-      <ScreenHeader
-        eyebrow="Очередь"
-        title="Проверка"
-        description="Работы учеников, которые ждут вердикта."
-      />
-
       {loading ? <SkeletonList rows={3} /> : null}
 
       {error && !loading ? <ErrorState message={error} onRetry={reload} /> : null}

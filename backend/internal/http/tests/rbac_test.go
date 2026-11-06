@@ -21,7 +21,6 @@ func TestStudentCannotCallStaffEndpoints(t *testing.T) {
 		body   any
 	}{
 		{http.MethodPost, "/api/tasks", map[string]any{}},
-		{http.MethodPost, "/api/tasks/1/repeat", map[string]any{}},
 		{http.MethodGet, "/api/task-templates", nil},
 		{http.MethodPost, "/api/task-templates", map[string]any{}},
 		{http.MethodDelete, "/api/task-templates/1", nil},

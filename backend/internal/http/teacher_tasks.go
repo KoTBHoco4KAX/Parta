@@ -2,97 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	domainerrors "github.com/parta/backend/internal/domain/errors"
 	"github.com/parta/backend/internal/storage"
 )
-
-// repeatTaskRequest — тело POST /api/tasks/{id}/repeat.
-type repeatTaskRequest struct {
-	DeadlineAt string  `json:"deadline_at"`
-	StudentIDs []int64 `json:"student_ids"`
-}
-
-// handleRepeatTask создаёт копию выданного задания с новым дедлайном.
-// Карточки получают выбранные ученики группы (по умолчанию — вся группа).
-func (s *Server) handleRepeatTask(w http.ResponseWriter, r *http.Request) {
-	p, ok := s.principalOr401(w, r)
-	if !ok {
-		return
-	}
-
-	if !requireRole(w, p, RoleTeacher) {
-		return
-	}
-
-	id, err := parsePathID(r, "id")
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	task, err := s.tasks.GetByID(r.Context(), id)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	if task.AssignedTeacherID != p.UserID {
-		writeError(w, domainerrors.ErrForbidden)
-
-		return
-	}
-
-	var req repeatTaskRequest
-
-	if !decodeJSON(w, r, &req) {
-		return
-	}
-
-	deadline, err := time.Parse(time.RFC3339, strings.TrimSpace(req.DeadlineAt))
-	if err != nil || !deadline.After(s.now()) {
-		writeError(w, domainerrors.ErrInvalidArgument)
-
-		return
-	}
-
-	students, err := s.resolveStudents(r.Context(), task.GroupID, req.StudentIDs)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	response, err := s.issueTask(r.Context(), p, issueTaskInput{
-		AssignmentID:      task.AssignmentID,
-		GroupID:           task.GroupID,
-		Topic:             task.Topic,
-		Title:             task.Title,
-		DescriptionMD:     task.DescriptionMD,
-		TaskType:          task.TaskType,
-		RequirementsCount: task.RequirementsCount,
-		ExpectedHours:     task.ExpectedHours,
-		Deadline:          deadline,
-		SpeedrunWindow:    int(task.SpeedrunWindow.Hours()),
-		Attachments:       task.Attachments,
-		TeamSize:          task.TeamSize,
-		// Сохраняем назначенный преподавателем XP: повтор — та же работа.
-		XP: task.BaseXP,
-	}, students)
-	if err != nil {
-		writeError(w, err)
-
-		return
-	}
-
-	writeJSON(w, http.StatusCreated, response)
-}
 
 // resolveStudents возвращает получателей задания.
 //

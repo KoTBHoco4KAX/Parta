@@ -109,13 +109,6 @@ export default function ShopPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-semibold text-ink">Магазин</h1>
-        <p className="mt-0.5 text-sm text-ink3">
-          XP за принятые работы и спидран. Здесь можно потратить их на заморозки стрика.
-        </p>
-      </div>
-
       {/* Панель XP */}
       <section className="rounded-2xl border border-line bg-card p-4 shadow-[var(--shadow-card)]">
         <div className="flex items-end justify-between gap-3">

@@ -103,7 +103,6 @@ func (s *Server) Handler() http.Handler {
 	protected := http.NewServeMux()
 	protected.Handle("GET /api/tasks", http.HandlerFunc(s.handleListTasks))
 	protected.Handle("POST /api/tasks", teacherOnly(http.HandlerFunc(s.handleCreateTask)))
-	protected.Handle("POST /api/tasks/{id}/repeat", teacherOnly(http.HandlerFunc(s.handleRepeatTask)))
 	protected.Handle("GET /api/task-templates", staffOnly(http.HandlerFunc(s.handleListTaskTemplates)))
 	protected.Handle("POST /api/task-templates", teacherOnly(http.HandlerFunc(s.handleCreateTaskTemplate)))
 	protected.Handle("PATCH /api/task-templates/{id}", staffOnly(http.HandlerFunc(s.handleUpdateTaskTemplate)))

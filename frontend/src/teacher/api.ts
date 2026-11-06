@@ -653,22 +653,6 @@ export async function issueTaskTemplate(
   return toIssuedTaskResult(response);
 }
 
-/** POST /api/tasks/{id}/repeat — выдать копию задания с новым дедлайном. */
-export async function repeatTeacherTask(
-  taskId: number,
-  input: { deadlineAt: string; studentIds?: number[] },
-): Promise<IssuedTaskResult> {
-  const response = await apiFetch<CreateTaskResponseDto>(`/tasks/${taskId}/repeat`, {
-    method: 'POST',
-    body: {
-      deadline_at: input.deadlineAt,
-      student_ids: input.studentIds,
-    },
-  });
-
-  return toIssuedTaskResult(response);
-}
-
 /**
  * teacherErrorMessage — человекочитаемая ошибка для тостов.
  *
