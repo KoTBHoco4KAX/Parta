@@ -9,10 +9,18 @@ COPY frontend/ ./
 RUN npm run build
 
 # ---- backend ----
+# Сборка Go бэкенда
 FROM golang:1.22-alpine AS api
 WORKDIR /app/backend
+
+# Ставим прокси, чтобы go mod не вис на таймаутах
+ENV GOPROXY=https://goproxy.io,direct
+
+# Копируем манифесты зависимостей и качаем их
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
+
+# Копируем остальной исходный код и компилируем
 COPY backend/ ./
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/parta ./cmd/server
 
