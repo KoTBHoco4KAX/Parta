@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"net/url"
 	"testing"
 )
 
@@ -142,6 +143,38 @@ func TestDemoLoginOnlyFixedAccounts(t *testing.T) {
 	})
 	if status != http.StatusUnprocessableEntity {
 		t.Fatalf("unknown demo status = %d, want 422", status)
+	}
+}
+
+func TestMaxAuthWebAppInitData(t *testing.T) {
+	const botToken = "max-test-token"
+	h := newHarnessWithMaxToken(t, botToken)
+
+	userJSON := `{"id":12345,"first_name":"Иван"}`
+	canonical := "auth_date=1700000000\nquery_id=abc\nuser=" + userJSON
+
+	secretMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretMAC.Write([]byte(botToken))
+	signatureMAC := hmac.New(sha256.New, secretMAC.Sum(nil))
+	signatureMAC.Write([]byte(canonical))
+	hash := hex.EncodeToString(signatureMAC.Sum(nil))
+
+	values := url.Values{
+		"auth_date": {"1700000000"},
+		"query_id":  {"abc"},
+		"user":      {userJSON},
+		"hash":      {hash},
+	}
+
+	status, body := h.request(t, http.MethodPost, "/api/auth/max", "", map[string]any{
+		"init_data": values.Encode(),
+	})
+	if status != http.StatusOK || body["needs_onboarding"] != true {
+		t.Fatalf("init data auth = %d (%v), want onboarding", status, body)
+	}
+
+	if body["max_user_id"] != "12345" {
+		t.Fatalf("max_user_id = %v", body["max_user_id"])
 	}
 }
 

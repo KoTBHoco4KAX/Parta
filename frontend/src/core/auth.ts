@@ -15,7 +15,7 @@ import {
   loginWithMax,
   registerMax as registerMaxRequest,
 } from './api';
-import { readMaxLaunchParams } from './max';
+import { isMaxNative, readMaxLaunch, type MaxLaunch } from './max';
 import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
 import type {
@@ -36,7 +36,7 @@ interface StoredAuth {
 }
 
 export interface MaxOnboarding {
-  params: Record<string, string>;
+  launch: MaxLaunch;
   maxUserId: string;
   displayName: string;
 }
@@ -72,7 +72,20 @@ function loadStoredAuth(): StoredAuth | null {
       return null;
     }
 
-    return { token: parsed.token, user: parsed.user as User };
+    const user = parsed.user as User;
+
+    // Старая демо-сессия не должна перетирать реального пользователя MAX.
+    if (
+      isMaxNative() &&
+      (user.external_id === 'max:000000001' || user.display_name.includes('Демо'))
+    ) {
+      console.log('[MAX Auth] removing stale demo session', user.external_id);
+      window.localStorage.removeItem(STORAGE_KEY);
+
+      return null;
+    }
+
+    return { token: parsed.token, user };
   } catch {
     return null;
   }
@@ -94,9 +107,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionStatus>('offline');
   const [events, setEvents] = useState<WsEvent[]>([]);
-  const [maxPresent] = useState(() => readMaxLaunchParams() !== null);
+  const [maxPresent] = useState(() => isMaxNative() || readMaxLaunch() !== null);
   const [maxChecking, setMaxChecking] = useState(
-    () => readMaxLaunchParams() !== null && loadStoredAuth() === null,
+    () => (isMaxNative() || readMaxLaunch() !== null) && loadStoredAuth() === null,
   );
   const [maxOnboarding, setMaxOnboarding] = useState<MaxOnboarding | null>(null);
   const socketRef = useRef<PartaSocket | null>(null);
@@ -120,9 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const params = readMaxLaunchParams();
+    const launch = readMaxLaunch();
 
-    if (!params) {
+    if (!launch) {
       setMaxChecking(false);
 
       return;
@@ -132,12 +145,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxChecking(true);
     setError(null);
 
-    console.log('[MAX Auth] launch params', params);
+    console.log('[MAX Auth] launch', launch);
     console.log('[MAX Auth] POST /api/auth/max');
 
     // Не отменяем запрос в cleanup: в React StrictMode эффект запускается
     // дважды, и старый cancelled=true оставлял экран в вечном спиннере.
-    loginWithMax(params)
+    loginWithMax(launch)
       .then((response) => {
         console.log('[MAX Auth] response', response);
 
@@ -145,7 +158,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log('[MAX Auth] needs onboarding', response.max_user_id);
           setMaxChecking(false);
           setMaxOnboarding({
-            params,
+            launch,
             maxUserId: response.max_user_id,
             displayName: response.display_name,
           });
@@ -177,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setError(null);
 
       try {
-        const response = await registerMaxRequest(maxOnboarding.params, role, code);
+        const response = await registerMaxRequest(maxOnboarding.launch, role, code);
 
         setAuth(saveAuth(response));
         setMaxOnboarding(null);

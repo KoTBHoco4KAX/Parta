@@ -125,12 +125,13 @@ export class PartaSocket {
     this.socket = socket;
 
     socket.onopen = () => {
+      this.setStatus('online');
+
       if (this.socket !== socket) {
         return;
       }
 
       console.log('[WS] open');
-      this.setStatus('online');
       this.lastPongAt = Date.now();
       this.startHeartbeat();
       this.resubscribe();

@@ -1,6 +1,6 @@
-// MAX Bridge SDK: платформа подключает window.MaxBridge скриптом
-// https://st.max.ru/js/max-bridge.js. В обычном браузере объекта нет, поэтому
-// приложение обязано стартовать без ошибок и без сетевых вызовов.
+// MAX Bridge / WebApp SDK.
+// Платформа подключает window.WebApp скриптом max-web-app.js и может
+// дополнительно предоставлять window.MaxBridge. Приложение работает и без них.
 
 export interface MaxBridgeStatus {
   supported: boolean;
@@ -12,10 +12,35 @@ interface MaxBridgeApi {
   send(method: string, params?: unknown): unknown;
 }
 
+interface MaxWebAppUser {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+}
+
+interface MaxWebAppApi {
+  initData?: string;
+  initDataUnsafe?: {
+    user?: MaxWebAppUser;
+    chat?: { id?: number; type?: string };
+    start_param?: string;
+  };
+  platform?: string;
+  version?: string;
+}
+
 declare global {
   interface Window {
     MaxBridge?: MaxBridgeApi;
+    WebApp?: MaxWebAppApi;
   }
+}
+
+/** Параметры, с которыми приложение открыто внутри MAX. */
+export interface MaxLaunch {
+  params: Record<string, string>;
+  initData?: string;
 }
 
 const INIT_TIMEOUT_MS = 1_500;
@@ -56,6 +81,36 @@ function getBridge(): MaxBridgeApi | null {
   return bridge && typeof bridge.send === 'function' ? bridge : null;
 }
 
+function getWebApp(): MaxWebAppApi | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return window.WebApp ?? null;
+}
+
+/**
+ * isMaxNative — приложение открыто внутри клиента MAX.
+ *
+ * MAX не обязан добавлять query-параметры в чистый URL мини-приложения:
+ * внутри WebView достаточно наличия WebApp/MaxBridge или iframe-контекста.
+ */
+export function isMaxNative(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  let embedded = false;
+
+  try {
+    embedded = window.self !== window.top;
+  } catch {
+    embedded = true;
+  }
+
+  return embedded || getBridge() !== null || Boolean(getWebApp()?.initData);
+}
+
 export function getMaxBridgeStatus(): MaxBridgeStatus {
   return status;
 }
@@ -67,10 +122,18 @@ export function initMaxBridge(): Promise<MaxBridgeStatus> {
   }
 
   const bridge = getBridge();
-  console.log('[MAX Auth] window.MaxBridge', Boolean(bridge));
+  const webApp = getWebApp();
+  console.log('[MAX Auth] window.MaxBridge', Boolean(bridge), 'window.WebApp', Boolean(webApp));
+
+  if (!bridge && !webApp) {
+    pending = Promise.resolve(fallback('max-bridge-missing'));
+
+    return pending;
+  }
 
   if (!bridge) {
-    pending = Promise.resolve(fallback('max-bridge-missing'));
+    status = { supported: true, initialized: true, reason: 'webapp-only' };
+    pending = Promise.resolve(status);
 
     return pending;
   }
@@ -107,11 +170,25 @@ export function initMaxBridge(): Promise<MaxBridgeStatus> {
   return pending;
 }
 
-// readMaxLaunchParams собирает параметры запуска MAX из query и hash.
-// Возвращает null в обычном браузере, чтобы не запускать MAX-авторизацию.
-export function readMaxLaunchParams(): Record<string, string> | null {
+/**
+ * readMaxLaunch собирает данные запуска MAX.
+ *
+ * Приоритет: initData WebApp (подписанные данные пользователя), затем
+ * query/hash параметры старого формата. Если приложение открыто в MAX, но
+ * параметров ещё нет, возвращается пустой launch — auth.ts не должен в этом
+ * случае включать браузерный демо-режим.
+ */
+export function readMaxLaunch(): MaxLaunch | null {
   if (typeof window === 'undefined') {
     return null;
+  }
+
+  const webApp = getWebApp();
+  if (webApp?.initData) {
+    console.log('[MAX Auth] WebApp initData found');
+    console.log('[MAX Auth] WebApp user', webApp.initDataUnsafe?.user ?? null);
+
+    return { params: {}, initData: webApp.initData };
   }
 
   const params: Record<string, string> = {};
@@ -132,17 +209,29 @@ export function readMaxLaunchParams(): Record<string, string> | null {
     params.user_id !== undefined ||
     params.max_user_id !== undefined;
 
-  console.log(
-    '[MAX Auth] launch params',
-    hasLaunchParams
-      ? {
-          user_id: params.user_id ?? params.max_user_id,
-          has_hash: Boolean(params.hash),
-        }
-      : 'not found',
-  );
+  if (hasLaunchParams) {
+    console.log('[MAX Auth] URL launch params found', {
+      user_id: params.user_id ?? params.max_user_id,
+      has_hash: Boolean(params.hash),
+    });
 
-  return hasLaunchParams ? params : null;
+    return { params };
+  }
+
+  if (isMaxNative()) {
+    console.log('[MAX Auth] native MAX context without launch params');
+
+    return { params };
+  }
+
+  console.log('[MAX Auth] launch params not found (browser mode)');
+
+  return null;
+}
+
+// Совместимый helper для старого кода.
+export function readMaxLaunchParams(): Record<string, string> | null {
+  return readMaxLaunch()?.params ?? null;
 }
 
 function collectParams(source: string, target: Record<string, string>): void {

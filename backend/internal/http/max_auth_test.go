@@ -4,8 +4,43 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"net/url"
 	"testing"
 )
+
+func TestParseMaxInitData(t *testing.T) {
+	const botToken = "bot-token"
+
+	userJSON := `{"id":12345,"first_name":"Иван","last_name":"Петров"}`
+	canonical := "auth_date=1700000000\nquery_id=abc\nuser=" + userJSON
+
+	secretMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretMAC.Write([]byte(botToken))
+	signatureMAC := hmac.New(sha256.New, secretMAC.Sum(nil))
+	signatureMAC.Write([]byte(canonical))
+	hash := hex.EncodeToString(signatureMAC.Sum(nil))
+
+	values := url.Values{
+		"auth_date": {"1700000000"},
+		"query_id":  {"abc"},
+		"user":      {userJSON},
+		"hash":      {hash},
+	}
+
+	userID, displayName, err := parseMaxInitData(botToken, values.Encode())
+	if err != nil {
+		t.Fatalf("parseMaxInitData: %v", err)
+	}
+
+	if userID != "12345" || displayName != "Иван Петров" {
+		t.Fatalf("got userID=%q display=%q", userID, displayName)
+	}
+
+	values.Set("hash", "bad")
+	if _, _, err := parseMaxInitData(botToken, values.Encode()); err == nil {
+		t.Fatal("tampered init data accepted")
+	}
+}
 
 func TestValidMaxSignature(t *testing.T) {
 	params := map[string]string{

@@ -6,8 +6,11 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -184,6 +187,24 @@ func (s *Server) readMaxLaunch(w http.ResponseWriter, r *http.Request) (maxAuthR
 	}
 
 	params := maxParams(body)
+	initData := firstNonEmpty(bodyString(body, "init_data"), params["init_data"])
+
+	if initData != "" {
+		userID, displayName, err := parseMaxInitData(s.cfg.MAXBotToken, initData)
+		if err != nil {
+			writeUnauthorized(w, "invalid max init data")
+
+			return nil, nil, false
+		}
+
+		return body, &maxLaunch{
+			params:      params,
+			userID:      userID,
+			externalID:  "max:" + userID,
+			displayName: displayName,
+		}, true
+	}
+
 	hash := firstNonEmpty(params["hash"], params["sign"])
 
 	if hash == "" || firstNonEmpty(params["user_id"], params["max_user_id"], params["id"]) == "" {
@@ -278,6 +299,90 @@ func maxParams(body maxAuthRequest) map[string]string {
 	}
 
 	return params
+}
+
+// parseMaxInitData проверяет подпись window.WebApp.initData по алгоритму MAX:
+// secret_key = HMAC-SHA256(key="WebAppData", msg=bot_token),
+// signature = HMAC-SHA256(secret_key, sorted key=value joined by "\n").
+func parseMaxInitData(botToken, initData string) (string, string, error) {
+	if strings.TrimSpace(botToken) == "" {
+		return "", "", errors.New("empty bot token")
+	}
+
+	values, err := url.ParseQuery(initData)
+	if err != nil {
+		return "", "", fmt.Errorf("parse init data: %w", err)
+	}
+
+	hashes := values["hash"]
+	if len(hashes) != 1 {
+		return "", "", errors.New("hash must be present exactly once")
+	}
+
+	actualHash := hashes[0]
+	keys := make([]string, 0, len(values))
+
+	for key := range values {
+		if key == "hash" {
+			continue
+		}
+
+		if len(values[key]) != 1 {
+			return "", "", fmt.Errorf("duplicate parameter %q", key)
+		}
+
+		keys = append(keys, key)
+	}
+
+	sort.Strings(keys)
+
+	pairs := make([]string, 0, len(keys))
+	for _, key := range keys {
+		pairs = append(pairs, key+"="+values[key][0])
+	}
+
+	secretMAC := hmac.New(sha256.New, []byte("WebAppData"))
+	secretMAC.Write([]byte(botToken))
+	secretKey := secretMAC.Sum(nil)
+
+	signatureMAC := hmac.New(sha256.New, secretKey)
+	signatureMAC.Write([]byte(strings.Join(pairs, "\n")))
+	expected := hex.EncodeToString(signatureMAC.Sum(nil))
+
+	if subtle.ConstantTimeCompare([]byte(expected), []byte(strings.ToLower(actualHash))) != 1 {
+		return "", "", errors.New("signature mismatch")
+	}
+
+	var payload struct {
+		ID        int64  `json:"id"`
+		FirstName string `json:"first_name"`
+		LastName  string `json:"last_name"`
+		Username  string `json:"username"`
+	}
+
+	if err := json.Unmarshal([]byte(values.Get("user")), &payload); err != nil {
+		return "", "", fmt.Errorf("parse user: %w", err)
+	}
+
+	if payload.ID == 0 {
+		return "", "", errors.New("user id is missing")
+	}
+
+	userID := strconv.FormatInt(payload.ID, 10)
+
+	return userID, maxUserDisplayName(payload.FirstName, payload.LastName, payload.Username, userID), nil
+}
+
+func maxUserDisplayName(firstName, lastName, username, userID string) string {
+	if name := strings.TrimSpace(firstName + " " + lastName); name != "" {
+		return name
+	}
+
+	if name := strings.TrimSpace(username); name != "" {
+		return name
+	}
+
+	return "MAX " + userID
 }
 
 // validMaxSignature принимает две распространённые канонизации: строки через

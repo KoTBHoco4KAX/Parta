@@ -22,6 +22,7 @@ import type {
   User,
   VerdictResponse,
 } from './types';
+import type { MaxLaunch } from './max';
 import { readStoredToken } from './session';
 
 // Vite проксирует /api на backend (см. vite.config.ts), поэтому базовый путь
@@ -102,23 +103,25 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
 
 // loginWithMax — POST /api/auth/max: проверка MAX-пользователя.
 // Ответ либо сессия, либо needs_onboarding для первого входа.
-export function loginWithMax(params: Record<string, string>): Promise<MaxAuthResponse> {
+export function loginWithMax(launch: MaxLaunch): Promise<MaxAuthResponse> {
   return request<MaxAuthResponse>('/auth/max', {
     method: 'POST',
-    body: { params },
+    body: launch.initData ? { init_data: launch.initData } : { params: launch.params },
     token: null,
   });
 }
 
 // registerMax — POST /api/auth/max/register: первый вход с выбранной ролью.
 export function registerMax(
-  params: Record<string, string>,
+  launch: MaxLaunch,
   role: Role,
   code = '',
 ): Promise<DevLoginResponse> {
   return request<DevLoginResponse>('/auth/max/register', {
     method: 'POST',
-    body: { params, role, code },
+    body: launch.initData
+      ? { init_data: launch.initData, role, code }
+      : { params: launch.params, role, code },
     token: null,
   });
 }
