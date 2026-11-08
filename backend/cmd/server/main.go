@@ -56,9 +56,10 @@ func main() {
 	defer stopBot()
 
 	go maxbot.Run(botContext, maxbot.Config{
-		Token:   cfg.MAXBotToken,
-		BaseURL: cfg.MAXAPIBaseURL,
-		AppURL:  cfg.MAXAppURL,
+		Token:              cfg.MAXBotToken,
+		BaseURL:            cfg.MAXAPIBaseURL,
+		AppURL:             cfg.MAXAppURL,
+		InsecureSkipVerify: cfg.MAXBotInsecureSkipVerify,
 	})
 
 	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {

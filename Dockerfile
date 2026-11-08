@@ -22,6 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o 
 # ---- runtime ----
 FROM alpine:3.20
 WORKDIR /app
+RUN apk add --no-cache ca-certificates
 RUN addgroup -S parta && adduser -S -G parta parta \
     && mkdir -p /app/data /app/uploads /app/web \
     && chown -R parta:parta /app

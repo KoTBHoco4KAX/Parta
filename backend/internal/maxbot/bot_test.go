@@ -78,6 +78,22 @@ func TestHandleUpdateStartSendsWebAppButton(t *testing.T) {
 	}
 }
 
+func TestNewBotTLSConfig(t *testing.T) {
+	bot := newBot(Config{
+		Token:              "max-token",
+		InsecureSkipVerify: true,
+	})
+
+	transport, ok := bot.client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatal("transport is not *http.Transport")
+	}
+
+	if transport.TLSClientConfig == nil || !transport.TLSClientConfig.InsecureSkipVerify {
+		t.Fatal("InsecureSkipVerify is not enabled")
+	}
+}
+
 func TestIsStartCommand(t *testing.T) {
 	for _, text := range []string{"/start", " /start", "/start@parta_bot", "/START"} {
 		if !isStartCommand(text) {

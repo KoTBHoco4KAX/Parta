@@ -4,6 +4,7 @@ package maxbot
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,9 +25,10 @@ const (
 
 // Config — настройки бота.
 type Config struct {
-	Token   string
-	BaseURL string
-	AppURL  string
+	Token              string
+	BaseURL            string
+	AppURL             string
+	InsecureSkipVerify bool
 }
 
 // Bot — long-polling клиент MAX Bot API.
@@ -48,6 +50,10 @@ func Run(ctx context.Context, cfg Config) {
 		return
 	}
 
+	if cfg.InsecureSkipVerify {
+		bot.logger.Println("maxbot: TLS certificate verification disabled")
+	}
+
 	bot.logger.Printf("maxbot: long polling started (%s)", bot.baseURL)
 	bot.loop(ctx)
 }
@@ -63,12 +69,21 @@ func newBot(cfg Config) *Bot {
 		appURL = defaultAppURL
 	}
 
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+
 	return &Bot{
 		token:   strings.TrimSpace(cfg.Token),
 		baseURL: baseURL,
 		appURL:  appURL,
-		client:  &http.Client{Timeout: 60 * time.Second},
-		logger:  log.Default(),
+		client: &http.Client{
+			Timeout:   60 * time.Second,
+			Transport: transport,
+		},
+		logger: log.Default(),
 	}
 }
 

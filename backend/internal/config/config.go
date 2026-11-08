@@ -3,22 +3,25 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
 // Config holds every environment-derived setting of the ПАРТА backend.
 type Config struct {
-	JWTSecret         string
-	Env               string
-	DBPath            string
-	Addr              string
-	UploadDir         string
-	WebDir            string
-	MAXBotToken       string
-	MAXAPIBaseURL     string
-	MAXAppURL         string
-	TeacherInviteCode string
-	AdminInviteCode   string
+	JWTSecret                string
+	Env                      string
+	DBPath                   string
+	Addr                     string
+	UploadDir                string
+	WebDir                   string
+	MAXBotToken              string
+	MAXAPIBaseURL            string
+	MAXAppURL                string
+	MAXBotInsecureSkipVerify bool
+	TeacherInviteCode        string
+	AdminInviteCode          string
 }
 
 const (
@@ -45,17 +48,18 @@ func (c Config) IsDev() bool {
 // PARTA_UPLOAD_DIR.
 func Load() (Config, error) {
 	cfg := Config{
-		JWTSecret:         envOr("PARTA_JWT_SECRET", defaultJWTSecret),
-		Env:               envOr("PARTA_ENV", defaultEnv),
-		DBPath:            envOr("PARTA_DB_PATH", defaultDBPath),
-		Addr:              envOr("PARTA_ADDR", ":"+envOr("PORT", "8080")),
-		UploadDir:         envOr("PARTA_UPLOAD_DIR", defaultUploadDir),
-		WebDir:            envOr("PARTA_WEB_DIR", ""),
-		MAXBotToken:       envOr("MAX_BOT_TOKEN", ""),
-		MAXAPIBaseURL:     envOr("MAX_API_BASE_URL", "https://platform-api2.max.ru"),
-		MAXAppURL:         envOr("MAX_APP_URL", "https://slow-cat.vps.ktk-45.ru/"),
-		TeacherInviteCode: envOr("TEACHER_INVITE_CODE", "TEACHER2026"),
-		AdminInviteCode:   envOr("ADMIN_INVITE_CODE", "ADMIN2026"),
+		JWTSecret:                envOr("PARTA_JWT_SECRET", defaultJWTSecret),
+		Env:                      envOr("PARTA_ENV", defaultEnv),
+		DBPath:                   envOr("PARTA_DB_PATH", defaultDBPath),
+		Addr:                     envOr("PARTA_ADDR", ":"+envOr("PORT", "8080")),
+		UploadDir:                envOr("PARTA_UPLOAD_DIR", defaultUploadDir),
+		WebDir:                   envOr("PARTA_WEB_DIR", ""),
+		MAXBotToken:              envOr("MAX_BOT_TOKEN", ""),
+		MAXAPIBaseURL:            envOr("MAX_API_BASE_URL", "https://platform-api2.max.ru"),
+		MAXAppURL:                envOr("MAX_APP_URL", "https://slow-cat.vps.ktk-45.ru/"),
+		MAXBotInsecureSkipVerify: envBool("MAX_BOT_INSECURE_SKIP_VERIFY"),
+		TeacherInviteCode:        envOr("TEACHER_INVITE_CODE", "TEACHER2026"),
+		AdminInviteCode:          envOr("ADMIN_INVITE_CODE", "ADMIN2026"),
 	}
 
 	if cfg.DBPath == "" {
@@ -67,6 +71,12 @@ func Load() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+func envBool(name string) bool {
+	value, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(name)))
+
+	return err == nil && value
 }
 
 func envOr(name, fallback string) string {
