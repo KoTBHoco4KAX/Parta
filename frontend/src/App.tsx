@@ -63,6 +63,8 @@ export default function App() {
   // initMaxBridge сразу возвращает graceful fallback и ничего не шлёт.
   useEffect(() => {
     void initMaxBridge().then((status) => {
+      console.log('[MAX Auth] bridge initialized', status);
+
       if (status.supported && !status.initialized) {
         console.info('MAX bridge: fallback —', status.reason);
       }

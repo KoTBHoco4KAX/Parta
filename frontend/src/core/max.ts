@@ -67,12 +67,15 @@ export function initMaxBridge(): Promise<MaxBridgeStatus> {
   }
 
   const bridge = getBridge();
+  console.log('[MAX Auth] window.MaxBridge', Boolean(bridge));
 
   if (!bridge) {
     pending = Promise.resolve(fallback('max-bridge-missing'));
 
     return pending;
   }
+
+  console.log('[MAX Auth] bridge send ready/expand');
 
   const timeout = new Promise<MaxBridgeStatus>((resolve) => {
     window.setTimeout(() => resolve(fallback('init-timeout')), INIT_TIMEOUT_MS);
@@ -93,6 +96,8 @@ export function initMaxBridge(): Promise<MaxBridgeStatus> {
             results[0]?.status === 'rejected' ? results[0].reason : 'unknown',
           )}`,
         };
+
+    console.log('[MAX Auth] bridge status', status);
 
     return status;
   });
@@ -126,6 +131,16 @@ export function readMaxLaunchParams(): Record<string, string> | null {
     params.hash !== undefined ||
     params.user_id !== undefined ||
     params.max_user_id !== undefined;
+
+  console.log(
+    '[MAX Auth] launch params',
+    hasLaunchParams
+      ? {
+          user_id: params.user_id ?? params.max_user_id,
+          has_hash: Boolean(params.hash),
+        }
+      : 'not found',
+  );
 
   return hasLaunchParams ? params : null;
 }

@@ -132,15 +132,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMaxChecking(true);
     setError(null);
 
-    let cancelled = false;
+    console.log('[MAX Auth] launch params', params);
+    console.log('[MAX Auth] POST /api/auth/max');
 
+    // Не отменяем запрос в cleanup: в React StrictMode эффект запускается
+    // дважды, и старый cancelled=true оставлял экран в вечном спиннере.
     loginWithMax(params)
       .then((response) => {
-        if (cancelled) {
-          return;
-        }
+        console.log('[MAX Auth] response', response);
 
         if ('needs_onboarding' in response) {
+          console.log('[MAX Auth] needs onboarding', response.max_user_id);
+          setMaxChecking(false);
           setMaxOnboarding({
             params,
             maxUserId: response.max_user_id,
@@ -150,22 +153,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        console.log('[MAX Auth] session received');
+        setMaxChecking(false);
         setAuth(saveAuth(response));
       })
       .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof ApiError ? err.message : 'Не удалось войти через MAX');
-        }
+        console.error('[MAX Auth] request failed', err);
+        setMaxChecking(false);
+        setError(err instanceof ApiError ? err.message : 'Не удалось войти через MAX');
       })
       .finally(() => {
-        if (!cancelled) {
-          setMaxChecking(false);
-        }
+        setMaxChecking(false);
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [auth, maxPresent]);
 
   const registerMax = useCallback(
