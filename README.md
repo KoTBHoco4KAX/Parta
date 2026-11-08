@@ -24,6 +24,9 @@ docker build -t parta .
 docker run -d -p 8080:8080 -e MAX_BOT_TOKEN="your_bot_token_here" parta
 ```
 
+Go-часть сборки полностью автономна: зависимости лежат в `backend/vendor`, а
+Dockerfile собирает бинарник с `-mod=vendor` без `go mod download`.
+
 После первого запуска база создаётся автоматически и заполняется тремя
 демо-аккаунтами. Сервис доступен по адресу http://localhost:8080.
 

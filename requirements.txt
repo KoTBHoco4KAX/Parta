@@ -10,6 +10,7 @@ npm==10
 alpine==3.20
 
 # Backend: Go modules
+Go vendoring: backend/vendor (-mod=vendor)
 github.com/dustin/go-humanize==v1.0.1
 github.com/google/uuid==v1.6.0
 github.com/mattn/go-isatty==v0.0.20
