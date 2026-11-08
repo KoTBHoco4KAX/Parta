@@ -8,22 +8,24 @@
 
 ```
 MAX (мессенджер)
-   │  max_user_id / max_chat_id
+   │ user_id
    ▼
-max_accounts ── users ── group_memberships ── groups
-                  │
-                  ├── teacher_assignments ── disciplines
-                  │        │
-                  │        ▼
-                  │      tasks ── task_attachments
-                  │        │
-                  │        └── team_slots
-                  │
-                  └── submissions ── submission_attachments
-                           │        └── submission_revisions
-                           │        └── submission_events
-                           │
-                           └── answer_drafts ── answer_comments
+users.external_id = max:<id> ── group_memberships ── groups
+   │
+   ├── max_accounts (опционально, чат и уведомления)
+   │
+   ├── teacher_assignments ── disciplines
+   │        │
+   │        ▼
+   │      tasks ── task_attachments
+   │        │
+   │        └── team_slots
+   │
+   └── submissions ── submission_attachments
+            │        └── submission_revisions
+            │        └── submission_events
+            │
+            └── answer_drafts ── answer_comments
 ```
 
 `users` — единая identity. Роль хранится в `users.role`:
@@ -37,12 +39,49 @@ max_accounts ── users ── group_memberships ── groups
 Учебная группа: `code` (IS-21), `title`.
 
 ### users
-Пользователь: `external_id` (email/логин), `role`, `display_name`, XP,
-стрик, заморозки.
+Единая identity ПАРТЫ. Отдельных таблиц `students`/`teachers` нет.
 
-- `student` обязан иметь `group_id`;
-- `teacher` и `admin` не имеют `group_id`;
+| Поле | Тип | Назначение |
+| --- | --- | --- |
+| `id` | INTEGER PK | Внутренний id |
+| `external_id` | TEXT UNIQUE | Внешний ключ входа. Для MAX — `max:<max_user_id>` |
+| `role` | TEXT | `student`, `teacher` или `admin` |
+| `group_id` | INTEGER FK → `groups.id` | Группа ученика; у преподавателя и админа — `NULL` |
+| `display_name` | TEXT | Отображаемое имя |
+| `xp_balance` | INTEGER | Текущий баланс XP |
+| `on_time_streak` | INTEGER | Текущий on-time стрик |
+| `streak_freezes` | INTEGER | Количество заморозок |
+| `weekly_xp` / `weekly_xp_week` | INTEGER / TEXT | Недельный лидерборд |
+| `created_at` / `updated_at` | TEXT | Служебные timestamps |
+
+Правила:
+
+- `external_id` — единственный ключ входа; для MAX и демо-аккаунтов
+  используется формат `max:000000001`.
+- `role` ограничен CHECK-констрейнтом.
+- Не-`NULL` `group_id` допустим только для `student`; преподаватель и админ
+  обязаны иметь `group_id = NULL`.
+- Ученик, созданный при первом входе через MAX, получает группу `MAX`.
 - `weekly_xp` и `weekly_xp_week` — недельный лидерборд.
+
+### MAX-авторизация
+
+Вход устроен так:
+
+1. `POST /api/auth/max` проверяет параметры запуска и HMAC-подпись
+   `MAX_BOT_TOKEN`, затем ищет `users.external_id = max:<max_user_id>`.
+2. Если записи нет, возвращается `needs_onboarding: true`; пользователь
+   выбирает роль на фронтенде.
+3. `POST /api/auth/max/register` создаёт пользователя:
+   - `student` — сразу, с группой `MAX`;
+   - `teacher` — после кода `TEACHER2026`;
+   - `admin` — после кода `ADMIN2026`.
+4. При следующих входах запись находится по `external_id`, онбординг
+   пропускается.
+5. Для локальной отладки допускается `hash = "demohash"` или режим
+   `PARTA_ENV=dev` — подпись в этом случае не проверяется.
+
+Коды задаются через `TEACHER_INVITE_CODE` и `ADMIN_INVITE_CODE`.
 
 ### group_memberships
 История членства. Ученик может быть в нескольких группах, при переводе старая
@@ -123,11 +162,19 @@ max_accounts ── users ── group_memberships ── groups
 
 ## 7. MAX
 
-`max_accounts` связывает пользователя ПАРТЫ с MAX:
+Авторизация MAX не требует отдельной таблицы: identity хранится в
+`users.external_id` в формате `max:<max_user_id>`.
 
+`max_accounts` — необязательная интеграционная таблица для уведомлений:
+
+- `user_id` — ссылка на `users.id`;
 - `max_user_id` — уникальный id пользователя MAX;
 - `max_chat_id` — чат/беседа, куда отправлять уведомления;
 - `display_name`, `linked_at`, `last_seen_at`.
+
+Запись в `max_accounts` может отсутствовать: вход и роль от неё не зависят.
+Read-модели используют `LEFT JOIN`, поэтому пользователь без строки в
+`max_accounts` остаётся видимым в канбане и проверках.
 
 Для MAX не нужно знать внутренние таблицы. Read-модели:
 
@@ -136,7 +183,7 @@ max_accounts ── users ── group_memberships ── groups
 статус, дедлайн, XP.
 
 ### v_max_student_kanban
-То же плюс `max_user_id` и `max_chat_id`.
+То же плюс `max_user_id` и `max_chat_id` (если строка `max_accounts` есть).
 
 ### v_teacher_review_inbox
 Очередь проверки преподавателя.
@@ -168,17 +215,34 @@ max_accounts ── users ── group_memberships ── groups
 
 ## 10. Демо-данные
 
-Фиксированные демо-данные не входят в миграции, чтобы не ломать ожидания
-тестов. Для локальной базы есть отдельная команда:
+Начальный демо-сид не входит в миграции: он очищает пользовательские таблицы и
+оставляет **ровно три** MAX-аккаунта для браузерного входа.
+
+| `external_id` | Роль | Группа | Имя |
+| --- | --- | --- | --- |
+| `max:000000001` | `student` | `MAX` | Демо Студент |
+| `max:000000002` | `teacher` | `NULL` | Демо Преподаватель |
+| `max:000000003` | `admin` | `NULL` | Демо Администратор |
+
+Дополнительно сид создаёт:
+
+- группу `MAX` с кодом `MAX`;
+- дисциплину `DB` («Базы данных»);
+- назначение демо-преподавателя на группу `MAX` и дисциплину `DB`.
+
+Команда сброса локальной базы:
 
 ```bash
 cd backend
-go run ./cmd/seed-demo -db ./parta.db -file ./demo/seed.sql
+go run ./cmd/seed-max -db ./parta.db -file ./demo/max_seed.sql
 ```
 
-Она идемпотентна: добавляет группы IS-23…IS-26, преподавателей, учеников,
-задания, карточки, шаблон и обновляет `weekly_xp` на текущую неделю. Повторный
-запуск не создаёт дублей.
+Скрипт очищает таблицы (кроме `schema_migrations`), заново применяет
+`demo/max_seed.sql` и проверяет, что в `users` ровно 3 записи. Повторный запуск
+также оставляет только эти три аккаунта.
+
+Браузерный вход использует только эти три `external_id`; другие аккаунты через
+демо-интерфейс недоступны.
 
 ## 11. Что дальше
 
