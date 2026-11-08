@@ -226,7 +226,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const socket = new PartaSocket({
       token,
-      onStatus: setConnection,
+      onStatus: (status) => {
+        console.log('[WS] auth status', status);
+        setConnection(status);
+      },
       onEvent: (event) => {
         setEvents((previous) => [event, ...previous].slice(0, EVENT_LIMIT));
         applyUserEvent(event, setAuth);
@@ -242,9 +245,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     socketRef.current = socket;
-    socket.connect();
+    // Не открываем сокет синхронно из effect: в React StrictMode первый
+    // effect успевает создать соединение, а cleanup сразу его закрывает.
+    // Даём StrictMode отменить пробный запуск и открываем один сокет.
+    const connectTimer = window.setTimeout(() => {
+      socket.connect();
+    }, 0);
 
     return () => {
+      window.clearTimeout(connectTimer);
       socket.close();
       socketRef.current = null;
     };

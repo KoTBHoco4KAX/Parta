@@ -125,6 +125,11 @@ export class PartaSocket {
     this.socket = socket;
 
     socket.onopen = () => {
+      if (this.socket !== socket) {
+        return;
+      }
+
+      console.log('[WS] open');
       this.setStatus('online');
       this.lastPongAt = Date.now();
       this.startHeartbeat();
@@ -151,6 +156,11 @@ export class PartaSocket {
     };
 
     socket.onclose = () => {
+      if (this.socket !== socket) {
+        return;
+      }
+
+      console.log('[WS] close');
       this.socket = null;
       this.stopHeartbeat();
       this.clearStableTimer();
@@ -236,7 +246,16 @@ export class PartaSocket {
       return;
     }
 
-    // ready/ack/error — служебные кадры, не события конверта.
+    // ready — подтверждение соединения. Если onopen потерялся, индикатор
+    // всё равно должен стать зелёным, не дожидаясь прикладного события.
+    if (candidate.type === 'ready') {
+      console.log('[WS] ready');
+      this.setStatus('online');
+
+      return;
+    }
+
+    // ack/error — служебные кадры, не события конверта.
     if (typeof candidate.event_id !== 'string') {
       return;
     }
@@ -332,6 +351,7 @@ export class PartaSocket {
   }
 
   private setStatus(status: ConnectionStatus): void {
+    console.log('[WS] status', status);
     this.options.onStatus?.(status);
   }
 }
