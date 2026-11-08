@@ -11,6 +11,7 @@ import (
 
 	"github.com/parta/backend/internal/auth"
 	"github.com/parta/backend/internal/config"
+	"github.com/parta/backend/internal/demoseed"
 	httpapi "github.com/parta/backend/internal/http"
 	"github.com/parta/backend/internal/storage"
 	"github.com/parta/backend/internal/ws"
@@ -27,6 +28,9 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	_, statErr := os.Stat(cfg.DBPath)
+	freshDatabase := os.IsNotExist(statErr)
+
 	db, err := storage.Open(cfg.DBPath)
 	if err != nil {
 		log.Fatalf("storage: %v", err)
@@ -38,6 +42,14 @@ func main() {
 	}
 
 	log.Println("migrations applied")
+
+	if freshDatabase {
+		if err := demoseed.Reset(context.Background(), db); err != nil {
+			log.Fatalf("demo seed: %v", err)
+		}
+
+		log.Println("demo database seeded with 3 MAX accounts")
+	}
 
 	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
 		log.Fatalf("uploads: %v", err)

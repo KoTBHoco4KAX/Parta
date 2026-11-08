@@ -34,7 +34,8 @@ RUN addgroup -S parta && adduser -S -G parta parta \
 COPY --from=api /out/parta /app/parta
 COPY --from=web /app/frontend/dist /app/web
 
-ENV PARTA_WEB_DIR=/app/web \
+ENV PARTA_ENV=production \
+    PARTA_WEB_DIR=/app/web \
     PARTA_DB_PATH=/app/data/parta.db \
     PARTA_UPLOAD_DIR=/app/uploads \
     PORT=8080

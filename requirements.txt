@@ -1,11 +1,37 @@
-# Backend Dependencies (Go 1.22)
-github.com/gorilla/mux v1.8.1
-github.com/gorilla/websocket v1.5.3
-golang.org/x/crypto v0.26.0
+# ПАРТА — зафиксированные зависимости и runtime-версии
+#
+# Формат: name==version. Версии Go-модулей синхронизированы с backend/go.mod,
+# версии frontend-пакетов — с frontend/package-lock.json.
 
-# Frontend Dependencies (Node 20 / React)
-react@18.3.1
-react-dom@18.3.1
-lucide-react@0.453.0
-tailwindcss@3.4.14
-vite@5.4.9
+# Runtime / build images
+go==1.22
+nodejs==20
+npm==10
+alpine==3.20
+
+# Backend: Go modules
+github.com/dustin/go-humanize==v1.0.1
+github.com/google/uuid==v1.6.0
+github.com/mattn/go-isatty==v0.0.20
+github.com/ncruces/go-strftime==v0.1.9
+github.com/remyoudompheng/bigfft==v0.0.0-20230129092748-24d4a6f8daec
+golang.org/x/sys==v0.22.0
+modernc.org/libc==v1.55.3
+modernc.org/mathutil==v1.6.0
+modernc.org/memory==v1.8.0
+modernc.org/sqlite==v1.34.5
+nhooyr.io/websocket==v1.8.17
+
+# Frontend: runtime
+react==18.3.1
+react-dom==18.3.1
+
+# Frontend: build and styles
+@types/react==18.3.31
+@types/react-dom==18.3.7
+@vitejs/plugin-react==4.7.0
+autoprefixer==10.6.1
+postcss==8.5.29
+tailwindcss==3.4.19
+typescript==5.9.3
+vite==5.4.21
