@@ -13,6 +13,7 @@ import (
 	"github.com/parta/backend/internal/config"
 	"github.com/parta/backend/internal/demoseed"
 	httpapi "github.com/parta/backend/internal/http"
+	"github.com/parta/backend/internal/maxbot"
 	"github.com/parta/backend/internal/storage"
 	"github.com/parta/backend/internal/ws"
 )
@@ -50,6 +51,15 @@ func main() {
 
 		log.Println("demo database seeded with 3 MAX accounts")
 	}
+
+	botContext, stopBot := context.WithCancel(context.Background())
+	defer stopBot()
+
+	go maxbot.Run(botContext, maxbot.Config{
+		Token:   cfg.MAXBotToken,
+		BaseURL: cfg.MAXAPIBaseURL,
+		AppURL:  cfg.MAXAppURL,
+	})
 
 	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
 		log.Fatalf("uploads: %v", err)
@@ -98,6 +108,8 @@ func main() {
 	}()
 
 	<-stop
+
+	stopBot()
 
 	// WebSocket-соединения не закрываются http.Server.Shutdown — закрываем хабом.
 	hub.Close()

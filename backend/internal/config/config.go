@@ -15,6 +15,8 @@ type Config struct {
 	UploadDir         string
 	WebDir            string
 	MAXBotToken       string
+	MAXAPIBaseURL     string
+	MAXAppURL         string
 	TeacherInviteCode string
 	AdminInviteCode   string
 }
@@ -50,6 +52,8 @@ func Load() (Config, error) {
 		UploadDir:         envOr("PARTA_UPLOAD_DIR", defaultUploadDir),
 		WebDir:            envOr("PARTA_WEB_DIR", ""),
 		MAXBotToken:       envOr("MAX_BOT_TOKEN", ""),
+		MAXAPIBaseURL:     envOr("MAX_API_BASE_URL", "https://platform-api2.max.ru"),
+		MAXAppURL:         envOr("MAX_APP_URL", "https://slow-cat.vps.ktk-45.ru/"),
 		TeacherInviteCode: envOr("TEACHER_INVITE_CODE", "TEACHER2026"),
 		AdminInviteCode:   envOr("ADMIN_INVITE_CODE", "ADMIN2026"),
 	}
