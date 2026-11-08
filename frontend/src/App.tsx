@@ -121,7 +121,7 @@ function Shell() {
         {route === '/answers' ? <AnswersPage /> : null}
         {route === '/leaderboard' ? <LeaderboardPage /> : null}
         {route === '/' || !NAV.some((item) => item.path === route) ? (
-          <DashboardPage />
+          <DashboardPage onNavigate={navigate} />
         ) : null}
       </ErrorBoundary>
     </AppShell>

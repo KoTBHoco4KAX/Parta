@@ -4,7 +4,7 @@ import { fetchSubmissions } from '../core/api';
 import type { Submission } from '../core/types';
 
 // DashboardPage — карточка ученика: имя, баланс XP, стрик и заморозки.
-export function DashboardPage() {
+export function DashboardPage({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { user, connection } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
@@ -43,17 +43,41 @@ export function DashboardPage() {
         </div>
 
         <dl className="mt-5 flex divide-x divide-line border-y border-line py-3">
-          <Stat label="XP" value={user.xp_balance} />
-          <Stat label="Стрик" value={user.on_time_streak} />
-          <Stat label="Заморозки" value={user.streak_freezes} />
+          <Stat label="XP" value={user.xp_balance} onClick={() => onNavigate('/shop')} />
+          <Stat
+            label="Стрик"
+            value={user.on_time_streak}
+            onClick={() => onNavigate('/shop')}
+          />
+          <Stat
+            label="Заморозки"
+            value={user.streak_freezes}
+            onClick={() => onNavigate('/shop')}
+          />
         </dl>
       </section>
 
       <div className="flex divide-x divide-line border-y border-line py-3">
-        <Counter label="К выполнению" value={countByStatus(submissions, 'TODO')} />
-        <Counter label="В работе" value={countByStatus(submissions, 'IN_PROGRESS')} />
-        <Counter label="На проверке" value={countByStatus(submissions, 'REVIEW')} />
-        <Counter label="Готово" value={countByStatus(submissions, 'DONE')} />
+        <Counter
+          label="К выполнению"
+          value={countByStatus(submissions, 'TODO')}
+          onClick={() => onNavigate('/kanban')}
+        />
+        <Counter
+          label="В работе"
+          value={countByStatus(submissions, 'IN_PROGRESS')}
+          onClick={() => onNavigate('/kanban')}
+        />
+        <Counter
+          label="На проверке"
+          value={countByStatus(submissions, 'REVIEW')}
+          onClick={() => onNavigate('/kanban')}
+        />
+        <Counter
+          label="Готово"
+          value={countByStatus(submissions, 'DONE')}
+          onClick={() => onNavigate('/kanban')}
+        />
       </div>
     </div>
   );
@@ -63,20 +87,48 @@ function countByStatus(submissions: Submission[], status: Submission['status']):
   return submissions.filter((submission) => submission.status === status).length;
 }
 
-function Counter({ label, value }: { label: string; value: number }) {
+function Counter({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  onClick: () => void;
+}) {
   return (
-    <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">
-      <p className="text-[10px] text-ink4">{label}</p>
-      <p className="text-base font-semibold tabular-nums text-ink">{value}</p>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group min-w-0 flex-1 cursor-pointer rounded-lg px-3 py-1 text-left transition first:pl-0 last:pr-0 hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 active:scale-[0.99]"
+    >
+      <span className="block text-[10px] text-ink4 transition group-hover:text-ink3">
+        {label}
+      </span>
+      <span className="block text-base font-semibold tabular-nums text-ink">{value}</span>
+    </button>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  onClick: () => void;
+}) {
   return (
-    <div className="min-w-0 flex-1 px-3 first:pl-0 last:pr-0">
-      <dt className="text-[11px] uppercase tracking-wide text-ink4">{label}</dt>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group min-w-0 flex-1 cursor-pointer rounded-lg px-3 py-1 text-left transition first:pl-0 last:pr-0 hover:bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30 active:scale-[0.99]"
+    >
+      <dt className="text-[11px] uppercase tracking-wide text-ink4 transition group-hover:text-ink3">
+        {label}
+      </dt>
       <dd className="text-lg font-semibold text-ink">{value}</dd>
-    </div>
+    </button>
   );
 }
