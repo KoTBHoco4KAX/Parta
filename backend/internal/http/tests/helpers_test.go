@@ -117,7 +117,7 @@ func newHarnessWithMaxToken(t *testing.T, token string) *harness {
 
 	cfg := config.Config{
 		JWTSecret:         testJWTSecret,
-		Env:               "dev",
+		Env:               "production",
 		DBPath:            path,
 		UploadDir:         uploadDir,
 		MAXBotToken:       token,

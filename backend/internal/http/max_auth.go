@@ -192,13 +192,16 @@ func (s *Server) readMaxLaunch(w http.ResponseWriter, r *http.Request) (maxAuthR
 		return nil, nil, false
 	}
 
-	if strings.TrimSpace(s.cfg.MAXBotToken) == "" {
+	// Локальная отладка: demohash и dev-режим не требуют реальной подписи MAX.
+	signatureBypassed := hash == "demohash" || s.cfg.IsDev()
+
+	if strings.TrimSpace(s.cfg.MAXBotToken) == "" && !signatureBypassed {
 		writeUnauthorized(w, "max auth is not configured")
 
 		return nil, nil, false
 	}
 
-	if !validMaxSignature(s.cfg.MAXBotToken, params, hash) {
+	if !signatureBypassed && !validMaxSignature(s.cfg.MAXBotToken, params, hash) {
 		writeUnauthorized(w, "invalid max signature")
 
 		return nil, nil, false

@@ -159,8 +159,36 @@ func TestMaxAuthRejectsBadSignature(t *testing.T) {
 	}
 }
 
-func TestMaxAuthWithoutConfiguredToken(t *testing.T) {
+func TestMaxAuthDemoHashBypassesSignature(t *testing.T) {
+	h := newHarnessWithMaxToken(t, "max-test-token")
+
+	status, body := h.request(t, http.MethodPost, "/api/auth/max", "", map[string]any{
+		"params": map[string]string{
+			"user_id": "99",
+			"hash":    "demohash",
+		},
+	})
+	if status != http.StatusOK || body["needs_onboarding"] != true {
+		t.Fatalf("demohash status = %d (%v), want onboarding", status, body)
+	}
+}
+
+func TestMaxAuthDevBypassesSignature(t *testing.T) {
 	h := newHarness(t)
+
+	status, body := h.request(t, http.MethodPost, "/api/auth/max", "", map[string]any{
+		"params": map[string]string{
+			"user_id": "100",
+			"hash":    "not-a-real-signature",
+		},
+	})
+	if status != http.StatusOK || body["needs_onboarding"] != true {
+		t.Fatalf("dev bypass status = %d (%v), want onboarding", status, body)
+	}
+}
+
+func TestMaxAuthWithoutConfiguredToken(t *testing.T) {
+	h := newHarnessEnv(t, "production")
 
 	status, _ := h.request(t, http.MethodPost, "/api/auth/max", "", map[string]any{
 		"params": map[string]string{
