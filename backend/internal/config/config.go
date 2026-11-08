@@ -8,13 +8,15 @@ import (
 
 // Config holds every environment-derived setting of the ПАРТА backend.
 type Config struct {
-	JWTSecret   string
-	Env         string
-	DBPath      string
-	Addr        string
-	UploadDir   string
-	WebDir      string
-	MAXBotToken string
+	JWTSecret         string
+	Env               string
+	DBPath            string
+	Addr              string
+	UploadDir         string
+	WebDir            string
+	MAXBotToken       string
+	TeacherInviteCode string
+	AdminInviteCode   string
 }
 
 const (
@@ -41,13 +43,15 @@ func (c Config) IsDev() bool {
 // PARTA_UPLOAD_DIR.
 func Load() (Config, error) {
 	cfg := Config{
-		JWTSecret:   envOr("PARTA_JWT_SECRET", defaultJWTSecret),
-		Env:         envOr("PARTA_ENV", defaultEnv),
-		DBPath:      envOr("PARTA_DB_PATH", defaultDBPath),
-		Addr:        envOr("PARTA_ADDR", ":"+envOr("PORT", "8080")),
-		UploadDir:   envOr("PARTA_UPLOAD_DIR", defaultUploadDir),
-		WebDir:      envOr("PARTA_WEB_DIR", ""),
-		MAXBotToken: envOr("MAX_BOT_TOKEN", ""),
+		JWTSecret:         envOr("PARTA_JWT_SECRET", defaultJWTSecret),
+		Env:               envOr("PARTA_ENV", defaultEnv),
+		DBPath:            envOr("PARTA_DB_PATH", defaultDBPath),
+		Addr:              envOr("PARTA_ADDR", ":"+envOr("PORT", "8080")),
+		UploadDir:         envOr("PARTA_UPLOAD_DIR", defaultUploadDir),
+		WebDir:            envOr("PARTA_WEB_DIR", ""),
+		MAXBotToken:       envOr("MAX_BOT_TOKEN", ""),
+		TeacherInviteCode: envOr("TEACHER_INVITE_CODE", "TEACHER2026"),
+		AdminInviteCode:   envOr("ADMIN_INVITE_CODE", "ADMIN2026"),
 	}
 
 	if cfg.DBPath == "" {

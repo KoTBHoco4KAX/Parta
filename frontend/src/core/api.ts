@@ -10,7 +10,9 @@ import type {
   CreateTaskRequest,
   CreateTaskResponse,
   DevLoginResponse,
+  DemoAccount,
   Group,
+  MaxAuthResponse,
   PeerReview,
   PurchaseFreezesResponse,
   Role,
@@ -98,33 +100,34 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   return payload as T;
 }
 
-// devLogin — единственный способ входа до появления внешней авторизации.
-export function devLogin(email: string): Promise<DevLoginResponse> {
-  return request<DevLoginResponse>('/auth/dev-login', {
-    method: 'POST',
-    body: { email },
-    token: null,
-  });
-}
-
-// loginWithPassword — POST /api/auth/login: email + пароль. Роль определяет
-// сервер по пользователю, клиент её не выбирает.
-export function loginWithPassword(
-  email: string,
-  password: string,
-): Promise<DevLoginResponse> {
-  return apiFetch<DevLoginResponse>('/auth/login', {
-    method: 'POST',
-    token: null,
-    body: { email, password },
-  });
-}
-
-// loginWithMax — POST /api/auth/max: параметры запуска MAX с подписью.
-export function loginWithMax(params: Record<string, string>): Promise<DevLoginResponse> {
-  return request<DevLoginResponse>('/auth/max', {
+// loginWithMax — POST /api/auth/max: проверка MAX-пользователя.
+// Ответ либо сессия, либо needs_onboarding для первого входа.
+export function loginWithMax(params: Record<string, string>): Promise<MaxAuthResponse> {
+  return request<MaxAuthResponse>('/auth/max', {
     method: 'POST',
     body: { params },
+    token: null,
+  });
+}
+
+// registerMax — POST /api/auth/max/register: первый вход с выбранной ролью.
+export function registerMax(
+  params: Record<string, string>,
+  role: Role,
+  code = '',
+): Promise<DevLoginResponse> {
+  return request<DevLoginResponse>('/auth/max/register', {
+    method: 'POST',
+    body: { params, role, code },
+    token: null,
+  });
+}
+
+// demoLogin — POST /api/auth/demo: один из трёх фиксированных аккаунтов.
+export function demoLogin(account: DemoAccount, code = ''): Promise<DevLoginResponse> {
+  return request<DevLoginResponse>('/auth/demo', {
+    method: 'POST',
+    body: { account, code },
     token: null,
   });
 }
@@ -263,8 +266,6 @@ export function createTaskReal(body: CreateTaskRequest): Promise<CreateTaskRespo
 }
 
 export const api = {
-  devLogin,
-
   // getMe: read-эндпоинта /api/users/me пока нет (Фаза 7); профиль приходит
   // из dev-login и обновляется WS-событиями. Оставляем тип для будущего экрана.
   createTask(token: string | null, body: CreateTaskRequest): Promise<CreateTaskResponse> {

@@ -81,10 +81,12 @@ func newHarnessWith(t *testing.T, env string, opts ...httpapi.Option) *harness {
 	}
 
 	cfg := config.Config{
-		JWTSecret: testJWTSecret,
-		Env:       env,
-		DBPath:    path,
-		UploadDir: uploadDir,
+		JWTSecret:         testJWTSecret,
+		Env:               env,
+		DBPath:            path,
+		UploadDir:         uploadDir,
+		TeacherInviteCode: "TEACHER2026",
+		AdminInviteCode:   "ADMIN2026",
 	}
 
 	server := httptest.NewServer(httpapi.New(cfg, db, opts...).Handler())
@@ -114,11 +116,13 @@ func newHarnessWithMaxToken(t *testing.T, token string) *harness {
 	}
 
 	cfg := config.Config{
-		JWTSecret:   testJWTSecret,
-		Env:         "dev",
-		DBPath:      path,
-		UploadDir:   uploadDir,
-		MAXBotToken: token,
+		JWTSecret:         testJWTSecret,
+		Env:               "dev",
+		DBPath:            path,
+		UploadDir:         uploadDir,
+		MAXBotToken:       token,
+		TeacherInviteCode: "TEACHER2026",
+		AdminInviteCode:   "ADMIN2026",
 	}
 
 	server := httptest.NewServer(httpapi.New(cfg, db).Handler())

@@ -9,11 +9,23 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { ApiError, loginWithMax, loginWithPassword } from './api';
-import { AUTH_STORAGE_KEY } from './session';
+import {
+  ApiError,
+  demoLogin as demoLoginRequest,
+  loginWithMax,
+  registerMax as registerMaxRequest,
+} from './api';
 import { readMaxLaunchParams } from './max';
+import { AUTH_STORAGE_KEY } from './session';
 import { PartaSocket } from './ws';
-import type { ConnectionStatus, Role, User, WsEvent } from './types';
+import type {
+  ConnectionStatus,
+  DemoAccount,
+  DevLoginResponse,
+  Role,
+  User,
+  WsEvent,
+} from './types';
 
 const STORAGE_KEY = AUTH_STORAGE_KEY;
 const EVENT_LIMIT = 100;
@@ -21,6 +33,12 @@ const EVENT_LIMIT = 100;
 interface StoredAuth {
   token: string;
   user: User;
+}
+
+export interface MaxOnboarding {
+  params: Record<string, string>;
+  maxUserId: string;
+  displayName: string;
 }
 
 interface AuthContextValue {
@@ -31,16 +49,17 @@ interface AuthContextValue {
   error: string | null;
   connection: ConnectionStatus;
   events: WsEvent[];
-  login: (email: string, password: string) => Promise<void>;
+  maxPresent: boolean;
+  maxChecking: boolean;
+  maxOnboarding: MaxOnboarding | null;
+  demoLogin: (account: DemoAccount, code?: string) => Promise<void>;
+  registerMax: (role: Role, code?: string) => Promise<void>;
   logout: () => void;
-  // subscribe регистрирует слушателя всех WS-событий сессии.
-  // Возвращённая функция снимает подписку (её нужно вернуть из useEffect).
   subscribe: (listener: (event: WsEvent) => void) => () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// loadStoredAuth читает сессию из localStorage (переживает перезагрузку).
 function loadStoredAuth(): StoredAuth | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -59,6 +78,14 @@ function loadStoredAuth(): StoredAuth | null {
   }
 }
 
+function saveAuth(response: DevLoginResponse): StoredAuth {
+  const next = { token: response.token, user: response.user };
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+
+  return next;
+}
+
 // AuthProvider хранит токен/пользователя, владеет единственным сокетом сессии
 // и обновляет профиль по событиям XP/стрика.
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -67,9 +94,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [connection, setConnection] = useState<ConnectionStatus>('offline');
   const [events, setEvents] = useState<WsEvent[]>([]);
+  const [maxPresent] = useState(() => readMaxLaunchParams() !== null);
+  const [maxChecking, setMaxChecking] = useState(
+    () => readMaxLaunchParams() !== null && loadStoredAuth() === null,
+  );
+  const [maxOnboarding, setMaxOnboarding] = useState<MaxOnboarding | null>(null);
   const socketRef = useRef<PartaSocket | null>(null);
-  // Слушатели событий живут вне React-состояния: экран может обновить свои
-  // данные по WS, не дожидаясь перерисовки всего AuthContext.
   const listenersRef = useRef(new Set<(event: WsEvent) => void>());
   const maxLoginAttempted = useRef(false);
 
@@ -81,37 +111,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    setBusy(true);
-    setError(null);
-
-    try {
-      const response = await loginWithPassword(email, password);
-      const next = { token: response.token, user: response.user };
-
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      setAuth(next);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось войти');
-      throw err;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
   useEffect(() => {
-    if (auth || maxLoginAttempted.current) {
+    if (auth || !maxPresent || maxLoginAttempted.current) {
+      if (auth) {
+        setMaxChecking(false);
+      }
+
       return;
     }
 
     const params = readMaxLaunchParams();
 
     if (!params) {
+      setMaxChecking(false);
+
       return;
     }
 
     maxLoginAttempted.current = true;
-    setBusy(true);
+    setMaxChecking(true);
     setError(null);
 
     let cancelled = false;
@@ -122,10 +140,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const next = { token: response.token, user: response.user };
+        if ('needs_onboarding' in response) {
+          setMaxOnboarding({
+            params,
+            maxUserId: response.max_user_id,
+            displayName: response.display_name,
+          });
 
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        setAuth(next);
+          return;
+        }
+
+        setAuth(saveAuth(response));
       })
       .catch((err: unknown) => {
         if (!cancelled) {
@@ -134,18 +159,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       .finally(() => {
         if (!cancelled) {
-          setBusy(false);
+          setMaxChecking(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [auth]);
+  }, [auth, maxPresent]);
+
+  const registerMax = useCallback(
+    async (role: Role, code = '') => {
+      if (!maxOnboarding) {
+        return;
+      }
+
+      setBusy(true);
+      setError(null);
+
+      try {
+        const response = await registerMaxRequest(maxOnboarding.params, role, code);
+
+        setAuth(saveAuth(response));
+        setMaxOnboarding(null);
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : 'Не удалось создать аккаунт');
+        throw err;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [maxOnboarding],
+  );
+
+  const demoLogin = useCallback(async (account: DemoAccount, code = '') => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      const response = await demoLoginRequest(account, code);
+
+      setAuth(saveAuth(response));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Не удалось войти в демо-режим');
+      throw err;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   const logout = useCallback(() => {
     window.localStorage.removeItem(STORAGE_KEY);
+    maxLoginAttempted.current = true;
     setAuth(null);
+    setMaxOnboarding(null);
     setEvents([]);
     setConnection('offline');
   }, []);
@@ -165,8 +232,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setEvents((previous) => [event, ...previous].slice(0, EVENT_LIMIT));
         applyUserEvent(event, setAuth);
 
-        // Слушатели экранов не должны ломать сокет: ошибку одного экрана
-        // изолируем, остальные получают событие.
         for (const listener of listenersRef.current) {
           try {
             listener(event);
@@ -195,20 +260,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       error,
       connection,
       events,
-      login,
+      maxPresent,
+      maxChecking,
+      maxOnboarding,
+      demoLogin,
+      registerMax,
       logout,
       subscribe,
     }),
-    [auth, busy, connection, error, events, login, logout, subscribe, token],
+    [
+      auth,
+      busy,
+      connection,
+      demoLogin,
+      error,
+      events,
+      maxChecking,
+      maxOnboarding,
+      maxPresent,
+      registerMax,
+      subscribe,
+      token,
+    ],
   );
 
   return createElement(AuthContext.Provider, { value }, children);
 }
 
-// applyUserEvent точечно патчит профиль по событиям, не перезапрашивая REST.
-function applyUserEvent(event: WsEvent, setAuth: (update: (previous: StoredAuth | null) => StoredAuth | null) => void): void {
+function applyUserEvent(
+  event: WsEvent,
+  setAuth: (update: (previous: StoredAuth | null) => StoredAuth | null) => void,
+): void {
   if (event.event_type === 'streak.updated') {
-    const payload = event.payload as { user_id?: number; on_time_streak?: number; streak_freezes?: number };
+    const payload = event.payload as {
+      user_id?: number;
+      on_time_streak?: number;
+      streak_freezes?: number;
+    };
 
     setAuth((previous) => {
       if (!previous || previous.user.id !== payload.user_id) {
@@ -232,7 +320,11 @@ function applyUserEvent(event: WsEvent, setAuth: (update: (previous: StoredAuth 
     const payload = event.payload as { user_id?: number; balance_after?: number };
 
     setAuth((previous) => {
-      if (!previous || previous.user.id !== payload.user_id || typeof payload.balance_after !== 'number') {
+      if (
+        !previous ||
+        previous.user.id !== payload.user_id ||
+        typeof payload.balance_after !== 'number'
+      ) {
         return previous;
       }
 
@@ -244,7 +336,6 @@ function applyUserEvent(event: WsEvent, setAuth: (update: (previous: StoredAuth 
   }
 }
 
-// useAuth даёт доступ к сессии; вне провайдера — ошибка разработчика.
 export function useAuth(): AuthContextValue {
   const context = useContext(AuthContext);
 

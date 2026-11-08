@@ -19,10 +19,15 @@ export interface DevLoginResponse {
   user: User;
 }
 
-export interface LoginRequest {
-  email: string;
-  password: string;
+export type DemoAccount = 'student' | 'teacher' | 'admin';
+
+export interface MaxOnboardingResponse {
+  needs_onboarding: true;
+  max_user_id: string;
+  display_name: string;
 }
+
+export type MaxAuthResponse = DevLoginResponse | MaxOnboardingResponse;
 
 export interface Group {
   id: number;

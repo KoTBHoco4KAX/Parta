@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './core/auth';
 import { initMaxBridge } from './core/max';
 import { ThemeProvider } from './core/theme';
 import { LoginPage } from './pages/LoginPage';
+import { MaxOnboardingPage } from './pages/MaxOnboardingPage';
 import { DashboardPage } from './pages/DashboardPage';
 import KanbanPage from './student/pages/KanbanPage';
 import ShopPage from './student/pages/ShopPage';
@@ -80,10 +81,22 @@ export default function App() {
 }
 
 function Shell() {
-  const { user, role } = useAuth();
+  const { user, role, maxChecking, maxOnboarding, maxPresent, error } = useAuth();
   const [route, navigate] = useHashRoute();
 
   if (!user) {
+    if (maxChecking) {
+      return <AuthStatus message="Проверяем вход через MAX…" />;
+    }
+
+    if (maxOnboarding) {
+      return <MaxOnboardingPage />;
+    }
+
+    if (maxPresent) {
+      return <AuthStatus message={error ?? 'Не удалось войти через MAX'} error />;
+    }
+
     return <LoginPage />;
   }
 
@@ -125,5 +138,24 @@ function Shell() {
         ) : null}
       </ErrorBoundary>
     </AppShell>
+  );
+}
+function AuthStatus({ message, error = false }: { message: string; error?: boolean }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-page px-4">
+      <div className="w-full max-w-sm rounded-lg border border-line bg-card p-5 text-center">
+        <p className="text-[22px] font-bold tracking-[0.18em] text-brand">ПАРТА</p>
+        <p className={`mt-3 text-[13px] ${error ? 'text-bad' : 'text-ink3'}`}>{message}</p>
+        {error ? (
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="mt-4 rounded-lg bg-brand px-3 py-2 text-xs font-medium text-white transition hover:bg-brandStrong"
+          >
+            Повторить
+          </button>
+        ) : null}
+      </div>
+    </div>
   );
 }

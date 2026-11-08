@@ -72,7 +72,7 @@ func TestErrorEnvelopeContract(t *testing.T) {
 		{
 			name:   "bad json",
 			method: http.MethodPost,
-			path:   "/api/auth/login",
+			path:   "/api/auth/max",
 			body:   `"not-an-object"`,
 			status: http.StatusBadRequest,
 			code:   "invalid_json",
