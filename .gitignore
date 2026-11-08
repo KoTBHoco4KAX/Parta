@@ -19,5 +19,3 @@ uploads/
 
 # Окружение
 .env
-backend/vendor/
-vendor/

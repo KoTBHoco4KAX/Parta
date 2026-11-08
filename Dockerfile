@@ -13,16 +13,11 @@ RUN npm run build
 FROM golang:1.22-alpine AS api
 WORKDIR /app/backend
 
-# Ставим прокси, чтобы go mod не вис на таймаутах
-ENV GOPROXY=https://goproxy.io,direct
-
-# Копируем манифесты зависимостей и качаем их
+# Зависимости зафиксированы в backend/vendor: сеть на этапе Go-сборки не нужна
 COPY backend/go.mod backend/go.sum ./
-RUN go mod download
-
-# Копируем остальной исходный код и компилируем
+COPY backend/vendor ./vendor
 COPY backend/ ./
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/parta ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -mod=vendor -trimpath -ldflags="-s -w" -o /app/parta ./cmd/server
 
 # ---- runtime ----
 FROM alpine:3.20
@@ -31,7 +26,7 @@ RUN addgroup -S parta && adduser -S -G parta parta \
     && mkdir -p /app/data /app/uploads /app/web \
     && chown -R parta:parta /app
 
-COPY --from=api /out/parta /app/parta
+COPY --from=api /app/parta /app/parta
 COPY --from=web /app/frontend/dist /app/web
 
 ENV PARTA_ENV=production \

@@ -7,6 +7,5 @@
 **/*.db-wal
 uploads
 .env
-backend/vendor
 node_modules
 frontend/dist
