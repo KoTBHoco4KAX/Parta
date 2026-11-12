@@ -1,20 +1,52 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../core/auth';
 import { fetchSubmissions } from '../core/api';
+import { isSubmissionBoardEvent } from '../core/ws';
 import type { Submission } from '../core/types';
+
+// Страховочный опрос: счётчики обновляются и без события, если кадр потерялся.
+const REFRESH_INTERVAL_MS = 10_000;
 
 // DashboardPage — карточка ученика: имя, баланс XP, стрик и заморозки.
 export function DashboardPage({ onNavigate }: { onNavigate: (path: string) => void }) {
-  const { user, connection } = useAuth();
+  const { user, connection, subscribe } = useAuth();
   const [submissions, setSubmissions] = useState<Submission[]>([]);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     fetchSubmissions()
       .then(setSubmissions)
       .catch(() => {
         // Счётчики — вспомогательные: карточка работает и без них.
       });
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Реалтайм: новое задание и смена статуса меняют счётчики без перезагрузки.
+  useEffect(
+    () =>
+      subscribe((event) => {
+        if (isSubmissionBoardEvent(event)) {
+          load();
+        }
+      }),
+    [load, subscribe],
+  );
+
+  // Фолбэк, если событие не дошло.
+  useEffect(() => {
+    const interval = window.setInterval(load, REFRESH_INTERVAL_MS);
+    const onFocus = () => load();
+
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [load]);
 
   if (!user) {
     return null;
