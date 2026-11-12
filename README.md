@@ -55,3 +55,32 @@ Dockerfile собирает бинарник с `-mod=vendor` без `go mod dow
 Если окружение не доверяет российским корневым сертификатам, для MAX Bot API
 можно включить `MAX_BOT_INSECURE_SKIP_VERIFY=true`. Используйте это только
 как временный обходной путь.
+
+## Реалтайм и reverse-proxy
+
+События доставляются двумя транспортами с одного и того же хаба:
+
+- **WebSocket** `GET /ws?token=<jwt>` — основной канал;
+- **long-poll** `GET /api/events/poll?after=<cursor>&timeout=20` — фолбэк.
+
+Фронтенд сам переключается на long-poll, если WebSocket не открылся за 10
+секунд (типичный признак прокси без проброса `Upgrade`). Long-poll — это
+обычный завершённый HTTP-ответ, поэтому он проходит через любой буферизующий
+reverse-proxy; WebSocket — нет.
+
+Для нормальной работы WebSocket прокси перед приложением должен быть настроен
+явно (см. [deploy/nginx-parta.conf](deploy/nginx-parta.conf)):
+
+```nginx
+location /ws {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_buffering off;
+    proxy_read_timeout 3600s;
+}
+```
+
+Если правка прокси недоступна, приложение продолжает работать на long-poll:
+индикатор в интерфейсе остаётся зелёным, задержка доставки — доли секунды.

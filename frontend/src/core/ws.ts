@@ -50,6 +50,11 @@ function wsUrl(token: string): string {
   return `${scheme}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
 }
 
+// pollUrl собирает адрес long-poll фолбэка.
+function pollUrl(cursor: number, holdSeconds: number): string {
+  return `/api/events/poll?after=${cursor}&timeout=${holdSeconds}`;
+}
+
 // Максимальный размер журнала дедупликации: клиент не должен расти бесконечно.
 const SEEN_LIMIT = 1000;
 
@@ -68,14 +73,25 @@ const HEARTBEAT_TIMEOUT_MS = 45_000;
 // Код закрытия для «сервер перестал отвечать» — не пересекается с кодами RFC.
 const CLOSE_HEARTBEAT_TIMEOUT = 4000;
 
+// Сколько ждём открытия сокета, прежде чем уйти на long-poll. За прокси без
+// upgrade handshake не завершается вообще, и onclose может не прийти часами.
+const WS_OPEN_TIMEOUT_MS = 10_000;
+
+// Параметры long-poll фолбэка.
+const POLL_TIMEOUT_SECONDS = 20;
+const POLL_MIN_HOLD_SECONDS = 5;
+const POLL_RETRY_BASE_MS = 1_000;
+const POLL_RETRY_MAX_MS = 15_000;
+
 export interface PartaSocketOptions {
   token: string;
   onEvent: (event: WsEvent) => void;
   onStatus?: (status: ConnectionStatus) => void;
 }
 
-// PartaSocket — один сокет на сессию: переподключение с backoff, дедупликация
-// по event_id, повторная подписка после реконнекта.
+// PartaSocket — один канал событий на сессию. Основной транспорт — WebSocket;
+// если handshake не поднимается (reverse-proxy без Upgrade), автоматически
+// переключается на long-poll того же хаба.
 export class PartaSocket {
   private readonly options: PartaSocketOptions;
   private socket: WebSocket | null = null;
@@ -84,10 +100,21 @@ export class PartaSocket {
   private reconnectTimer: number | null = null;
   private heartbeatTimer: number | null = null;
   private stableTimer: number | null = null;
+  private openTimer: number | null = null;
   private lastPongAt = 0;
   private onlineBound = false;
+  private lastStatus: ConnectionStatus | null = null;
+  private opened = false;
   private readonly seen = new Set<string>();
   private readonly rooms = new Set<string>();
+
+  // Long-poll состояние.
+  private polling = false;
+  private pollAbort: AbortController | null = null;
+  private cursor = 0;
+  private pollAttempt = 0;
+  // Сколько держим запрос. Уменьшаем, если прокси рвёт долгие ответы.
+  private pollHold = POLL_TIMEOUT_SECONDS;
 
   constructor(options: PartaSocketOptions) {
     this.options = options;
@@ -95,7 +122,7 @@ export class PartaSocket {
 
   // handleOnline возвращает сокет в строй сразу после восстановления сети.
   private handleOnline = (): void => {
-    if (this.closed || this.socket !== null) {
+    if (this.closed || this.socket !== null || this.polling) {
       return;
     }
 
@@ -110,7 +137,7 @@ export class PartaSocket {
 
   // connect открывает соединение; повторные вызовы идемпотентны.
   connect(): void {
-    if (this.closed || this.socket !== null) {
+    if (this.closed || this.socket !== null || this.polling) {
       return;
     }
 
@@ -124,13 +151,37 @@ export class PartaSocket {
     const socket = new WebSocket(wsUrl(this.options.token));
     this.socket = socket;
 
-    socket.onopen = () => {
-      this.setStatus('online');
+    // Прокси без upgrade держит handshake открытым: без таймаута индикатор
+    // навсегда остался бы в «подключении».
+    this.openTimer = window.setTimeout(() => {
+      this.openTimer = null;
 
-      if (this.socket !== socket) {
+      if (this.socket !== socket || socket.readyState !== WebSocket.CONNECTING) {
         return;
       }
 
+      console.warn('[WS] open timeout, falling back to long-poll');
+      this.socket = null;
+      this.stopHeartbeat();
+      socket.close();
+      this.startPolling();
+    }, WS_OPEN_TIMEOUT_MS);
+
+    socket.onopen = () => {
+      this.clearOpenTimer();
+
+      if (this.socket !== socket) {
+        // Сокет уже признан мёртвым (сработал таймаут открытия) — не
+        // оставляем сессию без транспорта: long-poll продолжает работать.
+        socket.close();
+
+        return;
+      }
+
+      this.stopPolling();
+      this.opened = true;
+
+      this.setStatus('online');
       console.log('[WS] open');
       this.lastPongAt = Date.now();
       this.startHeartbeat();
@@ -153,15 +204,17 @@ export class PartaSocket {
     };
 
     socket.onerror = () => {
-      // onclose всегда придёт следом и запустит backoff.
+      // onclose всегда придёт следом и запустит реконнект.
     };
 
-    socket.onclose = () => {
+    socket.onclose = (event) => {
+      this.clearOpenTimer();
+
       if (this.socket !== socket) {
         return;
       }
 
-      console.log('[WS] close');
+      console.warn('[WS] close', event.code, event.reason, event.wasClean);
       this.socket = null;
       this.stopHeartbeat();
       this.clearStableTimer();
@@ -172,6 +225,16 @@ export class PartaSocket {
       }
 
       this.setStatus('offline');
+
+      // Если сокет ни разу не открылся, почти наверняка мешает прокси без
+      // проброса Upgrade. Дальше работаем через long-poll — он проходит
+      // через любой HTTP reverse-proxy.
+      if (!this.opened) {
+        this.startPolling();
+
+        return;
+      }
+
       this.scheduleReconnect();
     };
   }
@@ -198,7 +261,7 @@ export class PartaSocket {
     }
   }
 
-  // close окончательно закрывает сокет и отменяет переподключение.
+  // close окончательно закрывает транспорт и отменяет переподключение.
   close(): void {
     this.closed = true;
 
@@ -209,6 +272,8 @@ export class PartaSocket {
 
     this.stopHeartbeat();
     this.clearStableTimer();
+    this.clearOpenTimer();
+    this.stopPolling();
 
     if (this.onlineBound) {
       window.removeEventListener('online', this.handleOnline);
@@ -261,11 +326,16 @@ export class PartaSocket {
       return;
     }
 
-    if (this.seen.has(candidate.event_id)) {
+    this.dispatchEvent(candidate as WsEvent);
+  }
+
+  // dispatchEvent дедуплицирует конверт и отдаёт его подписчику.
+  private dispatchEvent(event: WsEvent): void {
+    if (this.seen.has(event.event_id)) {
       return;
     }
 
-    this.seen.add(candidate.event_id);
+    this.seen.add(event.event_id);
 
     if (this.seen.size > SEEN_LIMIT) {
       const oldest = this.seen.values().next().value;
@@ -274,7 +344,130 @@ export class PartaSocket {
       }
     }
 
-    this.options.onEvent(candidate as WsEvent);
+    this.options.onEvent(event);
+  }
+
+  // startPolling переключает сессию на long-poll.
+  private startPolling(): void {
+    if (this.closed || this.polling) {
+      return;
+    }
+
+    console.warn('[WS] switching to long-poll transport');
+    this.polling = true;
+    this.pollAttempt = 0;
+    this.clearStableTimer();
+    this.stopHeartbeat();
+
+    if (this.reconnectTimer !== null) {
+      window.clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+
+    void this.pollLoop();
+  }
+
+  // stopPolling останавливает long-poll и прерывает текущий запрос.
+  private stopPolling(): void {
+    this.polling = false;
+    this.pollAbort?.abort();
+    this.pollAbort = null;
+  }
+
+  // pollLoop держит long-poll запросы, пока сессия жива.
+  private async pollLoop(): Promise<void> {
+    while (!this.closed && this.polling) {
+      const controller = new AbortController();
+      this.pollAbort = controller;
+
+      let hardTimedOut = false;
+      const hardTimer = window.setTimeout(() => {
+        hardTimedOut = true;
+        controller.abort();
+      }, (this.pollHold + 15) * 1000);
+
+      try {
+        const response = await fetch(pollUrl(this.cursor, this.pollHold), {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${this.options.token}`,
+          },
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`poll failed: ${response.status}`);
+        }
+
+        const body = (await response.json()) as { cursor?: number; events?: WsEvent[] };
+
+        if (typeof body.cursor === 'number') {
+          this.cursor = body.cursor;
+        }
+
+        this.pollAttempt = 0;
+        // Прокси переживает текущую длину удержания — аккуратно возвращаемся
+        // к максимальной, чтобы не гонять запросы чаще нужного.
+        this.pollHold = Math.min(POLL_TIMEOUT_SECONDS, this.pollHold + 5);
+        this.setStatus('online');
+
+        for (const event of body.events ?? []) {
+          if (typeof event?.event_id === 'string') {
+            this.dispatchEvent(event);
+          }
+        }
+      } catch (cause) {
+        if (this.closed) {
+          return;
+        }
+
+        if (cause instanceof DOMException && cause.name === 'AbortError' && !hardTimedOut) {
+          return;
+        }
+
+        console.warn('[poll] transport error', cause);
+        this.setStatus('offline');
+        // Если запрос не доживает до штатного таймаута, укорачиваем его:
+        // так фолбэк переживёт прокси с коротким read timeout.
+        this.pollHold = Math.max(POLL_MIN_HOLD_SECONDS, Math.floor(this.pollHold / 2));
+        await this.sleepPollRetry();
+      } finally {
+        window.clearTimeout(hardTimer);
+      }
+    }
+  }
+
+  // sleepPollRetry выдерживает паузу с экспоненциальным backoff.
+  private sleepPollRetry(): Promise<void> {
+    const exponent = Math.min(this.pollAttempt, 4);
+    const delay = Math.min(POLL_RETRY_MAX_MS, POLL_RETRY_BASE_MS * 2 ** exponent);
+    this.pollAttempt += 1;
+
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, delay);
+    });
+  }
+
+  // scheduleReconnect запускает экспоненциальный backoff с джиттером.
+  private scheduleReconnect(): void {
+    if (this.closed || this.polling || this.reconnectTimer !== null) {
+      return;
+    }
+
+    // Ограничиваем показатель степени: после нескольких попыток пауза и так
+    // упирается в BACKOFF_MAX_MS, а 2**attempt не должен переполняться.
+    const exponent = Math.min(this.attempt, 5);
+    const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** exponent);
+    this.attempt += 1;
+
+    const jittered = delay * (0.8 + Math.random() * 0.4);
+
+    this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
+      this.connect();
+    }, jittered);
   }
 
   // resubscribe повторяет подписки после переподключения.
@@ -323,24 +516,12 @@ export class PartaSocket {
     }
   }
 
-  // scheduleReconnect запускает экспоненциальный backoff с джиттером.
-  private scheduleReconnect(): void {
-    if (this.closed || this.reconnectTimer !== null) {
-      return;
+  // clearOpenTimer отменяет таймаут открытия сокета.
+  private clearOpenTimer(): void {
+    if (this.openTimer !== null) {
+      window.clearTimeout(this.openTimer);
+      this.openTimer = null;
     }
-
-    // Ограничиваем показатель степени: после нескольких попыток пауза и так
-    // упирается в BACKOFF_MAX_MS, а 2**attempt не должен переполняться.
-    const exponent = Math.min(this.attempt, 5);
-    const delay = Math.min(BACKOFF_MAX_MS, BACKOFF_BASE_MS * 2 ** exponent);
-    this.attempt += 1;
-
-    const jittered = delay * (0.8 + Math.random() * 0.4);
-
-    this.reconnectTimer = window.setTimeout(() => {
-      this.reconnectTimer = null;
-      this.connect();
-    }, jittered);
   }
 
   private send(payload: unknown): void {
@@ -352,6 +533,11 @@ export class PartaSocket {
   }
 
   private setStatus(status: ConnectionStatus): void {
+    if (this.lastStatus === status) {
+      return;
+    }
+
+    this.lastStatus = status;
     console.log('[WS] status', status);
     this.options.onStatus?.(status);
   }

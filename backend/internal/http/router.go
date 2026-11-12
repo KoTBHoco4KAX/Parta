@@ -27,6 +27,7 @@ type Server struct {
 	now       func() time.Time
 	tokens    *TokenService
 	publisher events.Publisher
+	feed      EventFeed
 
 	users       *storage.UserRepo
 	groups      *storage.GroupRepo
@@ -54,6 +55,16 @@ func WithPublisher(publisher events.Publisher) Option {
 	}
 }
 
+// WithEventFeed подключает источник long-poll событий (ws.Hub). Без опции
+// /api/events/poll отвечает пустыми порциями — REST работает как раньше.
+func WithEventFeed(feed EventFeed) Option {
+	return func(s *Server) {
+		if feed != nil {
+			s.feed = feed
+		}
+	}
+}
+
 // New собирает сервер поверх открытой БД.
 func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 	now := time.Now
@@ -64,6 +75,7 @@ func New(cfg config.Config, db *sql.DB, opts ...Option) *Server {
 		now:         now,
 		tokens:      NewTokenService(cfg.JWTSecret, now),
 		publisher:   events.NoopPublisher{},
+		feed:        noopFeed{},
 		users:       storage.NewUserRepo(db),
 		groups:      storage.NewGroupRepo(db),
 		disciplines: storage.NewDisciplineRepo(db),
@@ -134,6 +146,7 @@ func (s *Server) Handler() http.Handler {
 	protected.Handle("PATCH /api/submissions/{id}/status", studentOnly(http.HandlerFunc(s.handleSubmissionStatus)))
 	protected.Handle("POST /api/submissions/{id}/verdict", staffOnly(http.HandlerFunc(s.handleVerdict)))
 	protected.Handle("POST /api/users/me/streak-freezes/purchase", studentOnly(http.HandlerFunc(s.handlePurchaseFreezes)))
+	protected.Handle("GET /api/events/poll", anyRole(http.HandlerFunc(s.handleEventsPoll)))
 
 	protected.Handle("POST /api/team-slots/{id}/carry-over", studentOnly(http.HandlerFunc(s.handleCarryOver)))
 	protected.Handle("/", http.HandlerFunc(s.handleNotFound))

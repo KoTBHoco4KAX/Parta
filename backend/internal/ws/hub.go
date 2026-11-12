@@ -25,13 +25,18 @@ type Hub struct {
 	mu    sync.RWMutex
 	rooms map[string]map[*client]struct{}
 	conns map[*client]struct{}
+
+	// events — журнал для long-poll: клиенты без рабочего WebSocket
+	// (например, за прокси без upgrade) получают те же события по HTTP.
+	events *eventLog
 }
 
 // NewHub создаёт пустой хаб.
 func NewHub() *Hub {
 	return &Hub{
-		rooms: make(map[string]map[*client]struct{}),
-		conns: make(map[*client]struct{}),
+		rooms:  make(map[string]map[*client]struct{}),
+		conns:  make(map[*client]struct{}),
+		events: newEventLog(),
 	}
 }
 
@@ -44,6 +49,10 @@ func (h *Hub) Publish(_ context.Context, event events.Event) {
 		log.Printf("ws: encode event %s: %v", event.EventType, err)
 		return
 	}
+
+	// Журнал пополняется до рассылки: long-poll не должен терять событие,
+	// даже если в этот момент нет ни одного WebSocket-клиента.
+	h.events.append(event)
 
 	h.mu.RLock()
 	targets := make([]*client, 0, len(h.rooms[event.Room]))

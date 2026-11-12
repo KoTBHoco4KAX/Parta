@@ -70,7 +70,14 @@ func main() {
 	tokens := auth.NewTokenService(cfg.JWTSecret, time.Now)
 
 	hub := ws.NewHub()
-	api := httpapi.New(cfg, db, httpapi.WithPublisher(hub)).Handler()
+	api := httpapi.New(
+		cfg,
+		db,
+		httpapi.WithPublisher(hub),
+		// Тот же хаб — источник long-poll: клиенты за прокси без upgrade
+		// получают события по HTTP, а не сидят в вечном «подключении».
+		httpapi.WithEventFeed(hub),
+	).Handler()
 
 	wsOptions := []ws.Option{}
 	if cfg.IsDev() {
